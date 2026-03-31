@@ -1,2 +1,5 @@
-"""Strategy contracts and baseline strategy code land here in Phase 1 and Phase 7."""
+"""Strategy contracts and signal models."""
 
+from src.domain.strategy.signal import Signal, SignalType
+
+__all__ = ["Signal", "SignalType"]

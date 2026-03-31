@@ -1,2 +1,5 @@
-"""Market and system event models land here in Phase 1 and Phase 3."""
+"""Market and system event models."""
 
+from src.domain.events.bar import BarEvent
+
+__all__ = ["BarEvent"]
