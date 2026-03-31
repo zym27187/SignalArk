@@ -1,32 +1,40 @@
 .PHONY: install format lint test test-unit test-integration test-e2e api trader collector
 
+VENV ?= .venv
+PYTHON := $(VENV)/bin/python
+PIP := $(PYTHON) -m pip
+PYTEST := $(PYTHON) -m pytest
+RUFF := $(VENV)/bin/ruff
+UVICORN := $(VENV)/bin/uvicorn
+
 install:
-	uv sync --all-extras
+	python3 -m venv $(VENV)
+	$(PIP) install --upgrade pip
+	$(PIP) install -e ".[dev]"
 
 format:
-	uv run ruff format .
+	$(RUFF) format .
 
 lint:
-	uv run ruff check .
+	$(RUFF) check .
 
 test:
-	uv run pytest
+	$(PYTEST)
 
 test-unit:
-	uv run pytest tests/unit -q
+	$(PYTEST) tests/unit -q
 
 test-integration:
-	uv run pytest tests/integration -q
+	$(PYTEST) tests/integration -q
 
 test-e2e:
-	uv run pytest tests/e2e -q
+	$(PYTEST) tests/e2e -q
 
 api:
-	uv run uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload
+	$(UVICORN) apps.api.main:app --host 0.0.0.0 --port 8000 --reload
 
 trader:
-	uv run python -m apps.trader.main
+	$(PYTHON) -m apps.trader.main
 
 collector:
-	uv run python -m apps.collector.main
-
+	$(PYTHON) -m apps.collector.main

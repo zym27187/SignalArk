@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 .env
 .coverage
+.learnings/
 htmlcov/
 build/
 dist/
@@ -11,4 +12,4 @@ dist/
 *.pyo
 *.pyd
 .DS_Store
-
+AGENTS.md

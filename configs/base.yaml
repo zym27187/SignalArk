@@ -1,3 +1,10 @@
+runtime:
+  config_profile: dev
+  shared_config_entrypoint: src.config.get_settings
+  trader_run_id_generation: uuid4
+  trader_run_id_bind_to_logs: true
+  trader_run_id_bind_to_audit: true
+
 app:
   name: signalark
   env: dev
@@ -9,13 +16,18 @@ trading:
   execution_mode: paper
   account_id: paper_account_001
   primary_strategy_id: baseline_momentum_v1
-  symbols:
+  supported_symbols:
     - BTCUSDT
     - ETHUSDT
+  symbols:
+    - BTCUSDT
   primary_timeframe: 15m
+  market_data_mode: bar
+  strategy_trigger: closed_bar
 
-db:
-  postgres_dsn: ${SIGNALARK_POSTGRES_DSN}
+paper:
+  state_backend: postgres
+  recovery_source: local_persistent_state
 
 api:
   host: 0.0.0.0
@@ -24,6 +36,7 @@ api:
 logging:
   level: INFO
   format: json
+  include_trader_run_id: true
 
 risk:
   max_single_symbol_notional_usdt: 5000
@@ -38,6 +51,3 @@ controls:
 alerts:
   telegram:
     enabled: false
-    bot_token: ${SIGNALARK_TELEGRAM_BOT_TOKEN}
-    chat_id: ${SIGNALARK_TELEGRAM_CHAT_ID}
-

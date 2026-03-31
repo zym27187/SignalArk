@@ -52,11 +52,14 @@ V1 当前不默认引入：
 - 默认主周期：`15m`
 - 运行环境：`dev`
 - 时间标准：存储和日志统一使用 `UTC`
+- 市场输入边界：`Bar`
+- 策略触发边界：`closed_bar`
 
 说明：
 
-- 这些值是工程模板的默认值，不是未来不可变的产品真理
-- 但在真正开始实现 `Phase 1` 及后续阶段前，应先在 `Phase 0` 中把它们固定下来，避免中途变更语义
+- `Phase 0` 固定后的 V1 运行范围为 `binance + spot + paper + paper_account_001 + baseline_momentum_v1 + 15m + closed_bar`
+- `BTCUSDT`、`ETHUSDT` 是 V1 唯一支持的 symbol 边界，`dev` profile 默认只激活 `BTCUSDT`
+- 这些值是当前 V1 的固定边界；如果后续确实要改，必须显式更新 phase 文档和配置契约，而不是在实现时临时漂移
 
 ---
 
@@ -117,7 +120,14 @@ V1 默认采用：
 
 - `.env` / 环境变量 作为运行时必填 secret 的注入方式
 - `configs/base.yaml` 和 `configs/dev.yaml` 作为配置结构模板和后续 profile 分层入口
-- `src/config/settings.py` 作为进程内统一配置入口
+- `src/config/settings.py` 中的 `get_settings()` 作为进程内统一配置入口
+
+加载顺序固定为：
+
+- `configs/base.yaml`
+- `configs/dev.yaml`
+- `.env`
+- 进程环境变量
 
 Secret 原则：
 
@@ -129,6 +139,8 @@ Secret 原则：
 - 缺失关键配置时应启动即失败
 - `paper` 是唯一允许的执行模式
 - `1-3` 个 symbol 是固定边界，不允许悄悄扩到更多
+- `SIGNALARK_POSTGRES_DSN` 是当前 Phase 0 唯一必填 secret 契约
+- `SIGNALARK_TELEGRAM_BOT_TOKEN` 与 `SIGNALARK_TELEGRAM_CHAT_ID` 只在启用 Telegram 告警时变为必填
 
 ---
 
@@ -142,7 +154,8 @@ V1 默认采用：
 
 持久化基线：
 
-- `paper` 模式下，`PostgreSQL` 是唯一可恢复事实源
+- `paper` 模式下，本地持久化状态是唯一可恢复事实源
+- 当前 V1 的本地持久化基线固定为项目内使用的 `PostgreSQL` 契约
 - `orders / fills / positions / balance_snapshots` 是恢复主线
 - 关键事实需要能关联 `trader_run_id`
 
@@ -207,4 +220,3 @@ V1 默认采用：
 - 通用插件平台
 - 实盘适配器
 - 复杂部署编排
-

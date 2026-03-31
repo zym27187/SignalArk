@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
-
 from src.config import get_settings
 from src.shared.logging import configure_logging
 

@@ -64,6 +64,28 @@
 - 缺失关键配置时有明确报错或校验失败
 - 至少有 1 个简单测试覆盖配置加载
 
+## Phase 0 固定结果
+
+- 交易所固定为 `binance`
+- 市场类型固定为 `spot`
+- 执行模式固定为 `paper`
+- 账户固定为 `paper_account_001`
+- 主策略固定为 `baseline_momentum_v1`
+- V1 支持交易对固定为 `BTCUSDT`、`ETHUSDT`，`dev` 默认只激活 `BTCUSDT`
+- 主周期固定为 `15m`
+- 市场输入边界固定为 `Bar`，策略触发边界固定为 `closed_bar`
+- 最小运行单元的共用配置入口固定为 `src.config.get_settings()`
+- 配置加载顺序固定为 `configs/base.yaml -> configs/dev.yaml -> .env -> 进程环境变量`
+- `paper` 模式下只有本地持久化状态可以作为恢复依据；交易所、内存缓存、paper adapter 内部态都不是可恢复事实源
+- `trader_run_id` 约定为 trader 启动时生成 `uuid4`，日志和后续审计事实必须统一使用字段名 `trader_run_id`
+
+## env / secret 契约
+
+- `SIGNALARK_POSTGRES_DSN`：必填，代表 V1 paper 模式的本地持久化事实源连接契约
+- `SIGNALARK_TELEGRAM_ENABLED`：可选，默认 `false`
+- `SIGNALARK_TELEGRAM_BOT_TOKEN`、`SIGNALARK_TELEGRAM_CHAT_ID`：默认可选；当 `SIGNALARK_TELEGRAM_ENABLED=true` 时必须同时提供
+- 交易所、市场、执行模式、账户、主策略、周期等 V1 固定边界允许出现在 `.env.example` 中，但不应在 Phase 0 中被改成别的语义
+
 ## 本次交付时必须汇报
 
 - 新增或修改了哪些配置文件

@@ -1,16 +1,163 @@
-"""Minimal runtime settings scaffold for SignalArk."""
+"""Runtime settings and config loading for SignalArk."""
 
 from __future__ import annotations
 
+import os
+from collections.abc import Mapping
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
+import yaml
+from dotenv import dotenv_values
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
+CONFIGS_DIR = ROOT_DIR / "configs"
+DOTENV_PATH = ROOT_DIR / ".env"
+ENV_PREFIX = "SIGNALARK_"
+DEFAULT_CONFIG_PROFILE = "dev"
+FIXED_SUPPORTED_SYMBOLS = ("BTCUSDT", "ETHUSDT")
+YAML_PATH_TO_FIELD = {
+    ("runtime", "config_profile"): "config_profile",
+    ("runtime", "shared_config_entrypoint"): "shared_config_entrypoint",
+    ("runtime", "trader_run_id_generation"): "trader_run_id_generation",
+    ("runtime", "trader_run_id_bind_to_logs"): "trader_run_id_bind_to_logs",
+    ("runtime", "trader_run_id_bind_to_audit"): "trader_run_id_bind_to_audit",
+    ("app", "name"): "app_name",
+    ("app", "env"): "env",
+    ("app", "timezone"): "timezone",
+    ("trading", "exchange"): "exchange",
+    ("trading", "market"): "market",
+    ("trading", "execution_mode"): "execution_mode",
+    ("trading", "account_id"): "account_id",
+    ("trading", "primary_strategy_id"): "primary_strategy_id",
+    ("trading", "supported_symbols"): "supported_symbols",
+    ("trading", "symbols"): "symbols",
+    ("trading", "primary_timeframe"): "primary_timeframe",
+    ("trading", "market_data_mode"): "market_data_mode",
+    ("trading", "strategy_trigger"): "strategy_trigger",
+    ("paper", "state_backend"): "paper_state_backend",
+    ("paper", "recovery_source"): "paper_recovery_source",
+    ("api", "host"): "api_host",
+    ("api", "port"): "api_port",
+    ("logging", "level"): "log_level",
+    ("logging", "format"): "log_format",
+    ("logging", "include_trader_run_id"): "log_include_trader_run_id",
+    ("risk", "max_single_symbol_notional_usdt"): "max_single_symbol_notional_usdt",
+    ("risk", "max_total_open_notional_usdt"): "max_total_open_notional_usdt",
+    ("risk", "min_order_notional_usdt"): "min_order_notional_usdt",
+    ("risk", "market_stale_threshold_seconds"): "market_stale_threshold_seconds",
+    ("controls", "lease_ttl_seconds"): "lease_ttl_seconds",
+    ("controls", "lease_heartbeat_interval_seconds"): "lease_heartbeat_interval_seconds",
+    ("alerts", "telegram", "enabled"): "telegram_enabled",
+}
+
+
+def _read_yaml_file(path: Path) -> dict[str, Any]:
+    """Read a YAML config file and ensure it is a mapping."""
+    if not path.exists():
+        raise FileNotFoundError(f"Config file does not exist: {path}")
+
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if data is None:
+        return {}
+    if not isinstance(data, Mapping):
+        raise TypeError(f"Config file must contain a mapping at the top level: {path}")
+    return dict(data)
+
+
+def _deep_merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[str, Any]:
+    """Deep merge nested config mappings."""
+    merged: dict[str, Any] = dict(base)
+    for key, value in override.items():
+        current = merged.get(key)
+        if isinstance(current, Mapping) and isinstance(value, Mapping):
+            merged[key] = _deep_merge(current, value)
+            continue
+        merged[key] = value
+    return merged
+
+
+def _flatten_yaml_config(
+    data: Mapping[str, Any],
+    *,
+    source: Path,
+    prefix: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Flatten nested YAML sections into Settings keyword arguments."""
+    flat: dict[str, Any] = {}
+    for key, value in data.items():
+        current_path = prefix + (str(key),)
+        if isinstance(value, Mapping):
+            flat.update(_flatten_yaml_config(value, source=source, prefix=current_path))
+            continue
+
+        field_name = YAML_PATH_TO_FIELD.get(current_path)
+        if field_name is None:
+            dotted_key = ".".join(current_path)
+            raise ValueError(f"Unsupported config key in {source}: {dotted_key}")
+        flat[field_name] = value
+    return flat
+
+
+def _clean_env_value(value: str | None) -> str | None:
+    """Normalize env values while respecting env_ignore_empty semantics."""
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _collect_runtime_env() -> dict[str, str]:
+    """Collect .env and process env values with process env taking precedence."""
+    env_values: dict[str, str] = {}
+
+    if DOTENV_PATH.exists():
+        for key, value in dotenv_values(DOTENV_PATH).items():
+            if not key or not key.startswith(ENV_PREFIX):
+                continue
+            normalized = _clean_env_value(value)
+            if normalized is not None:
+                env_values[key] = normalized
+
+    for key, value in os.environ.items():
+        if not key.startswith(ENV_PREFIX):
+            continue
+        normalized = _clean_env_value(value)
+        if normalized is not None:
+            env_values[key] = normalized
+
+    return env_values
+
+
+def _resolve_config_path(raw_path: str) -> Path:
+    """Resolve config file paths relative to the repo root when needed."""
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute():
+        path = ROOT_DIR / path
+    return path.resolve()
+
+
+def _resolve_config_files(config_profile: str, config_file: str | None) -> list[Path]:
+    """Resolve the ordered list of YAML files used for runtime config."""
+    paths = [CONFIGS_DIR / "base.yaml"]
+
+    if config_profile != "base":
+        profile_path = CONFIGS_DIR / f"{config_profile}.yaml"
+        if not profile_path.exists():
+            raise FileNotFoundError(f"Config profile is not defined: {profile_path}")
+        paths.append(profile_path)
+
+    if config_file is not None:
+        explicit_path = _resolve_config_path(config_file)
+        if not explicit_path.exists():
+            raise FileNotFoundError(f"Explicit config file does not exist: {explicit_path}")
+        paths.append(explicit_path)
+
+    return paths
 
 
 class Settings(BaseSettings):
@@ -24,23 +171,38 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
+    config_profile: Literal["dev"] = DEFAULT_CONFIG_PROFILE
+    config_file: str | None = None
+    shared_config_entrypoint: Literal["src.config.get_settings"] = "src.config.get_settings"
+    trader_run_id_generation: Literal["uuid4"] = "uuid4"
+    trader_run_id_bind_to_logs: bool = True
+    trader_run_id_bind_to_audit: bool = True
+
     app_name: str = "signalark"
     env: Literal["dev", "test", "prod"] = "dev"
-    timezone: str = "UTC"
+    timezone: Literal["UTC"] = "UTC"
 
     exchange: Literal["binance"] = "binance"
     market: Literal["spot"] = "spot"
     execution_mode: Literal["paper"] = "paper"
-    account_id: str = "paper_account_001"
-    primary_strategy_id: str = "baseline_momentum_v1"
-    symbols: list[str] = Field(default_factory=lambda: ["BTCUSDT", "ETHUSDT"])
-    primary_timeframe: Literal["15m", "1h"] = "15m"
+    account_id: Literal["paper_account_001"] = "paper_account_001"
+    primary_strategy_id: Literal["baseline_momentum_v1"] = "baseline_momentum_v1"
+    supported_symbols: list[str] = Field(default_factory=lambda: list(FIXED_SUPPORTED_SYMBOLS))
+    symbols: list[str] = Field(default_factory=lambda: ["BTCUSDT"])
+    primary_timeframe: Literal["15m"] = "15m"
+    market_data_mode: Literal["bar"] = "bar"
+    strategy_trigger: Literal["closed_bar"] = "closed_bar"
+
+    paper_state_backend: Literal["postgres"] = "postgres"
+    paper_recovery_source: Literal["local_persistent_state"] = "local_persistent_state"
 
     postgres_dsn: str = "postgresql+psycopg://signalark:signalark@localhost:5432/signalark"
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_format: Literal["json"] = "json"
+    log_include_trader_run_id: bool = True
 
     lease_ttl_seconds: int = 15
     lease_heartbeat_interval_seconds: int = 5
@@ -50,10 +212,11 @@ class Settings(BaseSettings):
     max_total_open_notional_usdt: Decimal = Decimal("10000")
     min_order_notional_usdt: Decimal = Decimal("25")
 
+    telegram_enabled: bool = False
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
 
-    @field_validator("symbols", mode="before")
+    @field_validator("supported_symbols", "symbols", mode="before")
     @classmethod
     def normalize_symbols(cls, value: object) -> list[str]:
         """Support comma-separated symbols from env while normalizing case."""
@@ -66,11 +229,29 @@ class Settings(BaseSettings):
             return [str(item).strip().upper() for item in value if str(item).strip()]
         raise TypeError("symbols must be a list or a comma-separated string")
 
+    @field_validator("config_file", "telegram_bot_token", "telegram_chat_id", mode="before")
+    @classmethod
+    def normalize_optional_strings(cls, value: object) -> str | None:
+        """Treat empty strings as missing for optional string settings."""
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
     @model_validator(mode="after")
-    def validate_v1_contracts(self) -> "Settings":
+    def validate_v1_contracts(self) -> Settings:
         """Enforce the V1 fixed boundaries and fail fast on invalid config."""
+        if self.supported_symbols != list(FIXED_SUPPORTED_SYMBOLS):
+            raise ValueError("V1 supported_symbols are fixed to BTCUSDT and ETHUSDT.")
+
         if not 1 <= len(self.symbols) <= 3:
             raise ValueError("V1 only supports 1-3 symbols.")
+
+        if len(set(self.symbols)) != len(self.symbols):
+            raise ValueError("V1 symbols must be unique.")
+
+        if not set(self.symbols).issubset(set(self.supported_symbols)):
+            raise ValueError("Runtime symbols must be a subset of the V1 supported_symbols list.")
 
         if self.execution_mode != "paper":
             raise ValueError("V1 execution_mode must remain paper.")
@@ -87,19 +268,107 @@ class Settings(BaseSettings):
         if self.min_order_notional_usdt <= 0:
             raise ValueError("min_order_notional_usdt must be positive.")
 
+        if self.api_port <= 0:
+            raise ValueError("api_port must be positive.")
+
+        if not self.postgres_dsn.strip():
+            raise ValueError("postgres_dsn must not be empty.")
+
         has_bot_token = bool(self.telegram_bot_token)
         has_chat_id = bool(self.telegram_chat_id)
+        if self.telegram_enabled and not (has_bot_token and has_chat_id):
+            raise ValueError(
+                "Telegram alerting requires SIGNALARK_TELEGRAM_BOT_TOKEN and "
+                "SIGNALARK_TELEGRAM_CHAT_ID when alerts are enabled."
+            )
         if has_bot_token != has_chat_id:
             raise ValueError(
                 "Telegram alerting requires both SIGNALARK_TELEGRAM_BOT_TOKEN and "
                 "SIGNALARK_TELEGRAM_CHAT_ID."
             )
 
+        if self.trader_run_id_bind_to_logs and not self.log_include_trader_run_id:
+            raise ValueError("log_include_trader_run_id must stay enabled for V1 auditability.")
+
         return self
+
+
+def _field_name_from_env_key(env_key: str) -> str:
+    """Translate a SIGNALARK_* env key into a Settings field name."""
+    return env_key.removeprefix(ENV_PREFIX).lower()
+
+
+def _build_env_overrides(env_values: Mapping[str, str]) -> dict[str, str]:
+    """Convert runtime env values into Settings kwargs."""
+    overrides: dict[str, str] = {}
+    for env_key, value in env_values.items():
+        field_name = _field_name_from_env_key(env_key)
+        if field_name in Settings.model_fields:
+            overrides[field_name] = value
+    return overrides
+
+
+def _validate_required_runtime_env(settings: Settings, env_values: Mapping[str, str]) -> None:
+    """Validate the required env/secret contract used at runtime startup."""
+    missing_env: list[str] = []
+
+    if settings.paper_state_backend == "postgres" and "SIGNALARK_POSTGRES_DSN" not in env_values:
+        missing_env.append("SIGNALARK_POSTGRES_DSN")
+
+    if settings.telegram_enabled:
+        for env_key in ("SIGNALARK_TELEGRAM_BOT_TOKEN", "SIGNALARK_TELEGRAM_CHAT_ID"):
+            if env_key not in env_values:
+                missing_env.append(env_key)
+
+    if missing_env:
+        formatted = ", ".join(missing_env)
+        raise ValueError(
+            "Missing required env variables for SignalArk runtime startup: "
+            f"{formatted}"
+        )
+
+
+def load_settings(
+    *,
+    config_profile: str | None = None,
+    config_file: str | Path | None = None,
+) -> Settings:
+    """Load settings from YAML layers first, then override with env values."""
+    env_values = _collect_runtime_env()
+
+    resolved_profile = config_profile or env_values.get(
+        "SIGNALARK_CONFIG_PROFILE",
+        DEFAULT_CONFIG_PROFILE,
+    )
+
+    if config_file is None:
+        resolved_config_file = env_values.get("SIGNALARK_CONFIG_FILE")
+    else:
+        resolved_config_file = str(config_file)
+
+    merged_yaml: dict[str, Any] = {}
+    for path in _resolve_config_files(resolved_profile, resolved_config_file):
+        merged_yaml = _deep_merge(merged_yaml, _read_yaml_file(path))
+
+    yaml_values = _flatten_yaml_config(merged_yaml, source=CONFIGS_DIR)
+    merged_values: dict[str, Any] = {
+        **yaml_values,
+        **_build_env_overrides(env_values),
+        "config_profile": resolved_profile,
+        "config_file": resolved_config_file,
+    }
+
+    settings = Settings(**merged_values)
+    _validate_required_runtime_env(settings, env_values)
+    return settings
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Return a cached settings object for process-wide reuse."""
-    return Settings()
+    """Return the shared process-level settings object for runtime entrypoints."""
+    return load_settings()
 
+
+def clear_settings_cache() -> None:
+    """Clear the cached settings instance, mainly for tests and local scripts."""
+    get_settings.cache_clear()
