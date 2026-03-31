@@ -43,22 +43,29 @@ V1 当前不默认引入：
 
 除非在 `Phase 0` 中被明确重新固定，否则 V1 默认采用下面的业务基线：
 
-- 交易所：`binance`
-- 市场类型：`spot`
+- 市场边界：`cn_equity`
+- 市场类型：`a_share`
 - 执行模式：`paper`
 - 账户标识：`paper_account_001`
 - 主策略：`baseline_momentum_v1`
-- 默认交易对：`BTCUSDT`、`ETHUSDT`
+- 默认股票标的：`600036.SH`、`000001.SZ`
 - 默认主周期：`15m`
 - 运行环境：`dev`
-- 时间标准：存储和日志统一使用 `UTC`
+- 交易时区：`Asia/Shanghai`
+- 时间标准：交易、存储和日志统一使用 `Asia/Shanghai`
 - 市场输入边界：`Bar`
 - 策略触发边界：`closed_bar`
+- 执行方向：A 股 `long-only` 普通股票，不做融资融券 / 做空 / 当日回转卖出
+- 默认订单有效期：`DAY`
 
 说明：
 
-- `Phase 0` 固定后的 V1 运行范围为 `binance + spot + paper + paper_account_001 + baseline_momentum_v1 + 15m + closed_bar`
-- `BTCUSDT`、`ETHUSDT` 是 V1 唯一支持的 symbol 边界，`dev` profile 默认只激活 `BTCUSDT`
+- `Phase 0` 固定后的 V1 运行范围为 `cn_equity + a_share + paper + paper_account_001 + baseline_momentum_v1 + 15m + closed_bar`
+- `600036.SH`、`000001.SZ` 是 V1 唯一支持的 symbol 边界，`dev` profile 默认只激活 `600036.SH`
+- `trading.exchange` 字段保留为统一市场边界标识，固定值为 `cn_equity`；具体上市 venue 继续编码在 symbol 后缀中，例如 `.SH` / `.SZ`
+- 每个支持 symbol 都必须显式配置 A 股交易规则，至少包含 `lot_size`、`qty_step`、`price_tick`、`min_qty`、`allow_odd_lot_sell`、`t_plus_one_sell`、`price_limit_pct`
+- `order_type = MARKET` 仅表示 paper execution 下的市价风格指令，不应被实现成“交易所原生市场单一定存在”的假设；V1 默认策略下单路径不要求启用 `LIMIT`
+- 如果后续确实要启用 `LIMIT`、涨跌停检查或交易时段检查，运行时还必须提供最小 market state 输入，例如 `trade_date`、`previous_close`、`upper_limit_price`、`lower_limit_price`、`trading_phase`、`suspension_status`
 - 这些值是当前 V1 的固定边界；如果后续确实要改，必须显式更新 phase 文档和配置契约，而不是在实现时临时漂移
 
 ---
@@ -139,6 +146,10 @@ Secret 原则：
 - 缺失关键配置时应启动即失败
 - `paper` 是唯一允许的执行模式
 - `1-3` 个 symbol 是固定边界，不允许悄悄扩到更多
+- `time_in_force` 虽可保留字段，但 V1 A 股语义固定为 `DAY`
+- symbol 交易规则必须显式配置，不允许在运行时对 `lot_size / tick / T+1 / odd-lot sell / price limit` 做静默兜底
+- 如果策略下单路径保留 `LIMIT`、涨跌停或交易时段检查，最小 market state 契约也必须显式固定，不允许在缺失 `previous_close / price band / trading_phase / suspension` 信息时静默放行
+- paper execution 与 backtest 共享的成本模型至少包含 `commission`、`transfer_fee`、`stamp_duty_sell`；不允许先把成交成本隐式固定为 `0`，再到 `Phase 8` 才第一次补上
 - `SIGNALARK_POSTGRES_DSN` 是当前 Phase 0 唯一必填 secret 契约
 - `SIGNALARK_TELEGRAM_BOT_TOKEN` 与 `SIGNALARK_TELEGRAM_CHAT_ID` 只在启用 Telegram 告警时变为必填
 
@@ -198,9 +209,9 @@ V1 默认采用：
 
 如果 `Phase 6` 中没有额外配置覆盖，建议默认采用：
 
-- `risk.max_single_symbol_notional_usdt = 5000`
-- `risk.max_total_open_notional_usdt = 10000`
-- `risk.min_order_notional_usdt = 25`
+- `risk.max_single_symbol_notional_cny = 200000`
+- `risk.max_total_open_notional_cny = 500000`
+- `risk.min_order_notional_cny = 1000`
 - `risk.market_stale_threshold_seconds = 120`
 - `controls.lease_ttl_seconds = 15`
 - `controls.lease_heartbeat_interval_seconds = 5`

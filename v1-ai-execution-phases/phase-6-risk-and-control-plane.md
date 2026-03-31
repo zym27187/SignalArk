@@ -41,7 +41,7 @@
 - 实现最大名义价值检查
 - 实现重复下单防护
 - 实现行情过期检查
-- 实现最小下单量与基础交易规则检查
+- 实现最小下单量与 A 股基础交易规则检查，包括 `odd-lot sell / trading phase / suspension / LIMIT requires market state`
 - 提供状态查询接口
 - 提供策略启停能力
 - 提供 `kill switch`
@@ -76,16 +76,16 @@ Phase 6 默认采用下面 4 个控制状态：
 说明：
 
 - `strategy_paused`：停止生成新的交易动作，但不等于系统故障
-- `kill_switch`：操作者触发的 `reduce-only` 闸门
-- `protection_mode`：系统自动进入的 `reduce-only` 安全状态
+- `kill_switch`：操作者触发的“减仓 / 平仓保护”闸门
+- `protection_mode`：系统自动进入的“减仓 / 平仓保护”安全状态
 
 ### 2. 默认配置键与建议初值
 
 如果项目中尚未引入独立配置覆盖，建议默认采用：
 
-- `risk.max_single_symbol_notional_usdt = 5000`
-- `risk.max_total_open_notional_usdt = 10000`
-- `risk.min_order_notional_usdt = 25`
+- `risk.max_single_symbol_notional_cny = 200000`
+- `risk.max_total_open_notional_cny = 500000`
+- `risk.min_order_notional_cny = 1000`
 - `risk.market_stale_threshold_seconds = 120`
 - `controls.lease_ttl_seconds = 15`
 - `controls.lease_heartbeat_interval_seconds = 5`
@@ -95,6 +95,8 @@ Phase 6 默认采用下面 4 个控制状态：
 
 - 这些值是 V1 的保守基线，不是收益优化参数
 - 如果后续在 `Phase 0` 或配置文件中调整，字段语义必须保持不变
+- 每个支持 symbol 的 A 股交易规则应已在配置层固定；Phase 6 默认直接消费这些规则，而不是重新定义或静默兜底
+- `risk.min_order_notional_cny` 属于内部风控门槛，不应被误解成 A 股交易所最小成交金额规则
 
 ### 3. 默认控制面 API
 
@@ -123,6 +125,7 @@ Phase 6 默认采用下面 4 个控制状态：
 - `ready`
 - `market_data_fresh`
 - `latest_final_bar_time`
+- `current_trading_phase`
 - `lease_owner_instance_id`
 - `lease_expires_at`
 - `fencing_token`
@@ -149,7 +152,7 @@ Phase 6 中的关键日志和告警建议至少带上：
 - 人工可以查询状态并接管系统
 - 操作者可以判断系统是否健康与就绪
 - 同一交易账户不会被多个 active trader 实例同时接管
-- `kill switch` 激活后不会阻断 `reduce_only`、减仓和平仓路径
+- `kill switch` 激活后不会阻断减仓 / 平仓保护单、减仓和平仓路径
 
 ## 最低验证要求
 
@@ -159,6 +162,7 @@ Phase 6 中的关键日志和告警建议至少带上：
 - 至少验证一次重复 trader 启动被拦截或等价保护路径
 - 至少验证一次告警链路或等价通知路径
 - 至少验证一次 `kill switch` 拦截开仓但允许减仓或平仓
+- 至少验证一次 A 股交易规则场景，例如 `T+1` 卖出限制、可卖数量不足、余股卖出、停牌、集合竞价或 `LIMIT` 缺少 market state 的拒单
 
 ## 本次交付时必须汇报
 
@@ -194,6 +198,7 @@ Phase 6 中的关键日志和告警建议至少带上：
 
 本次必须完成：
 - 实现最大仓位、最大名义价值、重复下单、行情过期、最小下单量等 pre-trade risk
+- 实现 A 股 `lot / tick / T+1 / sellable_qty / odd-lot sell / price limit / trading phase / suspension` 等基础交易规则检查
 - 提供状态查询接口
 - 提供策略启停、kill switch、cancel all
 - 提供健康检查与就绪检查

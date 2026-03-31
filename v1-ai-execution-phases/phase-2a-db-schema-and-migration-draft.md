@@ -130,13 +130,15 @@ V1 数据库设计优先保证：
 - `OrderIntent` 先落库再执行
 - 关键状态变化可追踪
 - 可以按 `trader_run_id` 或等价运行批次回放关键交易事件
+- A 股执行约束可以被明确表达，例如 `DAY`、`T+1` 卖出限制和 `sellable_qty`
+- A 股成本模型和最小 market state 上下文可以被审计与回放
 - 结构足够简单，便于个人项目维护
 
 V1 不优先追求：
 
 - 极致查询性能
 - 多租户和复杂权限
-- 多交易所统一超大抽象
+- 多市场数据源统一超大抽象
 - 高级分析型宽表
 - 提前建设大而全报表仓库
 
@@ -169,6 +171,8 @@ V1 建议最少建立下面 7 张核心表：
 如果当前实现还没有稳定的 PnL 更新链路，`pnl_snapshots` 可以在 `Phase 5C` 或 `Phase 7` 再补。
 
 即使 `strategy_runs` 或等价表后置，V1 也仍然要求核心交易事实至少能关联 `trader_run_id`。
+
+V1 的 symbol 交易规则优先固定在配置中，不要求在 `Phase 2A` 额外引入 `symbol_rules` 表；但 schema 必须能表达这些规则带来的结果，例如归一化后的 `qty`、固定 `DAY` 有效期、`sellable_qty`、余股一次性卖出例外，以及从 `Phase 5` 起落地的成本字段。如果 V1 保留 `LIMIT` 单，审计链路还必须能恢复对应的最小 market state 上下文。
 
 ---
 
@@ -226,6 +230,7 @@ V1 建议最少建立下面 7 张核心表：
 - `qty`
 - `price`
 - `decision_price`
+- `market_context_json`
 - `time_in_force`
 - `reduce_only`
 - `idempotency_key`
@@ -238,8 +243,12 @@ V1 建议最少建立下面 7 张核心表：
 
 - `idempotency_key` 必须唯一
 - `risk_decision` 可先支持 `ALLOW / REJECT`
-- `qty` 表示已经过精度、最小下单量和 lot 规则归一化后的实际下单增量
-- `decision_price` 用于记录生成 `OrderIntent` 时采用的参考价格；`market order` 默认取最近可接受 `BarEvent.close`，`limit order` 通常等于 `price`
+- `time_in_force` 字段可以保留为统一契约，但 V1 A 股固定为 `DAY`
+- `reduce_only` 字段可以保留为兼容标记，但在 V1 语义中只表示“减仓 / 平仓保护”，不表示衍生品双向持仓语义
+- `qty` 表示已经过精度和 lot 规则归一化后的实际下单增量；买单和标准卖单都应遵守 `lot_size / qty_step`，卖单除归一化外还必须受 `sellable_qty` 约束；当 `0 < sellable_qty < lot_size` 且配置允许时，应支持一次性余股卖出例外
+- `decision_price` 用于记录生成 `OrderIntent` 时采用的参考价格；`order_type = MARKET` 仅表示 paper execution 下的市价风格指令，默认取最近可接受 `BarEvent.close`
+- `market_context_json` 建议保存用于风险与价格有效性判断的最小市场上下文，例如 `trade_date`、`previous_close`、`upper_limit_price`、`lower_limit_price`、`trading_phase`、`suspension_status`
+- 如果 V1 保留 `LIMIT` 单，`price` 必须显式给出；且只有在 `market_context_json` 或等价审计路径可恢复对应市场上下文时，才允许启用
 
 ### 3.3 `orders`
 
@@ -259,6 +268,7 @@ V1 建议最少建立下面 7 张核心表：
 - `symbol`
 - `side`
 - `order_type`
+- `time_in_force`
 - `qty`
 - `price`
 - `filled_qty`
@@ -273,6 +283,7 @@ V1 建议最少建立下面 7 张核心表：
 
 - `status` 至少支持：
   `NEW / ACK / PARTIALLY_FILLED / FILLED / CANCELED / REJECTED`
+- `time_in_force` 在 V1 A 股中固定为 `DAY`
 - `exchange_order_id` 在 paper 模式下也建议保留，方便统一语义
 
 ### 3.4 `fills`
@@ -304,6 +315,7 @@ V1 建议最少建立下面 7 张核心表：
 
 - `exchange_fill_id` 如果外部没有，可在本地生成稳定 ID
 - `fee` 和 `fee_asset` 尽量保留，后续 PnL 会用到
+- `fee` 建议从 `Phase 5` 起就能表达 A 股成本模型的结果，至少包括佣金、过户费和卖出印花税
 
 ### 3.5 `positions`
 
@@ -320,6 +332,7 @@ V1 建议最少建立下面 7 张核心表：
 - `symbol`
 - `side`
 - `qty`
+- `sellable_qty`
 - `avg_entry_price`
 - `mark_price`
 - `unrealized_pnl`
@@ -330,7 +343,8 @@ V1 建议最少建立下面 7 张核心表：
 说明：
 
 - 对现货来说，`side` 可以先固定为 `LONG`
-- 如果第一版只做现货，模型也可以更简单
+- `sellable_qty` 必须满足 `0 <= sellable_qty <= qty`，用于表达 A 股 `T+1` 可卖约束
+- 当日买入成交会先增加 `qty`，但在下一个交易日或等价释放流程前，不应进入 `sellable_qty`
 
 ### 3.6 `balance_snapshots`
 
@@ -355,6 +369,7 @@ V1 建议最少建立下面 7 张核心表：
 
 - 第一版不必急着做复杂账户维度汇总
 - 优先保证每种资产余额可追踪
+- 余额变化需要能对齐成交成本，避免后续对账时把佣金、过户费或卖出印花税遗漏为“现金漂移”
 
 ### 3.7 `event_logs`
 
@@ -384,6 +399,7 @@ V1 建议最少建立下面 7 张核心表：
 
 - 第一版不用把所有内部事件都强制写进去
 - 优先记录关键交易事件和关键账户事件
+- 如果 V1 保留 `LIMIT`、涨跌停或交易时段风控，关键市场状态事件也应可回放，至少要能追溯下单时使用的 `previous_close / price band / trading_phase / suspension_status`
 
 ---
 

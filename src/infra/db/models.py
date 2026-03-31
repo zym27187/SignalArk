@@ -86,6 +86,7 @@ class OrderIntentRecord(Base):
     price: Mapped[Decimal | None] = mapped_column(DECIMAL_28_10, nullable=True)
     decision_price: Mapped[Decimal] = mapped_column(DECIMAL_28_10, nullable=False)
     reduce_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    market_context_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="NEW")
     risk_decision: Mapped[str] = mapped_column(String(16), nullable=False, default="ALLOW")
@@ -179,6 +180,11 @@ class PositionRecord(Base):
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     side: Mapped[str] = mapped_column(String(16), nullable=False)
     qty: Mapped[Decimal] = mapped_column(DECIMAL_28_10, nullable=False, default=Decimal("0"))
+    sellable_qty: Mapped[Decimal] = mapped_column(
+        DECIMAL_28_10,
+        nullable=False,
+        default=Decimal("0"),
+    )
     avg_entry_price: Mapped[Decimal | None] = mapped_column(DECIMAL_28_10, nullable=True)
     mark_price: Mapped[Decimal | None] = mapped_column(DECIMAL_28_10, nullable=True)
     unrealized_pnl: Mapped[Decimal] = mapped_column(DECIMAL_28_10, nullable=False)

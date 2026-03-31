@@ -12,8 +12,8 @@ from src.shared.types import (
     NonEmptyStr,
     NonNegativeDecimal,
     PositiveDecimal,
-    UtcDateTime,
-    utc_now,
+    ShanghaiDateTime,
+    shanghai_now,
 )
 
 
@@ -24,7 +24,7 @@ class PositionSide(StrEnum):
 
 
 class PositionStatus(StrEnum):
-    """Lifecycle states for spot positions."""
+    """Lifecycle states for V1 long-only positions."""
 
     OPEN = "OPEN"
     CLOSED = "CLOSED"
@@ -38,19 +38,25 @@ class Position(DomainEntity):
     symbol: NonEmptyStr
     side: PositionSide = PositionSide.LONG
     qty: NonNegativeDecimal = Decimal("0")
+    sellable_qty: NonNegativeDecimal = Decimal("0")
     avg_entry_price: PositiveDecimal | None = None
     mark_price: PositiveDecimal | None = None
     unrealized_pnl: Decimal = Decimal("0")
     realized_pnl: Decimal = Decimal("0")
     status: PositionStatus = PositionStatus.CLOSED
-    updated_at: UtcDateTime = Field(default_factory=utc_now)
+    updated_at: ShanghaiDateTime = Field(default_factory=shanghai_now)
 
     @model_validator(mode="after")
     def validate_position_contract(self) -> Position:
-        """Validate spot-only position invariants."""
+        """Validate V1 long-only position invariants."""
+        if self.sellable_qty > self.qty:
+            raise ValueError("sellable_qty cannot exceed qty")
+
         if self.qty == 0:
             if self.status != PositionStatus.CLOSED:
                 raise ValueError("Zero-qty positions must be CLOSED")
+            if self.sellable_qty != 0:
+                raise ValueError("Zero-qty positions must also have zero sellable_qty")
             if self.avg_entry_price is not None:
                 raise ValueError("Zero-qty positions cannot keep avg_entry_price")
             if self.unrealized_pnl != 0:
@@ -75,8 +81,8 @@ class BalanceSnapshot(DomainEntity):
     total: NonNegativeDecimal
     available: NonNegativeDecimal
     locked: NonNegativeDecimal
-    snapshot_time: UtcDateTime
-    created_at: UtcDateTime = Field(default_factory=utc_now)
+    snapshot_time: ShanghaiDateTime
+    created_at: ShanghaiDateTime = Field(default_factory=shanghai_now)
 
     @model_validator(mode="after")
     def validate_balance_contract(self) -> BalanceSnapshot:

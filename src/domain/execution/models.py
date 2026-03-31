@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+from datetime import date
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
+from src.domain.market import MarketStateSnapshot
 from src.shared.types import (
     DomainEntity,
     DomainId,
     NonEmptyStr,
     NonNegativeDecimal,
     PositiveDecimal,
-    UtcDateTime,
-    utc_now,
+    ShanghaiDateTime,
+    shanghai_now,
 )
 
 
@@ -26,18 +30,16 @@ class OrderSide(StrEnum):
 
 
 class OrderType(StrEnum):
-    """Supported V1 order types."""
+    """Supported V1 execution styles for A-share paper trading."""
 
     MARKET = "MARKET"
     LIMIT = "LIMIT"
 
 
 class TimeInForce(StrEnum):
-    """Supported V1 time-in-force values."""
+    """Supported V1 order-validity values."""
 
-    GTC = "GTC"
-    IOC = "IOC"
-    FOK = "FOK"
+    DAY = "DAY"
 
 
 class OrderStatus(StrEnum):
@@ -57,6 +59,22 @@ class LiquidityType(StrEnum):
     MAKER = "MAKER"
     TAKER = "TAKER"
     UNKNOWN = "UNKNOWN"
+
+
+class OrderIntentStatus(StrEnum):
+    """Lifecycle states for persisted pre-execution order intents."""
+
+    NEW = "NEW"
+    SUBMITTED = "SUBMITTED"
+    REJECTED = "REJECTED"
+    EXPIRED = "EXPIRED"
+
+
+class RiskDecision(StrEnum):
+    """Pre-trade risk verdict captured on persisted order intents."""
+
+    ALLOW = "ALLOW"
+    REJECT = "REJECT"
 
 
 ORDER_STATUS_TRANSITIONS: dict[OrderStatus, frozenset[OrderStatus]] = {
@@ -103,7 +121,7 @@ def _validate_order_pricing(
     decision_price: Decimal | None = None,
     require_decision_price: bool = False,
 ) -> Decimal | None:
-    """Apply the V1 price contract for market and limit orders."""
+    """Apply the V1 pricing contract for limit and paper-market orders."""
     if order_type == OrderType.MARKET:
         if price is not None:
             raise ValueError("MARKET orders must not carry a resting order price")
@@ -115,6 +133,23 @@ def _validate_order_pricing(
         raise ValueError("LIMIT orders must provide price")
 
     return decision_price if decision_price is not None else price
+
+
+def _jsonable_market_context(value: Any) -> Any:
+    """Normalize market-context values into JSON-safe primitives."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, StrEnum):
+        return value.value
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable_market_context(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray, str)):
+        return [_jsonable_market_context(item) for item in value]
+    return str(value)
 
 
 class OrderIntent(DomainEntity):
@@ -129,13 +164,17 @@ class OrderIntent(DomainEntity):
 
     side: OrderSide
     order_type: OrderType
-    time_in_force: TimeInForce = TimeInForce.GTC
+    time_in_force: TimeInForce = TimeInForce.DAY
     qty: PositiveDecimal
     price: PositiveDecimal | None = None
     decision_price: PositiveDecimal | None = None
     reduce_only: bool = False
+    market_context_json: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: NonEmptyStr
-    created_at: UtcDateTime = Field(default_factory=utc_now)
+    status: OrderIntentStatus = OrderIntentStatus.NEW
+    risk_decision: RiskDecision = RiskDecision.ALLOW
+    risk_reason: str | None = None
+    created_at: ShanghaiDateTime = Field(default_factory=shanghai_now)
 
     @model_validator(mode="before")
     @classmethod
@@ -157,11 +196,29 @@ class OrderIntent(DomainEntity):
         )
         return payload
 
+    @field_validator("market_context_json", mode="before")
+    @classmethod
+    def normalize_market_context(cls, value: object) -> dict[str, Any]:
+        """Accept either a typed market snapshot or a JSON-like mapping."""
+        if value is None:
+            return {}
+        if isinstance(value, MarketStateSnapshot):
+            return value.model_dump(mode="json")
+        if not isinstance(value, Mapping):
+            raise TypeError("market_context_json must be a mapping or MarketStateSnapshot")
+        return _jsonable_market_context(value)
+
     @model_validator(mode="after")
     def validate_order_intent_contract(self) -> OrderIntent:
         """Validate the distinction between target position and executable order qty."""
         if self.reduce_only and self.side != OrderSide.SELL:
-            raise ValueError("reduce_only intents can only use SELL side in V1 spot mode")
+            raise ValueError("reduce_only intents can only use SELL side in V1 long-only mode")
+
+        if self.order_type == OrderType.LIMIT and not self.market_context_json:
+            raise ValueError("LIMIT orders require market_context_json in A-share V1")
+
+        if self.market_context_json:
+            MarketStateSnapshot(**self.market_context_json)
 
         return self
 
@@ -170,6 +227,13 @@ class OrderIntent(DomainEntity):
         """Return the reference notional used by sizing and risk checks."""
         assert self.decision_price is not None
         return self.qty * self.decision_price
+
+    @property
+    def market_state(self) -> MarketStateSnapshot | None:
+        """Return the typed market-state snapshot when one was persisted."""
+        if not self.market_context_json:
+            return None
+        return MarketStateSnapshot(**self.market_context_json)
 
 
 class Order(DomainEntity):
@@ -184,14 +248,14 @@ class Order(DomainEntity):
 
     side: OrderSide
     order_type: OrderType
-    time_in_force: TimeInForce = TimeInForce.GTC
+    time_in_force: TimeInForce = TimeInForce.DAY
     qty: PositiveDecimal
     price: PositiveDecimal | None = None
     filled_qty: NonNegativeDecimal = Decimal("0")
     avg_fill_price: PositiveDecimal | None = None
     status: OrderStatus = OrderStatus.NEW
-    submitted_at: UtcDateTime = Field(default_factory=utc_now)
-    updated_at: UtcDateTime = Field(default_factory=utc_now)
+    submitted_at: ShanghaiDateTime = Field(default_factory=shanghai_now)
+    updated_at: ShanghaiDateTime = Field(default_factory=shanghai_now)
     last_error_code: str | None = None
     last_error_message: str | None = None
 
@@ -247,7 +311,7 @@ class Order(DomainEntity):
         payload = self.model_dump()
         payload.update(updates)
         payload["status"] = new_status
-        payload.setdefault("updated_at", utc_now())
+        payload.setdefault("updated_at", shanghai_now())
         return type(self)(**payload)
 
 
@@ -267,8 +331,8 @@ class Fill(DomainEntity):
     fee: NonNegativeDecimal = Decimal("0")
     fee_asset: str | None = None
     liquidity_type: LiquidityType = LiquidityType.UNKNOWN
-    fill_time: UtcDateTime
-    created_at: UtcDateTime = Field(default_factory=utc_now)
+    fill_time: ShanghaiDateTime
+    created_at: ShanghaiDateTime = Field(default_factory=shanghai_now)
 
     @model_validator(mode="after")
     def validate_fill_contract(self) -> Fill:

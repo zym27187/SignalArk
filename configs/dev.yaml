@@ -6,7 +6,7 @@ app:
 
 trading:
   symbols:
-    - BTCUSDT
+    - 600036.SH
 
 logging:
   level: DEBUG

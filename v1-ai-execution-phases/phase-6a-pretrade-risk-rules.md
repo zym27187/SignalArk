@@ -31,8 +31,8 @@
 - 实现最大名义价值检查
 - 实现重复下单防护
 - 实现行情过期检查
-- 实现最小下单量和基础交易规则检查
-- 在 `kill switch` 或 `protection mode` 下，拒绝新开仓 / 增仓，但允许 `reduce_only`、减仓和平仓单通过统一风险闸门
+- 实现最小下单量和 A 股基础交易规则检查
+- 在 `kill switch` 或 `protection mode` 下，拒绝新开仓 / 增仓，但允许减仓 / 平仓保护单通过统一风险闸门；如实现中保留 `reduce_only` 字段，它只作为兼容标记
 - 让所有下单动作先经过统一风险闸门
 
 ## 本次不要做
@@ -52,8 +52,8 @@
 
 默认拒绝条件：
 
-- 单 symbol 结果持仓名义价值超过 `risk.max_single_symbol_notional_usdt`
-- 更新后账户总开放名义价值超过 `risk.max_total_open_notional_usdt`
+- 单 symbol 结果持仓名义价值超过 `risk.max_single_symbol_notional_cny`
+- 更新后账户总开放名义价值超过 `risk.max_total_open_notional_cny`
 - `decision_price` 缺失、非法或非正数
 
 ### 2. 重复下单防护
@@ -71,7 +71,7 @@
 - `order_type`
 - `qty`
 - `decision_price` 或 `price`
-- `reduce_only`
+- 减仓 / 平仓保护标记（如果实现中保留 `reduce_only` 字段，则比较该字段）
 
 如果相同组合在最近 `60s` 内已存在且状态仍为非终态，应拒绝为重复单。
 
@@ -84,33 +84,51 @@
 - 最新可用 final bar 不存在
 - `now - latest_final_bar.event_time > max(2 * timeframe_seconds, risk.market_stale_threshold_seconds)`
 
-### 4. 最小下单量与交易规则检查
+如果实现里保留 `LIMIT` 单、涨跌停检查或交易时段检查，建议额外要求：
+
+- 当前订单对应的最小 market state 可用，至少包含 `trade_date / previous_close / upper_limit_price / lower_limit_price / trading_phase / suspension_status`
+- 缺失上述字段时，对需要这些上下文的校验路径直接拒单，不做静默放行
+
+### 4. 最小下单量、余股与交易规则检查
 
 在 V1 中，symbol 交易规则建议至少包含：
 
+- `lot_size`
 - `qty_step`
 - `price_tick`
 - `min_qty`
-- `min_notional`
+- `allow_odd_lot_sell`
+- `t_plus_one_sell`
+- `price_limit_pct`
 
 默认处理原则：
 
 - 缺少 symbol 规则时拒单，不做静默兜底
-- 先按精度和步长归一化 `qty / price`
+- `time_in_force` 固定为 `DAY`
+- `risk.min_order_notional_cny` 只作为内部风控下限，不属于交易所规则
+- 买单和标准卖单先按 `lot_size / qty_step / price_tick` 归一化 `qty / price`
+- 当 `0 < sellable_qty < lot_size` 且 `allow_odd_lot_sell = true` 时，允许 `SELL qty == sellable_qty` 走一次性余股卖出例外
+- 除余股卖出例外外，归一化后若 `qty < min_qty` 或不满足手数步进，应拒单
 - 归一化后 `qty <= 0` 时拒单
-- 归一化后订单名义价值低于 `min_notional` 或 `risk.min_order_notional_usdt` 中较大者时拒单
+- 卖单除满足归一化外，还必须满足 `qty <= sellable_qty`
+- 归一化后订单名义价值低于 `risk.min_order_notional_cny` 时拒单
+- `LIMIT` 单只有在最小 market state 可用时才允许；价格超出 A 股当日涨跌停边界时拒单
+- 标的处于停牌状态时拒单
+- V1 默认只支持连续竞价；集合竞价、盘后固定价格申报或当前 V1 不支持的交易阶段都应显式拒单
 
 ### 5. kill switch / protection mode 下的放行边界
 
 在 `kill_switch` 或 `protection_mode` 下，只有下面动作仍可放行：
 
-- `reduce_only = true` 且确实减少绝对持仓
-- 明确用于减仓或平仓的订单
+- 明确用于减仓或平仓的保护单；如果实现里保留 `reduce_only = true`，它只作为该语义的兼容标记
+- `SELL` 且 `qty <= sellable_qty`，并且确实减少当前绝对持仓的订单
 
 默认拒绝：
 
 - 新开仓
 - 增仓
+- 所有 `BUY`
+- 超过 `sellable_qty` 的卖单
 - 会把绝对持仓从更小值推向更大值的订单
 
 如果当前仓位为零，则所有会建立新方向敞口的订单都应被拒绝。
@@ -128,7 +146,7 @@
 其中：
 
 - `risk_decision` 建议固定为 `ALLOW / REJECT`
-- `reason_code` 用稳定枚举，例如 `MAX_POSITION_EXCEEDED`、`MARKET_DATA_STALE`
+- `reason_code` 用稳定枚举，例如 `MAX_POSITION_EXCEEDED`、`MARKET_DATA_STALE`、`SELLABLE_QTY_EXCEEDED`、`PRICE_LIMIT_EXCEEDED`、`LIMIT_REQUIRES_MARKET_STATE`、`SECURITY_SUSPENDED`、`TRADING_SESSION_UNSUPPORTED`、`ODD_LOT_SELL_RULE_VIOLATION`
 - `details` 建议为可序列化 JSON 对象，便于日志、告警和 API 透传
 
 ## 完成标准
@@ -143,6 +161,7 @@
 - 至少有测试覆盖放行与拒绝
 - 至少有测试覆盖重复单或过期行情
 - 至少验证一次 `kill switch` 或 `protection mode` 下开仓被拒绝但减仓被放行
+- 至少验证一次 A 股交易规则场景，例如 `T+1`、可卖数量不足、余股卖出、涨跌停价格、停牌、`LIMIT` 缺少 market state 或集合竞价拒单
 
 ## 本次交付时必须汇报
 
@@ -171,8 +190,8 @@
 - tests/integration/
 
 本次必须完成：
-- 实现最大仓位、最大名义价值、重复下单、行情过期、最小下单量等规则
-- 在 kill switch 或 protection mode 下，拒绝新开仓 / 增仓，但允许 reduce_only、减仓和平仓单通过统一风险闸门
+- 实现最大仓位、最大名义价值、重复下单、行情过期、最小下单量，以及 A 股 `lot / tick / T+1 / sellable_qty / odd-lot sell / price limit / trading session / suspension / LIMIT requires market state` 等规则
+- 在 kill switch 或 protection mode 下，拒绝新开仓 / 增仓，但允许减仓 / 平仓保护单通过统一风险闸门；如实现中保留 `reduce_only` 字段，它只作为兼容标记
 - 让所有下单动作先经过统一风险闸门
 
 严格不要做：

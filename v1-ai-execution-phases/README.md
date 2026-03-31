@@ -46,12 +46,14 @@
 - `Phase 5` 默认优先采用 `Phase 5A -> Phase 5B -> Phase 5C` 的执行路径；`Phase 5` 总览文件主要用于边界说明、总体验收和小范围补缝
 - `Phase 6` 默认优先采用 `Phase 6A -> Phase 6B -> Phase 6C` 的执行路径；`Phase 6` 总览文件主要用于边界说明、总体验收和小范围补缝
 - `Phase 0` 除了配置骨架，还要固定 env / secret 契约、`paper` 模式事实源边界和 `trader_run_id` 约定
-- `Phase 2A` 需要让核心交易事实可关联 `trader_run_id`，并为 market order 保留 `decision_price` 或等价字段
+- `Phase 2A` 需要让核心交易事实可关联 `trader_run_id`，并把 `MARKET` 固定为 paper 市价风格指令，同时保留 `decision_price` 和最小 market context 或等价字段
+- `Phase 1 / 2A / 5 / 6` 需要固定 A 股执行契约：`long-only`、`DAY`、`MARKET` 仅为 paper 市价风格指令、`sellable_qty`、`T+1`、余股一次性卖出、symbol rules 与最小 market state contract
 - `Phase 5 / 5A` 需要固定 `Signal.target_position -> OrderIntent.qty` 的 sizing contract，避免后续实现各自解释字段
-- `Phase 3` 需要明确 bar 唯一键、去重规则，以及“只有 closed / final bar 才能进入可交易链路”
+- `Phase 3` 需要明确 bar 唯一键、去重规则，以及“只有 closed / final bar 才能进入可交易链路”；如果 V1 保留 `LIMIT` 或涨跌停 / 交易时段检查，还要同步标准化 `trade_date / previous_close / upper_limit_price / lower_limit_price / trading_phase / suspension_status` 或等价 market state
+- `Phase 5 / 5B / 5C` 需要在 paper execution 与组合账本里落地 A 股成本模型，至少覆盖佣金、过户费和卖出印花税，不能等到 `Phase 8` 才第一次引入成本
 - `Phase 6` 需要补齐健康检查、就绪检查和单活 trader 保护，不能只做控制接口
 - `Phase 6 / 6B` 的单活保护需要明确 `PostgreSQL lease + heartbeat + fencing token` 语义，不能只写“限制单活”
-- `Phase 6 / 6A / 6B` 需要明确 `kill switch` 默认是 `reduce-only` 闸门：禁新开 / 增仓，但允许 `cancel all`、减仓和平仓
+- `Phase 6 / 6A / 6B` 需要明确 `kill switch` 默认是减仓 / 平仓保护闸门：禁新开 / 增仓，但允许 `cancel all`、减仓和平仓；如果实现里保留 `reduce_only` 字段，它只作为兼容标记
 - `Phase 8` 除基础绩效外，还要产出 run manifest 或等价元数据，保证结果可复现
 - `Phase 9` 除对账和保护模式外，还要明确 `paper` 模式的对账真相源、保护模式进入后的挂单处理，以及按 `time range / trader_run_id / account_id / symbol` 回放的最小入口
 - 所有交付都必须按 `testing-standards.md` 中的测试汇报格式逐项输出，不能只写“已测试”或“测试通过”

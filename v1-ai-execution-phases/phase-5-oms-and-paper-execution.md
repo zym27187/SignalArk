@@ -45,7 +45,10 @@
 - 实现 OMS 持久化流程
 - 实现 `paper execution adapter`
 - 支持模拟 `ACK / PARTIAL / FILL / REJECT / CANCEL`
+- 让 OMS 与 `paper execution` 明确遵守 A 股 V1 契约：`long-only`、`time_in_force = DAY`、卖单以 `sellable_qty` 为准、当日买入不可卖出、允许一次性余股卖出
+- 默认只支持连续竞价时段的 `MARKET` 风格指令；如果实现里保留 `LIMIT` 单，必须依赖最小 market state 做价格有效性与交易时段校验
 - 更新 `Position / Balance / PnL`
+- 从 `Phase 5` 起把 A 股成交成本纳入 `Fill / Balance / PnL`，至少覆盖佣金、过户费和卖出印花税
 - 让状态变化可追踪
 
 ## 本次不要做
@@ -59,6 +62,7 @@
 
 - 完整 paper 闭环可以跑通
 - 订单、成交、持仓、余额变化都可落库
+- A 股 V1 的 `MARKET / LIMIT / DAY / T+1 / sellable_qty / odd-lot sell / fee model` 语义不会在 OMS 和 paper adapter 中被重新解释
 - 重启后可以恢复关键状态
 
 ## 最低验证要求
@@ -71,6 +75,7 @@
 
 - OMS 事实源落在哪些表或对象上
 - `paper execution` 如何模拟成交
+- A 股 `MARKET / LIMIT / DAY / T+1 / sellable_qty / odd-lot sell / fee model` 约束如何落在 OMS 与 `paper execution` 中
 - 当前已覆盖哪些订单状态变化
 
 ## 可直接复制给 AI 的执行提示词
@@ -103,7 +108,10 @@
 - 实现 OMS 持久化流程
 - 实现 paper execution adapter
 - 支持 ACK / PARTIAL / FILL / REJECT / CANCEL
+- 让 OMS 与 paper execution 明确遵守 A 股 `long-only + DAY + T+1 + sellable_qty + odd-lot sell` 契约
+- 默认只支持连续竞价时段的 MARKET 风格指令；如保留 LIMIT 单，必须消费最小 market state
 - 更新 Position / Balance / PnL
+- 从 Phase 5 起把佣金、过户费和卖出印花税纳入 Fill / Balance / PnL
 
 严格不要做：
 - 不接真实 live 下单
@@ -116,12 +124,13 @@
 2. 已完成能力
 3. OMS 事实源设计
 4. paper execution 如何模拟成交
-5. 测试情况：
+5. A 股 `MARKET / LIMIT / DAY / T+1 / sellable_qty / odd-lot sell / fee model` 约束如何落地
+6. 测试情况：
    - 已运行哪些测试
    - 哪些通过
    - 哪些未运行
    - 为什么未运行
    - 当前剩余测试风险
-6. 未解决风险
-7. 是否可以进入 Phase 6
+7. 未解决风险
+8. 是否可以进入 Phase 6
 ```

@@ -38,7 +38,11 @@
 - 定义订单状态枚举和流转规则
 - 明确 `Signal` 与订单的边界
 - 明确 `Signal.target_position` 和 `OrderIntent.qty` 的单位与语义，固定 sizing contract
+- 明确 A 股 V1 执行语义：`time_in_force = DAY`、`MARKET` 仅表示 paper 市价风格指令、`LIMIT` 只有在最小 market state 可用时才允许启用、`reduce_only` 只作为减仓 / 平仓保护兼容字段
+- 明确 `Position.qty` 与 `Position.sellable_qty` 的区别，支撑 `T+1` 卖出限制
+- 明确余股一次性卖出的对象语义，例如 `0 < sellable_qty < lot_size` 时的卖出例外
 - 明确 `BarEvent` 的时间窗口、稳定唯一键和 `closed / final` 语义
+- 如果 V1 保留 `LIMIT`、涨跌停或交易时段判断，明确 `BarEvent` 或等价 market state snapshot 至少要提供哪些字段，例如 `trade_date / previous_close / upper_limit_price / lower_limit_price / trading_phase / suspension_status`
 
 ## 本次不要做
 
@@ -53,6 +57,7 @@
 - `OrderIntent` 和 `Order` 区分清楚
 - 订单状态机有清晰定义
 - `Signal` 到下单量的语义转换已经固定，不需要后续阶段再猜字段含义
+- A 股 V1 的下单、持仓和可卖数量语义已经固定，不需要后续阶段再猜 `DAY / MARKET / LIMIT / T+1 / reduce_only / odd-lot sell` 的真实含义
 - `BarEvent` 的 finality 和去重语义已经固定，不需要后续阶段再猜
 
 ## 最低验证要求
@@ -65,7 +70,7 @@
 - 定义了哪些核心对象
 - 哪些字段被定为必填
 - `BarEvent` 的时间窗口、唯一键和 finality 语义是什么
-- `target_position / qty / price` 的语义分别是什么
+- `target_position / qty / sellable_qty / price / market_state` 的语义分别是什么
 - 订单状态流转规则是什么
 
 ## 可直接复制给 AI 的执行提示词
@@ -94,6 +99,8 @@
 - 定义订单状态枚举和状态流转规则
 - 明确 Signal 不是订单、OrderIntent 先于 Order
 - 明确 Signal.target_position 与 OrderIntent.qty 的 sizing contract
+- 明确 A 股 V1 的 `DAY / MARKET / LIMIT / reduce_only / sellable_qty / odd-lot sell` 语义
+- 如果保留 `LIMIT`、涨跌停或交易时段判断，明确最小 market state contract
 - 明确 BarEvent 的时间窗口、唯一键和 closed/final 语义
 
 严格不要做：
@@ -107,7 +114,7 @@
 2. 已完成能力
 3. 新增的核心对象和字段
 4. BarEvent 时间窗口 / 唯一键 / finality 语义说明
-5. target_position / qty / price 语义说明
+5. target_position / qty / sellable_qty / price / market_state 语义说明
 6. 订单状态机说明
 7. 测试情况：
    - 已运行哪些测试

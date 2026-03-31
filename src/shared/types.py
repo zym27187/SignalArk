@@ -2,27 +2,30 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
-
-def utc_now() -> datetime:
-    """Return the current UTC time."""
-    return datetime.now(UTC)
+SHANGHAI_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
-def _ensure_utc(value: datetime) -> datetime:
-    """Require timezone-aware datetimes and normalize them to UTC."""
+def shanghai_now() -> datetime:
+    """Return the current Asia/Shanghai time."""
+    return datetime.now(SHANGHAI_TIMEZONE)
+
+
+def _ensure_shanghai(value: datetime) -> datetime:
+    """Require timezone-aware datetimes and normalize them to Asia/Shanghai."""
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("datetime values must be timezone-aware")
-    return value.astimezone(UTC)
+    return value.astimezone(SHANGHAI_TIMEZONE)
 
 
-UtcDateTime = Annotated[datetime, AfterValidator(_ensure_utc)]
+ShanghaiDateTime = Annotated[datetime, AfterValidator(_ensure_shanghai)]
 PositiveDecimal = Annotated[Decimal, Field(gt=Decimal("0"))]
 NonNegativeDecimal = Annotated[Decimal, Field(ge=Decimal("0"))]
 UnitIntervalDecimal = Annotated[Decimal, Field(ge=Decimal("0"), le=Decimal("1"))]

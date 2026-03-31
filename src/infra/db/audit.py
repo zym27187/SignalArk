@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from src.shared.types import DomainId, DomainModel, NonEmptyStr, UtcDateTime, utc_now
+from src.shared.types import DomainId, DomainModel, NonEmptyStr, ShanghaiDateTime, shanghai_now
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -55,10 +55,10 @@ class EventLogEntry(DomainModel):
     symbol: NonEmptyStr | None = None
     related_object_type: NonEmptyStr | None = None
     related_object_id: DomainId | None = None
-    event_time: UtcDateTime
-    ingest_time: UtcDateTime = Field(default_factory=utc_now)
+    event_time: ShanghaiDateTime
+    ingest_time: ShanghaiDateTime = Field(default_factory=shanghai_now)
     payload_json: dict[str, Any] = Field(default_factory=dict)
-    created_at: UtcDateTime = Field(default_factory=utc_now)
+    created_at: ShanghaiDateTime = Field(default_factory=shanghai_now)
 
     @field_validator("payload_json", mode="before")
     @classmethod

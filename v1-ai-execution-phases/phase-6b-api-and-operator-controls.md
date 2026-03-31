@@ -38,7 +38,7 @@
 - 限制同一交易账户只允许 `1 个 active trader` 实例
 - 基于 `PostgreSQL` lease 实现单活保护，至少明确 `owner_instance_id / lease_expires_at / last_heartbeat_at / fencing_token`
 - lease 丢失或过期时，让实例降级为 `not ready` 并停止提交新订单
-- 让 `kill switch` 激活后进入 `reduce-only` 状态：拒绝新开仓 / 增仓，但允许 `cancel all`、减仓和平仓
+- 让 `kill switch` 激活后进入减仓 / 平仓保护状态：拒绝新开仓 / 增仓，但允许 `cancel all`、减仓和平仓；如实现中保留 `reduce_only` 字段，它只作为兼容标记
 - 让这些控制动作能影响 trader 运行状态
 
 ## 本次不要做
@@ -62,6 +62,7 @@
 - 当前实例持有未过期 lease
 - 当前实例持有的 `fencing_token` 仍然有效
 - 最新 final bar 未过期
+- 当前执行模式所需的最小 market state 可用
 - trader 不处于致命错误状态
 
 如果 lease 丢失、过期或 fencing 失效，应在一个主循环周期内降级为 `not ready`。
@@ -96,9 +97,10 @@
 
 - `strategy pause`：停止产生新的 signal / order intent，但不影响查询和风控状态读取
 - `strategy resume`：恢复策略驱动
-- `kill switch enable`：进入 `reduce-only`
+- `kill switch enable`：进入减仓 / 平仓保护状态
 - `kill switch disable`：只解除操作者闸门，不自动退出 `protection_mode`
 - `cancel all`：只取消当前非终态挂单，不应清空历史事实
+- `cancel all` 在保护状态下仍需保留减仓 / 平仓路径，不应误取消用于减仓的保护挂单
 
 ### 5. API 请求与响应约定
 
@@ -124,7 +126,7 @@
 - `kill switch` 是交易闸门，不等于“清空系统状态”
 - `cancel all` 是订单操作，不等于“允许重新开仓”
 - `kill switch` 激活后，仍允许操作者执行 `cancel all`
-- `cancel all` 执行完成后，如果 `kill switch` 仍为激活状态，系统依旧必须维持 `reduce-only`
+- `cancel all` 执行完成后，如果 `kill switch` 仍为激活状态，系统依旧必须维持减仓 / 平仓保护状态
 
 ## 完成标准
 
@@ -184,7 +186,7 @@
 - 限制同一交易账户只允许 1 个 active trader 实例
 - 基于 PostgreSQL lease 明确 owner_instance_id / lease_expires_at / last_heartbeat_at / fencing_token
 - lease 丢失或过期时，让实例降级为 not ready 并停止提交新订单
-- 让 kill switch 激活后进入 reduce-only 状态：拒绝新开仓 / 增仓，但允许 cancel all、减仓和平仓
+- 让 kill switch 激活后进入减仓 / 平仓保护状态：拒绝新开仓 / 增仓，但允许 cancel all、减仓和平仓；如实现中保留 `reduce_only` 字段，它只作为兼容标记
 - 让控制动作真正影响 trader 状态
 
 严格不要做：

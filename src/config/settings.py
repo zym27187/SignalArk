@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 import yaml
 from dotenv import dotenv_values
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -19,7 +19,32 @@ CONFIGS_DIR = ROOT_DIR / "configs"
 DOTENV_PATH = ROOT_DIR / ".env"
 ENV_PREFIX = "SIGNALARK_"
 DEFAULT_CONFIG_PROFILE = "dev"
-FIXED_SUPPORTED_SYMBOLS = ("BTCUSDT", "ETHUSDT")
+FIXED_SUPPORTED_SYMBOLS = ("600036.SH", "000001.SZ")
+DEFAULT_SYMBOL_RULES = {
+    "600036.SH": {
+        "lot_size": "100",
+        "qty_step": "100",
+        "price_tick": "0.01",
+        "min_qty": "100",
+        "allow_odd_lot_sell": True,
+        "t_plus_one_sell": True,
+        "price_limit_pct": "0.10",
+    },
+    "000001.SZ": {
+        "lot_size": "100",
+        "qty_step": "100",
+        "price_tick": "0.01",
+        "min_qty": "100",
+        "allow_odd_lot_sell": True,
+        "t_plus_one_sell": True,
+        "price_limit_pct": "0.10",
+    },
+}
+DEFAULT_PAPER_COST_MODEL = {
+    "commission": "0.0003",
+    "transfer_fee": "0.00001",
+    "stamp_duty_sell": "0.0005",
+}
 YAML_PATH_TO_FIELD = {
     ("runtime", "config_profile"): "config_profile",
     ("runtime", "shared_config_entrypoint"): "shared_config_entrypoint",
@@ -38,22 +63,62 @@ YAML_PATH_TO_FIELD = {
     ("trading", "symbols"): "symbols",
     ("trading", "primary_timeframe"): "primary_timeframe",
     ("trading", "market_data_mode"): "market_data_mode",
+    ("trading", "market_data_source"): "market_data_source",
     ("trading", "strategy_trigger"): "strategy_trigger",
+    ("trading", "symbol_rules"): "symbol_rules",
     ("paper", "state_backend"): "paper_state_backend",
+    ("paper", "cost_model"): "paper_cost_model",
     ("paper", "recovery_source"): "paper_recovery_source",
     ("api", "host"): "api_host",
     ("api", "port"): "api_port",
     ("logging", "level"): "log_level",
     ("logging", "format"): "log_format",
     ("logging", "include_trader_run_id"): "log_include_trader_run_id",
-    ("risk", "max_single_symbol_notional_usdt"): "max_single_symbol_notional_usdt",
-    ("risk", "max_total_open_notional_usdt"): "max_total_open_notional_usdt",
-    ("risk", "min_order_notional_usdt"): "min_order_notional_usdt",
+    ("risk", "max_single_symbol_notional_cny"): "max_single_symbol_notional_cny",
+    ("risk", "max_total_open_notional_cny"): "max_total_open_notional_cny",
+    ("risk", "min_order_notional_cny"): "min_order_notional_cny",
     ("risk", "market_stale_threshold_seconds"): "market_stale_threshold_seconds",
     ("controls", "lease_ttl_seconds"): "lease_ttl_seconds",
     ("controls", "lease_heartbeat_interval_seconds"): "lease_heartbeat_interval_seconds",
     ("alerts", "telegram", "enabled"): "telegram_enabled",
 }
+
+
+class AshareSymbolRule(BaseModel):
+    """Fixed A-share trading rules for one supported symbol."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    lot_size: Decimal = Field(gt=Decimal("0"))
+    qty_step: Decimal = Field(gt=Decimal("0"))
+    price_tick: Decimal = Field(gt=Decimal("0"))
+    min_qty: Decimal = Field(gt=Decimal("0"))
+    allow_odd_lot_sell: bool
+    t_plus_one_sell: bool
+    price_limit_pct: Decimal = Field(gt=Decimal("0"), lt=Decimal("1"))
+
+    @model_validator(mode="after")
+    def validate_rule_consistency(self) -> AshareSymbolRule:
+        """Keep quantity and tick rules internally consistent."""
+        if self.min_qty < self.lot_size:
+            raise ValueError("min_qty must be greater than or equal to lot_size.")
+        if self.min_qty % self.qty_step != 0:
+            raise ValueError("min_qty must be an integer multiple of qty_step.")
+        if self.lot_size % self.qty_step != 0:
+            raise ValueError("lot_size must be an integer multiple of qty_step.")
+        if not self.t_plus_one_sell:
+            raise ValueError("V1 A-share symbol rules must enforce t_plus_one_sell.")
+        return self
+
+
+class PaperCostModel(BaseModel):
+    """Minimum configurable paper-trading cost model for A-share V1."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    commission: Decimal = Field(ge=Decimal("0"))
+    transfer_fee: Decimal = Field(ge=Decimal("0"))
+    stamp_duty_sell: Decimal = Field(ge=Decimal("0"))
 
 
 def _read_yaml_file(path: Path) -> dict[str, Any]:
@@ -91,15 +156,17 @@ def _flatten_yaml_config(
     flat: dict[str, Any] = {}
     for key, value in data.items():
         current_path = prefix + (str(key),)
+        field_name = YAML_PATH_TO_FIELD.get(current_path)
+        if field_name is not None:
+            flat[field_name] = value
+            continue
+
         if isinstance(value, Mapping):
             flat.update(_flatten_yaml_config(value, source=source, prefix=current_path))
             continue
 
-        field_name = YAML_PATH_TO_FIELD.get(current_path)
-        if field_name is None:
-            dotted_key = ".".join(current_path)
-            raise ValueError(f"Unsupported config key in {source}: {dotted_key}")
-        flat[field_name] = value
+        dotted_key = ".".join(current_path)
+        raise ValueError(f"Unsupported config key in {source}: {dotted_key}")
     return flat
 
 
@@ -180,20 +247,30 @@ class Settings(BaseSettings):
 
     app_name: str = "signalark"
     env: Literal["dev", "test", "prod"] = "dev"
-    timezone: Literal["UTC"] = "UTC"
+    timezone: Literal["Asia/Shanghai"] = "Asia/Shanghai"
 
-    exchange: Literal["binance"] = "binance"
-    market: Literal["spot"] = "spot"
+    exchange: Literal["cn_equity"] = "cn_equity"
+    market: Literal["a_share"] = "a_share"
     execution_mode: Literal["paper"] = "paper"
     account_id: Literal["paper_account_001"] = "paper_account_001"
     primary_strategy_id: Literal["baseline_momentum_v1"] = "baseline_momentum_v1"
     supported_symbols: list[str] = Field(default_factory=lambda: list(FIXED_SUPPORTED_SYMBOLS))
-    symbols: list[str] = Field(default_factory=lambda: ["BTCUSDT"])
+    symbols: list[str] = Field(default_factory=lambda: ["600036.SH"])
     primary_timeframe: Literal["15m"] = "15m"
     market_data_mode: Literal["bar"] = "bar"
+    market_data_source: Literal["eastmoney"] = "eastmoney"
     strategy_trigger: Literal["closed_bar"] = "closed_bar"
+    symbol_rules: dict[str, AshareSymbolRule] = Field(
+        default_factory=lambda: {
+            symbol: AshareSymbolRule(**rule)
+            for symbol, rule in DEFAULT_SYMBOL_RULES.items()
+        }
+    )
 
     paper_state_backend: Literal["postgres"] = "postgres"
+    paper_cost_model: PaperCostModel = Field(
+        default_factory=lambda: PaperCostModel(**DEFAULT_PAPER_COST_MODEL)
+    )
     paper_recovery_source: Literal["local_persistent_state"] = "local_persistent_state"
 
     postgres_dsn: str = "postgresql+psycopg://signalark:signalark@localhost:5432/signalark"
@@ -208,9 +285,9 @@ class Settings(BaseSettings):
     lease_heartbeat_interval_seconds: int = 5
     market_stale_threshold_seconds: int = 120
 
-    max_single_symbol_notional_usdt: Decimal = Decimal("5000")
-    max_total_open_notional_usdt: Decimal = Decimal("10000")
-    min_order_notional_usdt: Decimal = Decimal("25")
+    max_single_symbol_notional_cny: Decimal = Decimal("200000")
+    max_total_open_notional_cny: Decimal = Decimal("500000")
+    min_order_notional_cny: Decimal = Decimal("1000")
 
     telegram_enabled: bool = False
     telegram_bot_token: str | None = None
@@ -229,6 +306,16 @@ class Settings(BaseSettings):
             return [str(item).strip().upper() for item in value if str(item).strip()]
         raise TypeError("symbols must be a list or a comma-separated string")
 
+    @field_validator("symbol_rules", mode="before")
+    @classmethod
+    def normalize_symbol_rule_keys(cls, value: object) -> object:
+        """Normalize symbol-rule mapping keys to uppercase symbols."""
+        if value is None:
+            return value
+        if not isinstance(value, Mapping):
+            raise TypeError("symbol_rules must be a mapping keyed by symbol.")
+        return {str(symbol).strip().upper(): rule for symbol, rule in value.items()}
+
     @field_validator("config_file", "telegram_bot_token", "telegram_chat_id", mode="before")
     @classmethod
     def normalize_optional_strings(cls, value: object) -> str | None:
@@ -242,7 +329,7 @@ class Settings(BaseSettings):
     def validate_v1_contracts(self) -> Settings:
         """Enforce the V1 fixed boundaries and fail fast on invalid config."""
         if self.supported_symbols != list(FIXED_SUPPORTED_SYMBOLS):
-            raise ValueError("V1 supported_symbols are fixed to BTCUSDT and ETHUSDT.")
+            raise ValueError("V1 supported_symbols are fixed to 600036.SH and 000001.SZ.")
 
         if not 1 <= len(self.symbols) <= 3:
             raise ValueError("V1 only supports 1-3 symbols.")
@@ -253,20 +340,26 @@ class Settings(BaseSettings):
         if not set(self.symbols).issubset(set(self.supported_symbols)):
             raise ValueError("Runtime symbols must be a subset of the V1 supported_symbols list.")
 
+        if set(self.symbol_rules) != set(self.supported_symbols):
+            raise ValueError("A-share symbol_rules must be declared for every supported symbol.")
+
         if self.execution_mode != "paper":
             raise ValueError("V1 execution_mode must remain paper.")
+
+        if self.market_data_source != "eastmoney":
+            raise ValueError("V1 market_data_source must remain eastmoney.")
 
         if self.lease_heartbeat_interval_seconds >= self.lease_ttl_seconds:
             raise ValueError("Lease heartbeat interval must be smaller than lease TTL.")
 
-        if self.max_single_symbol_notional_usdt <= 0:
-            raise ValueError("max_single_symbol_notional_usdt must be positive.")
+        if self.max_single_symbol_notional_cny <= 0:
+            raise ValueError("max_single_symbol_notional_cny must be positive.")
 
-        if self.max_total_open_notional_usdt <= 0:
-            raise ValueError("max_total_open_notional_usdt must be positive.")
+        if self.max_total_open_notional_cny <= 0:
+            raise ValueError("max_total_open_notional_cny must be positive.")
 
-        if self.min_order_notional_usdt <= 0:
-            raise ValueError("min_order_notional_usdt must be positive.")
+        if self.min_order_notional_cny <= 0:
+            raise ValueError("min_order_notional_cny must be positive.")
 
         if self.api_port <= 0:
             raise ValueError("api_port must be positive.")

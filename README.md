@@ -51,8 +51,12 @@ v1-ai-execution-phases/
 
 - 统一配置入口固定为 `src.config.get_settings()`
 - 加载顺序固定为 `configs/base.yaml -> configs/dev.yaml -> .env -> 进程环境变量`
-- V1 范围固定为 `binance + spot + paper + paper_account_001 + baseline_momentum_v1 + 15m + closed_bar`
-- V1 支持的交易对固定为 `BTCUSDT`、`ETHUSDT`，`dev` 默认只激活 `BTCUSDT`
+- V1 范围固定为 `cn_equity + a_share + paper + paper_account_001 + baseline_momentum_v1 + 15m + closed_bar`
+- V1 支持的股票标的固定为 `600036.SH`、`000001.SZ`，`dev` 默认只激活 `600036.SH`
+- 市场数据源固定为 `eastmoney`
+- `configs/base.yaml` 固定了每个支持 symbol 的 A 股交易规则：`lot_size / qty_step / price_tick / min_qty / allow_odd_lot_sell / t_plus_one_sell / price_limit_pct`
+- `configs/base.yaml` 固定了 paper 成本模型：`commission / transfer_fee / stamp_duty_sell`
+- 交易、存储和日志统一使用 `Asia/Shanghai` 时间标准
 - `paper` 模式下唯一可恢复事实源是本地持久化状态；Phase 0 先固定为项目本地 PostgreSQL 持久化契约，不把内存态或 paper adapter 内部态视为恢复依据
 - `trader_run_id` 约定由 trader 启动时生成 `uuid4`，并以 `trader_run_id` 字段绑定到结构化日志上下文和后续审计链路
 - 启动前必须提供 `SIGNALARK_POSTGRES_DSN`；`SIGNALARK_TELEGRAM_BOT_TOKEN` 和 `SIGNALARK_TELEGRAM_CHAT_ID` 只有在 `SIGNALARK_TELEGRAM_ENABLED=true` 时才是必填 secret

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 from alembic import command
@@ -20,6 +21,7 @@ from src.domain.execution import (
     OrderType,
     TimeInForce,
 )
+from src.domain.market import MarketStateSnapshot, SuspensionStatus, TradingPhase
 from src.domain.portfolio import BalanceSnapshot, Position, PositionStatus
 from src.domain.strategy import Signal, SignalType
 from src.infra.db import (
@@ -33,7 +35,8 @@ from src.infra.db.models import OrderIntentRecord, SignalRecord
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 ALEMBIC_INI_PATH = ROOT_DIR / "migrations" / "alembic.ini"
-BASE_TIME = datetime(2026, 3, 31, 12, 0, tzinfo=UTC)
+SHANGHAI = ZoneInfo("Asia/Shanghai")
+BASE_TIME = datetime(2026, 3, 31, 12, 0, tzinfo=SHANGHAI)
 TRADER_RUN_ID = UUID("11111111-1111-4111-8111-111111111111")
 SIGNAL_ID = UUID("22222222-2222-4222-8222-222222222222")
 ORDER_INTENT_ID = UUID("33333333-3333-4333-8333-333333333333")
@@ -42,6 +45,14 @@ FILL_ID = UUID("55555555-5555-4555-8555-555555555555")
 POSITION_ID = UUID("66666666-6666-4666-8666-666666666666")
 BALANCE_ID = UUID("77777777-7777-4777-8777-777777777777")
 EVENT_ID = UUID("88888888-8888-4888-8888-888888888888")
+MARKET_STATE = MarketStateSnapshot(
+    trade_date=BASE_TIME.date(),
+    previous_close=Decimal("39.47"),
+    upper_limit_price=Decimal("43.42"),
+    lower_limit_price=Decimal("35.52"),
+    trading_phase=TradingPhase.CONTINUOUS_AUCTION,
+    suspension_status=SuspensionStatus.ACTIVE,
+)
 
 
 def _upgrade_database(database_url: str) -> None:
@@ -76,11 +87,11 @@ def _build_signal(*, signal_id: UUID = SIGNAL_ID) -> Signal:
         strategy_id="baseline_momentum_v1",
         trader_run_id=TRADER_RUN_ID,
         account_id="paper_account_001",
-        exchange="binance",
-        symbol="BTCUSDT",
+        exchange="cn_equity",
+        symbol="600036.SH",
         timeframe="15m",
         signal_type=SignalType.ENTRY,
-        target_position=Decimal("0.5"),
+        target_position=Decimal("500"),
         confidence=Decimal("0.88"),
         reason_summary="phase-2 persistence integration test",
         event_time=BASE_TIME,
@@ -95,13 +106,14 @@ def _build_order_intent(*, signal_id: UUID, order_intent_id: UUID = ORDER_INTENT
         strategy_id="baseline_momentum_v1",
         trader_run_id=TRADER_RUN_ID,
         account_id="paper_account_001",
-        exchange="binance",
-        symbol="BTCUSDT",
+        exchange="cn_equity",
+        symbol="600036.SH",
         side=OrderSide.BUY,
         order_type=OrderType.MARKET,
-        time_in_force=TimeInForce.IOC,
-        qty=Decimal("0.5"),
-        decision_price=Decimal("101"),
+        time_in_force=TimeInForce.DAY,
+        qty=Decimal("500"),
+        decision_price=Decimal("39.42"),
+        market_context_json=MARKET_STATE,
         idempotency_key="intent:entry:001",
         created_at=BASE_TIME + timedelta(seconds=2),
     )
@@ -122,12 +134,12 @@ def _build_order(
         trader_run_id=TRADER_RUN_ID,
         exchange_order_id="paper-order-001",
         account_id="paper_account_001",
-        exchange="binance",
-        symbol="BTCUSDT",
+        exchange="cn_equity",
+        symbol="600036.SH",
         side=OrderSide.BUY,
         order_type=OrderType.MARKET,
-        time_in_force=TimeInForce.IOC,
-        qty=Decimal("0.5"),
+        time_in_force=TimeInForce.DAY,
+        qty=Decimal("500"),
         filled_qty=filled_qty,
         avg_fill_price=avg_fill_price,
         status=status,
@@ -143,29 +155,35 @@ def _build_fill(*, order_id: UUID, fill_id: UUID = FILL_ID) -> Fill:
         trader_run_id=TRADER_RUN_ID,
         exchange_fill_id="paper-fill-001",
         account_id="paper_account_001",
-        exchange="binance",
-        symbol="BTCUSDT",
+        exchange="cn_equity",
+        symbol="600036.SH",
         side=OrderSide.BUY,
-        qty=Decimal("0.2"),
-        price=Decimal("101.5"),
-        fee=Decimal("0.01"),
-        fee_asset="USDT",
+        qty=Decimal("200"),
+        price=Decimal("39.45"),
+        fee=Decimal("1.00"),
+        fee_asset="CNY",
         liquidity_type=LiquidityType.TAKER,
         fill_time=BASE_TIME + timedelta(seconds=4),
         created_at=BASE_TIME + timedelta(seconds=5),
     )
 
 
-def _build_position(*, position_id: UUID = POSITION_ID, qty: Decimal) -> Position:
+def _build_position(
+    *,
+    position_id: UUID = POSITION_ID,
+    qty: Decimal,
+    sellable_qty: Decimal,
+) -> Position:
     return Position(
         id=position_id,
         account_id="paper_account_001",
-        exchange="binance",
-        symbol="BTCUSDT",
+        exchange="cn_equity",
+        symbol="600036.SH",
         qty=qty,
-        avg_entry_price=Decimal("101.5") if qty > 0 else None,
-        mark_price=Decimal("102"),
-        unrealized_pnl=Decimal("0.25") if qty > 0 else Decimal("0"),
+        sellable_qty=sellable_qty,
+        avg_entry_price=Decimal("39.45") if qty > 0 else None,
+        mark_price=Decimal("39.50"),
+        unrealized_pnl=Decimal("10") if qty > 0 else Decimal("0"),
         realized_pnl=Decimal("0"),
         status=PositionStatus.OPEN if qty > 0 else PositionStatus.CLOSED,
         updated_at=BASE_TIME + timedelta(seconds=6),
@@ -183,8 +201,8 @@ def _build_balance_snapshot(
     return BalanceSnapshot(
         id=balance_id,
         account_id="paper_account_001",
-        exchange="binance",
-        asset="USDT",
+        exchange="cn_equity",
+        asset="CNY",
         total=total,
         available=available,
         locked=locked,
@@ -212,6 +230,10 @@ def test_alembic_upgrade_creates_phase2_tables(migrated_engine) -> None:
         for constraint in inspector.get_unique_constraints("order_intents")
     }
     assert ("idempotency_key",) in unique_constraints
+    order_intent_columns = {column["name"] for column in inspector.get_columns("order_intents")}
+    assert "market_context_json" in order_intent_columns
+    position_columns = {column["name"] for column in inspector.get_columns("positions")}
+    assert "sellable_qty" in position_columns
 
 
 def test_order_intent_idempotency_key_is_enforced_by_database(session_factory) -> None:
@@ -219,15 +241,11 @@ def test_order_intent_idempotency_key_is_enforced_by_database(session_factory) -
         session.add(
             SignalRecord(
                 **_build_signal().model_dump(mode="python"),
-                status="NEW",
             )
         )
         session.add(
             OrderIntentRecord(
                 **_build_order_intent(signal_id=SIGNAL_ID).model_dump(mode="python"),
-                status="NEW",
-                risk_decision="ALLOW",
-                risk_reason=None,
             )
         )
 
@@ -239,9 +257,6 @@ def test_order_intent_idempotency_key_is_enforced_by_database(session_factory) -
                         signal_id=SIGNAL_ID,
                         order_intent_id=UUID("99999999-9999-4999-8999-999999999999"),
                     ).model_dump(mode="python"),
-                    status="NEW",
-                    risk_decision="ALLOW",
-                    risk_reason=None,
                 )
             )
 
@@ -267,8 +282,8 @@ def test_repositories_support_idempotent_writes_and_recovery(session_factory) ->
                 order_intent_id=order_intent.id,
                 order_id=updated_order_id,
                 status=OrderStatus.PARTIALLY_FILLED,
-                filled_qty=Decimal("0.2"),
-                avg_fill_price=Decimal("101.5"),
+                filled_qty=Decimal("200"),
+                avg_fill_price=Decimal("39.45"),
                 updated_at=BASE_TIME + timedelta(seconds=7),
             )
         )
@@ -276,26 +291,32 @@ def test_repositories_support_idempotent_writes_and_recovery(session_factory) ->
         duplicate_fill = repositories.fills.save(
             _build_fill(order_id=order.id, fill_id=duplicate_fill_id)
         )
-        position = repositories.positions.save(_build_position(qty=Decimal("0.2")))
+        position = repositories.positions.save(
+            _build_position(qty=Decimal("200"), sellable_qty=Decimal("0"))
+        )
         updated_position = repositories.positions.save(
-            _build_position(position_id=updated_position_id, qty=Decimal("0.35"))
+            _build_position(
+                position_id=updated_position_id,
+                qty=Decimal("350"),
+                sellable_qty=Decimal("250"),
+            )
         )
         repositories.balance_snapshots.save(
             _build_balance_snapshot(
                 balance_id=BALANCE_ID,
                 snapshot_time=BASE_TIME + timedelta(seconds=8),
-                total=Decimal("1000"),
-                available=Decimal("950"),
-                locked=Decimal("50"),
+                total=Decimal("100000"),
+                available=Decimal("95000"),
+                locked=Decimal("5000"),
             )
         )
         latest_balance = repositories.balance_snapshots.save(
             _build_balance_snapshot(
                 balance_id=later_balance_id,
                 snapshot_time=BASE_TIME + timedelta(seconds=20),
-                total=Decimal("1010"),
-                available=Decimal("960"),
-                locked=Decimal("50"),
+                total=Decimal("101000"),
+                available=Decimal("96000"),
+                locked=Decimal("5000"),
             )
         )
         saved_event = repositories.event_logs.save(
@@ -305,14 +326,14 @@ def test_repositories_support_idempotent_writes_and_recovery(session_factory) ->
                 source="paper_execution",
                 trader_run_id=TRADER_RUN_ID,
                 account_id="paper_account_001",
-                exchange="binance",
-                symbol="BTCUSDT",
+                exchange="cn_equity",
+                symbol="600036.SH",
                 related_object_type="order",
                 related_object_id=order.id,
                 event_time=BASE_TIME + timedelta(seconds=7),
                 ingest_time=BASE_TIME + timedelta(seconds=8),
                 created_at=BASE_TIME + timedelta(seconds=9),
-                payload_json={"status": "PARTIALLY_FILLED", "filled_qty": "0.2"},
+                payload_json={"status": "PARTIALLY_FILLED", "filled_qty": "200"},
             )
         )
 
@@ -326,6 +347,8 @@ def test_repositories_support_idempotent_writes_and_recovery(session_factory) ->
 
     assert signal.id == SIGNAL_ID
     assert order_intent.id == ORDER_INTENT_ID
+    assert order_intent.market_state is not None
+    assert order_intent.market_state.previous_close == Decimal("39.47")
     assert duplicate_intent.id == ORDER_INTENT_ID
     assert order.id == ORDER_ID
     assert updated_order.id == ORDER_ID
@@ -334,7 +357,8 @@ def test_repositories_support_idempotent_writes_and_recovery(session_factory) ->
     assert duplicate_fill.id == FILL_ID
     assert position.id == POSITION_ID
     assert updated_position.id == POSITION_ID
-    assert updated_position.qty == Decimal("0.35")
+    assert updated_position.qty == Decimal("350")
+    assert updated_position.sellable_qty == Decimal("250")
     assert latest_balance.snapshot_time == BASE_TIME + timedelta(seconds=20)
     assert saved_event.event_id == EVENT_ID
 
@@ -342,7 +366,8 @@ def test_repositories_support_idempotent_writes_and_recovery(session_factory) ->
     assert recovered_state.open_orders[0].id == ORDER_ID
     assert recovered_state.open_orders[0].status is OrderStatus.PARTIALLY_FILLED
     assert len(recovered_state.open_positions) == 1
-    assert recovered_state.open_positions[0].qty == Decimal("0.35")
+    assert recovered_state.open_positions[0].qty == Decimal("350")
+    assert recovered_state.open_positions[0].sellable_qty == Decimal("250")
     assert len(recovered_state.latest_balance_snapshots) == 1
     assert recovered_state.latest_balance_snapshots[0].snapshot_time == BASE_TIME + timedelta(
         seconds=20

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 from pydantic import ValidationError
@@ -16,7 +17,8 @@ from src.domain.execution import (
     validate_order_status_transition,
 )
 
-BASE_TIME = datetime(2026, 3, 31, 12, 0, tzinfo=UTC)
+SHANGHAI = ZoneInfo("Asia/Shanghai")
+BASE_TIME = datetime(2026, 3, 31, 12, 0, tzinfo=SHANGHAI)
 TRADER_RUN_ID = UUID("44444444-4444-4444-8444-444444444444")
 ORDER_INTENT_ID = UUID("55555555-5555-4555-8555-555555555555")
 
@@ -26,11 +28,11 @@ def build_order(**updates: object) -> Order:
         "order_intent_id": ORDER_INTENT_ID,
         "trader_run_id": TRADER_RUN_ID,
         "account_id": "paper_account_001",
-        "exchange": "binance",
-        "symbol": "BTCUSDT",
+        "exchange": "cn_equity",
+        "symbol": "600036.SH",
         "side": OrderSide.BUY,
         "order_type": OrderType.MARKET,
-        "qty": Decimal("1.0"),
+        "qty": Decimal("100"),
         "status": OrderStatus.NEW,
         "submitted_at": BASE_TIME,
         "updated_at": BASE_TIME,
@@ -83,22 +85,22 @@ def test_order_transition_to_validates_partial_and_fill_invariants() -> None:
     acked = order.transition_to(OrderStatus.ACK, updated_at=BASE_TIME + timedelta(seconds=1))
     partial = acked.transition_to(
         OrderStatus.PARTIALLY_FILLED,
-        filled_qty=Decimal("0.4"),
-        avg_fill_price=Decimal("100"),
+        filled_qty=Decimal("40"),
+        avg_fill_price=Decimal("39.42"),
         updated_at=BASE_TIME + timedelta(seconds=2),
     )
     filled = partial.transition_to(
         OrderStatus.FILLED,
-        filled_qty=Decimal("1.0"),
-        avg_fill_price=Decimal("101"),
+        filled_qty=Decimal("100"),
+        avg_fill_price=Decimal("39.50"),
         updated_at=BASE_TIME + timedelta(seconds=3),
     )
 
     assert acked.status is OrderStatus.ACK
     assert partial.status is OrderStatus.PARTIALLY_FILLED
-    assert partial.remaining_qty == Decimal("0.6")
+    assert partial.remaining_qty == Decimal("60")
     assert filled.status is OrderStatus.FILLED
-    assert filled.remaining_qty == Decimal("0.0")
+    assert filled.remaining_qty == Decimal("0")
 
 
 def test_order_transition_to_rejects_missing_partial_fill_data() -> None:
@@ -107,6 +109,6 @@ def test_order_transition_to_rejects_missing_partial_fill_data() -> None:
     with pytest.raises(ValidationError, match="PARTIALLY_FILLED orders require avg_fill_price"):
         order.transition_to(
             OrderStatus.PARTIALLY_FILLED,
-            filled_qty=Decimal("0.4"),
+            filled_qty=Decimal("40"),
             updated_at=BASE_TIME + timedelta(seconds=2),
         )

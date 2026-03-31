@@ -45,13 +45,14 @@
 - README.md 中与启动配置直接相关的少量内容
 
 本次必须完成：
-- 固定交易所、市场类型、交易对、周期、运行模式
+- 固定市场数据源、市场类型、股票标的、周期、运行模式
 - 明确 V1 只做 paper trading
 - 建立基础配置结构和最小日志配置
 - 明确关键配置和 secret 的必填/选填契约
 - 对关键配置做 fail-fast 校验
 - 写清楚最小运行单元共用的配置入口约定
-- 把单交易所、单账户、单策略、Bar 驱动边界写清楚
+- 把单市场数据源、单账户、单策略、Bar 驱动边界写清楚
+- 写清楚每个支持 symbol 的 A 股交易规则配置约定，以及最小 market state 和成本模型契约
 - 写清楚 paper 模式下本地持久化状态是唯一可恢复事实源
 - 写清楚 trader_run_id 的生成和日志 / 审计接入约定
 
@@ -104,6 +105,8 @@
 - 定义订单状态枚举和状态流转规则
 - 明确 Signal 不是订单、OrderIntent 先于 Order
 - 明确 Signal.target_position 与 OrderIntent.qty 的 sizing contract
+- 明确 A 股 V1 的 `DAY / MARKET / LIMIT / reduce_only / sellable_qty / odd-lot sell` 语义
+- 如果保留 LIMIT、涨跌停或交易时段判断，明确最小 market state contract
 - 明确 BarEvent 的时间窗口、唯一键和 closed/final 语义
 
 严格不要做：
@@ -117,7 +120,7 @@
 2. 已完成能力
 3. 新增的核心对象和字段
 4. BarEvent 时间窗口 / 唯一键 / finality 语义说明
-5. target_position / qty / price 语义说明
+5. target_position / qty / sellable_qty / price / market_state 语义说明
 6. 订单状态机说明
 7. 测试情况：
    - 已运行哪些测试
@@ -214,7 +217,7 @@
 - 明确并落地核心表结构
 - 明确并落地主键、唯一键、必要索引
 - 让 schema 与 Signal -> OrderIntent -> Order -> Fill -> Position / Balance 主链路对齐
-- 确保核心交易事实可以关联 trader_run_id，并为 market order 保留 decision_price 或等价字段
+- 确保核心交易事实可以关联 trader_run_id，并能表达 A 股 `DAY / sellable_qty / T+1 / odd-lot sell` 约束；`MARKET` 仅表示 paper 市价风格指令，并保留 `decision_price + market_context` 或等价字段
 - 产出可执行的第一版 migration 骨架
 
 严格不要做：
@@ -262,10 +265,11 @@
 - tests/integration/
 
 本次必须完成：
-- 接入单一交易所的历史和实时 bar 数据
+- 接入单一市场数据源的历史和实时 bar 数据
 - 统一 symbol、时区、精度
 - 建立稳定 bar 唯一键，并对历史补数与实时数据做去重
 - 标准化为 BarEvent
+- 如果保留 LIMIT、涨跌停或交易时段检查，标准化最小 market state
 - 明确只有 closed / final bar 可以进入可交易链路
 - 保留原始 payload 或最小原始记录
 - 处理基本断线重连和补数
@@ -273,7 +277,7 @@
 严格不要做：
 - 不实现 Tick
 - 不实现 OrderBook
-- 不接多交易所
+- 不接多市场数据源
 - 不引入复杂消息中间件
 
 完成后请输出：
@@ -282,15 +286,16 @@
 3. 接入了什么市场数据
 4. BarEvent 生成路径
 5. bar 唯一键 / closed bar / 去重规则
-6. 恢复/补数能力
-7. 测试情况：
+6. 最小 market state contract
+7. 恢复/补数能力
+8. 测试情况：
    - 已运行哪些测试
    - 哪些通过
    - 哪些未运行
    - 为什么未运行
    - 当前剩余测试风险
-8. 未解决风险
-9. 是否可以进入 Phase 4
+9. 未解决风险
+10. 是否可以进入 Phase 4
 ```
 
 ---
@@ -384,7 +389,9 @@
 - 实现 OMS 持久化流程
 - 实现 paper execution adapter
 - 支持 ACK / PARTIAL / FILL / REJECT / CANCEL
+- 默认只支持连续竞价时段的 MARKET 风格指令；如保留 LIMIT 单，必须消费最小 market state
 - 更新 Position / Balance / PnL
+- 从 Phase 5 起把佣金、过户费和卖出印花税纳入 Fill / Balance / PnL
 
 严格不要做：
 - 不接真实 live 下单
@@ -398,14 +405,15 @@
 3. OMS 事实源设计
 4. Signal.target_position 到 OrderIntent.qty 的转换规则
 5. paper execution 如何模拟成交
-6. 测试情况：
+6. A 股 `MARKET / LIMIT / DAY / T+1 / sellable_qty / odd-lot sell / fee model` 约束如何落地
+7. 测试情况：
    - 已运行哪些测试
    - 哪些通过
    - 哪些未运行
    - 为什么未运行
    - 当前剩余测试风险
-7. 未解决风险
-8. 是否可以进入 Phase 6
+8. 未解决风险
+9. 是否可以进入 Phase 6
 ```
 
 ---
@@ -435,6 +443,7 @@
 - 固定 Signal.target_position -> OrderIntent.qty 的 sizing 契约
 - 实现 OrderIntent 先落库再执行的流程骨架
 - 实现 OMS 核心持久化接口
+- 固定 decision_price 与最小 market_context 的落库契约
 - 明确并落地订单状态机
 
 严格不要做：
@@ -484,7 +493,9 @@
 本次必须完成：
 - 实现 paper execution adapter
 - 支持 ACK / PARTIAL / FILL / REJECT / CANCEL
+- 默认只支持连续竞价时段的 MARKET 风格成交模拟；如保留 LIMIT 单，必须显式校验最小 market state
 - 输出标准订单更新和成交事件
+- 为成交结果生成可用于账本的 A 股成本字段
 - 与 OMS 正确衔接
 
 严格不要做：
@@ -496,15 +507,16 @@
 1. 已修改文件
 2. 已完成能力
 3. adapter 如何模拟执行
-4. 已覆盖的订单状态
-5. 测试情况：
+4. A 股成本字段如何生成
+5. 已覆盖的订单状态
+6. 测试情况：
    - 已运行哪些测试
    - 哪些通过
    - 哪些未运行
    - 为什么未运行
    - 当前剩余测试风险
-6. 未解决风险
-7. 是否可以进入 Phase 5C
+7. 未解决风险
+8. 是否可以进入 Phase 5C
 ```
 
 ---
@@ -534,6 +546,8 @@
 本次必须完成：
 - 处理 Fill 对 Position 的影响
 - 处理余额变动
+- 处理 sellable_qty 的 T+1 释放和余股卖出边界
+- 把佣金、过户费和卖出印花税纳入余额与已实现 PnL
 - 生成基础 PnL 更新
 - 支持关键状态恢复
 
@@ -545,7 +559,7 @@
 完成后请输出：
 1. 已修改文件
 2. 已完成能力
-3. 持仓/余额/PnL 更新规则
+3. 持仓/余额/sellable_qty/PnL 更新规则
 4. 恢复能力说明
 5. 测试情况：
    - 已运行哪些测试
@@ -586,6 +600,7 @@
 
 本次必须完成：
 - 实现最大仓位、最大名义价值、重复下单、行情过期、最小下单量等 pre-trade risk
+- 实现 A 股 `lot / tick / T+1 / sellable_qty / odd-lot sell / price limit / trading phase / suspension` 等基础交易规则检查
 - 提供状态查询接口
 - 提供策略启停、kill switch、cancel all
 - 提供健康检查与就绪检查
@@ -643,8 +658,8 @@
 - tests/integration/
 
 本次必须完成：
-- 实现最大仓位、最大名义价值、重复下单、行情过期、最小下单量等规则
-- 在 kill switch 或 protection mode 下，拒绝新开仓 / 增仓，但允许 reduce_only、减仓和平仓单通过统一风险闸门
+- 实现最大仓位、最大名义价值、重复下单、行情过期、最小下单量，以及 A 股 `lot / tick / T+1 / sellable_qty / odd-lot sell / price limit / trading session / suspension / LIMIT requires market state` 等规则
+- 在 kill switch 或 protection mode 下，拒绝新开仓 / 增仓，但允许减仓 / 平仓保护单通过统一风险闸门；如实现中保留 `reduce_only` 字段，它只作为兼容标记
 - 让所有下单动作先经过统一风险闸门
 
 严格不要做：
@@ -702,7 +717,7 @@
 - 限制同一交易账户只允许 1 个 active trader 实例
 - 基于 PostgreSQL lease 明确 owner_instance_id / lease_expires_at / last_heartbeat_at / fencing_token
 - lease 丢失或过期时，让实例降级为 not ready 并停止提交新订单
-- 让 kill switch 激活后进入 reduce-only 状态：拒绝新开仓 / 增仓，但允许 cancel all、减仓和平仓
+- 让 kill switch 激活后进入减仓 / 平仓保护状态：拒绝新开仓 / 增仓，但允许 cancel all、减仓和平仓；如实现中保留 `reduce_only` 字段，它只作为兼容标记
 - 让控制动作真正影响 trader 状态
 
 严格不要做：
@@ -853,7 +868,7 @@
 本次必须完成：
 - 建立最小事件驱动回测器
 - 复用相同策略接口和订单语义
-- 加入手续费和简单滑点
+- 加入与 paper 一致的 A 股成本模型和简单滑点
 - 输出 run manifest 或等价元数据，记录策略、参数、数据和成本假设
 - 输出标准绩效摘要
 
@@ -908,9 +923,9 @@
 - 实现启动恢复
 - 实现定时对账
 - 在 paper 模式下，以本地持久化 orders / fills / positions / balance_snapshots 为对账真相源
-- 检查订单、持仓、余额漂移
+- 检查订单、持仓、余额，以及 sellable_qty / fee / tax 派生状态漂移
 - 对账异常时进入保护模式
-- 进入保护模式后取消所有非 reduce_only 挂单，并保留减仓和平仓路径
+- 进入保护模式后取消所有非减仓 / 平仓保护挂单，并保留减仓和平仓路径；如果实现里保留 `reduce_only` 字段，则等价为取消所有 `reduce_only = false` 的挂单
 - 记录诊断信息并发送告警
 - 提供最小事件回放或诊断入口，例如 replay_events 或等价工具，至少支持 time range / trader_run_id / account_id / symbol
 
@@ -926,13 +941,14 @@
 4. paper 模式下的对账真相源
 5. 保护模式触发条件
 6. 保护模式下挂单处理与允许动作
-7. 最小回放 / 诊断入口
-8. 测试情况：
+7. sellable_qty / fee / tax 派生状态校验
+8. 最小回放 / 诊断入口
+9. 测试情况：
    - 已运行哪些测试
    - 哪些通过
    - 哪些未运行
    - 为什么未运行
    - 当前剩余测试风险
-9. 未解决风险
-10. V1 是否已满足完成线
+10. 未解决风险
+11. V1 是否已满足完成线
 ```

@@ -34,6 +34,7 @@
 - 固定 `Signal.target_position -> OrderIntent.qty` 的 sizing 契约
 - 实现 `OrderIntent` 先落库再执行的流程骨架
 - 实现 OMS 核心持久化接口
+- 固定 `decision_price` 与最小 `market_context` 的落库契约，避免后续 A 股风控与回放失真
 - 明确订单状态迁移
 - 为后续执行适配器预留清晰接入点
 
@@ -48,7 +49,7 @@
 - `OrderIntent` 和 `Order` 的持久化链路成立
 - 订单状态机可执行且可测试
 - OMS 已成为本地事实源的一部分
-- `Signal`、当前持仓、`decision_price` 和 `OrderIntent.qty` 的转换规则已固定且可复现
+- `Signal`、当前持仓、`decision_price`、最小 `market_context` 和 `OrderIntent.qty` 的转换规则已固定且可复现
 
 ## 最低验证要求
 
@@ -85,6 +86,7 @@
 - 固定 Signal.target_position -> OrderIntent.qty 的 sizing 契约
 - 实现 OrderIntent 先落库再执行的流程骨架
 - 实现 OMS 核心持久化接口
+- 固定 decision_price 与最小 market_context 的落库契约
 - 明确并落地订单状态机
 
 严格不要做：

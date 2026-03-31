@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 
 import structlog
 from src.config import get_settings
 from src.shared.logging import bind_log_context, configure_logging
+from src.shared.types import shanghai_now
 
 
 def main() -> None:
@@ -27,7 +27,7 @@ def main() -> None:
         execution_mode=settings.execution_mode,
         exchange=settings.exchange,
         symbols=settings.symbols,
-        started_at=datetime.now(UTC).isoformat(),
+        started_at=shanghai_now().isoformat(),
         note="Implement event loop and OMS wiring in Phase 4 and Phase 5.",
     )
 

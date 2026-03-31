@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.orm import Session
@@ -28,6 +29,7 @@ ACTIVE_ORDER_STATUSES = (
     OrderStatus.ACK.value,
     OrderStatus.PARTIALLY_FILLED.value,
 )
+SHANGHAI_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,11 +55,11 @@ def _update_record_from_model(
         setattr(record, field_name, value)
 
 
-def _utc_datetime(value: datetime) -> datetime:
-    """Normalize database-loaded timestamps back to UTC-aware datetimes."""
+def _shanghai_datetime(value: datetime) -> datetime:
+    """Normalize database-loaded timestamps back to Asia/Shanghai-aware datetimes."""
     if value.tzinfo is None or value.utcoffset() is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
+        return value.replace(tzinfo=SHANGHAI_TIMEZONE)
+    return value.astimezone(SHANGHAI_TIMEZONE)
 
 
 def _signal_from_record(record: SignalRecord) -> Signal:
@@ -73,8 +75,9 @@ def _signal_from_record(record: SignalRecord) -> Signal:
         target_position=record.target_position,
         confidence=record.confidence,
         reason_summary=record.reason_summary,
-        event_time=_utc_datetime(record.event_time),
-        created_at=_utc_datetime(record.created_at),
+        status=record.status,
+        event_time=_shanghai_datetime(record.event_time),
+        created_at=_shanghai_datetime(record.created_at),
     )
 
 
@@ -94,8 +97,12 @@ def _order_intent_from_record(record: OrderIntentRecord) -> OrderIntent:
         price=record.price,
         decision_price=record.decision_price,
         reduce_only=record.reduce_only,
+        market_context_json=record.market_context_json,
         idempotency_key=record.idempotency_key,
-        created_at=_utc_datetime(record.created_at),
+        status=record.status,
+        risk_decision=record.risk_decision,
+        risk_reason=record.risk_reason,
+        created_at=_shanghai_datetime(record.created_at),
     )
 
 
@@ -116,8 +123,8 @@ def _order_from_record(record: OrderRecord) -> Order:
         filled_qty=record.filled_qty,
         avg_fill_price=record.avg_fill_price,
         status=record.status,
-        submitted_at=_utc_datetime(record.submitted_at),
-        updated_at=_utc_datetime(record.updated_at),
+        submitted_at=_shanghai_datetime(record.submitted_at),
+        updated_at=_shanghai_datetime(record.updated_at),
         last_error_code=record.last_error_code,
         last_error_message=record.last_error_message,
     )
@@ -138,8 +145,8 @@ def _fill_from_record(record: FillRecord) -> Fill:
         fee=record.fee,
         fee_asset=record.fee_asset,
         liquidity_type=record.liquidity_type,
-        fill_time=_utc_datetime(record.fill_time),
-        created_at=_utc_datetime(record.created_at),
+        fill_time=_shanghai_datetime(record.fill_time),
+        created_at=_shanghai_datetime(record.created_at),
     )
 
 
@@ -151,12 +158,13 @@ def _position_from_record(record: PositionRecord) -> Position:
         symbol=record.symbol,
         side=record.side,
         qty=record.qty,
+        sellable_qty=record.sellable_qty,
         avg_entry_price=record.avg_entry_price,
         mark_price=record.mark_price,
         unrealized_pnl=record.unrealized_pnl,
         realized_pnl=record.realized_pnl,
         status=record.status,
-        updated_at=_utc_datetime(record.updated_at),
+        updated_at=_shanghai_datetime(record.updated_at),
     )
 
 
@@ -169,8 +177,8 @@ def _balance_snapshot_from_record(record: BalanceSnapshotRecord) -> BalanceSnaps
         total=record.total,
         available=record.available,
         locked=record.locked,
-        snapshot_time=_utc_datetime(record.snapshot_time),
-        created_at=_utc_datetime(record.created_at),
+        snapshot_time=_shanghai_datetime(record.snapshot_time),
+        created_at=_shanghai_datetime(record.created_at),
     )
 
 
@@ -186,10 +194,10 @@ def _event_log_from_record(record: EventLogRecord) -> EventLogEntry:
         symbol=record.symbol,
         related_object_type=record.related_object_type,
         related_object_id=record.related_object_id,
-        event_time=_utc_datetime(record.event_time),
-        ingest_time=_utc_datetime(record.ingest_time),
+        event_time=_shanghai_datetime(record.event_time),
+        ingest_time=_shanghai_datetime(record.ingest_time),
         payload_json=record.payload_json,
-        created_at=_utc_datetime(record.created_at),
+        created_at=_shanghai_datetime(record.created_at),
     )
 
 

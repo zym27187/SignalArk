@@ -4,9 +4,9 @@
 
 目标只有一个：
 
-> 按顺序实现一个适合个人项目的、可审计的 `paper trading MVP`。
+> 按顺序实现一个适合个人项目的、可审计的 `A 股 paper trading MVP`。
 
-这里定义的 `V1` 不包含真实小资金实盘，不包含 AI/ML 训练，不包含多交易所，不包含多策略组合。
+这里定义的 `V1` 不包含真实小资金实盘，不包含 AI/ML 训练，不包含多市场数据源，不包含多策略组合。
 
 如果需要把任务进一步拆成适合 AI 单次执行的粒度，请使用本目录下的 phase 文件。
 
@@ -24,9 +24,9 @@
 
 AI 在执行时，必须严格遵守下面的边界，不允许擅自扩展：
 
-- 只支持 `1 个交易所`
+- 只支持 `1 个市场数据源`
 - 只支持 `1 个交易账户`
-- 只支持 `1-3 个交易对`
+- 只支持 `1-3 个股票标的`
 - 只支持 `1 个主策略`
 - 只支持 `分钟级到小时级` 策略
 - 第一版市场输入以 `BarEvent` 为主
@@ -38,7 +38,7 @@ AI 不应在 V1 中主动引入这些内容：
 
 - `TickEvent`
 - `OrderBookEvent`
-- 多交易所
+- 多市场数据源
 - 多账户
 - 多策略组合
 - `Redis Streams`
@@ -81,12 +81,18 @@ AI 必须按阶段顺序执行，不允许跳阶段。
 - `paper` 模式下不存在外部交易所真相源；`PostgreSQL` 中持久化的 `orders / fills / positions / balance_snapshots` 是唯一可恢复事实源，内存态和 `paper adapter` 内部态只作为运行缓存
 - 每次 trader 启动都必须生成新的 `trader_run_id`；`signals / order_intents / orders / fills / event_logs` 或等价事实源必须能关联该运行批次
 - 单活 trader 保护默认采用基于 `PostgreSQL` 的账户级 lease；lease 至少要包含 `owner_instance_id`、`lease_expires_at`、`last_heartbeat_at`、`fencing_token`
+- V1 的 A 股执行契约固定为 `long-only` 普通股票语义：不做融资融券、不做做空，不允许把当日买入数量在同一交易日再次卖出
 - `Signal.target_position` 表示“目标成交后持仓”，不是增量下单量；`OrderIntent.qty` 表示基于当前持仓和交易规则归一化后的实际下单增量
-- `market order` 的 sizing、名义价值计算和风险判断，默认使用最近一次可接受 `BarEvent.close` 作为 `decision_price`；`limit order` 必须显式给出订单价格
+- `order_type = MARKET` 在 V1 中只是 paper execution 下的“市价风格指令”，不代表交易所原生市价单；其 sizing、名义价值计算和风险判断默认使用最近一次可接受 `BarEvent.close` 作为 `decision_price`；V1 默认策略下单路径只要求支持连续竞价时段的 `MARKET` 风格指令；如果实现里保留 `LIMIT` 单，只有在系统能提供用于 A 股价格有效性、涨跌停和交易时段校验的最小 market state 输入时才允许启用
+- `time_in_force` 字段可以保留为统一契约，但 V1 A 股固定为 `DAY`
+- 每个支持的 symbol 都必须有明确的 A 股交易规则配置；至少包含 `lot_size`、`qty_step`、`price_tick`、`min_qty`、`allow_odd_lot_sell`、`t_plus_one_sell`、`price_limit_pct`
+- 如果 V1 保留 `LIMIT` 单、涨跌停检查或交易时段检查，collector 或等价 market state 输入必须至少提供 `trade_date`、`previous_close`、`upper_limit_price`、`lower_limit_price`、`trading_phase`、`suspension_status`
+- `Position` 或等价恢复事实必须能区分 `qty` 与 `sellable_qty`；所有卖单风控、减仓判断和保护模式放行边界都以 `sellable_qty` 为准，而不是只看总持仓；当 `0 < sellable_qty < lot_size` 时，应允许按 A 股语义执行一次性余股卖出
 - V1 的策略触发只消费 `closed / final bar`；未收盘 bar 更新只允许用于缓存、替换或观测，不直接触发策略和下单
 - 历史补数和实时 bar 必须基于稳定 bar key 去重；推荐至少使用 `exchange + symbol + timeframe + bar_start_time` 或等价时间窗口标识
-- `kill switch` 默认是操作者触发的 `reduce-only` 闸门：拒绝新开仓和增仓，允许 `cancel all`、减仓和平仓
-- `protection mode` 默认是系统触发的 `reduce-only` 安全状态：拒绝新开仓和增仓，进入时取消所有非 `reduce_only` 挂单，并保留减仓和平仓路径
+- `kill switch` 默认是操作者触发的“减仓 / 平仓保护”闸门：拒绝新开仓和增仓，允许 `cancel all`、减仓和平仓；如果实现里保留 `reduce_only` 字段，它只作为该保护语义的兼容标记
+- `protection mode` 默认是系统触发的“减仓 / 平仓保护”安全状态：拒绝新开仓和增仓，进入时取消所有非减仓 / 平仓保护挂单，并保留减仓和平仓路径
+- paper fill、余额和 PnL 从 `Phase 5` 起就必须纳入 A 股成本模型；至少能表达佣金、过户费和卖出印花税，不能等到 `Phase 8` 才第一次引入成本
 - 风控可以缩单或拒单，但不应重新解释 `Signal` 的字段语义；如果语义不明确，应先补文档而不是直接实现
 
 ---
@@ -197,7 +203,7 @@ V1 默认技术栈如下：
 
 ### 要做的事
 
-- 明确交易所、市场类型、交易对、周期
+- 明确市场数据源、市场类型、股票标的、周期
 - 明确 `paper` 是唯一执行模式
 - 建立基础配置结构
 - 建立环境区分，例如 `dev`
@@ -331,8 +337,8 @@ V1 默认技术栈如下：
 
 ### 要做的事
 
-- 接入单一交易所的历史 K 线
-- 接入单一交易所的实时 K 线或等价 bar 数据
+- 接入单一市场数据源的历史 K 线
+- 接入单一市场数据源的实时 K 线或等价 bar 数据
 - 统一 `symbol`、时区、精度
 - 建立稳定的 bar 唯一键，并对历史补数与实时数据做去重
 - 保存原始 payload
@@ -357,7 +363,7 @@ V1 默认技术栈如下：
 ### 禁止扩展
 
 - 不实现 Tick / OrderBook
-- 不接多交易所
+- 不接多市场数据源
 - 不为追求低延迟引入复杂消息系统
 
 ---
@@ -504,7 +510,7 @@ V1 默认技术栈如下：
 - 操作者可以判断系统是否健康与就绪
 - 同一交易账户不会被多个 active trader 实例同时接管
 - lease 过期或 fencing 失效的实例不会继续提交新订单
-- `kill switch` 不会阻断 `reduce_only`、减仓或平仓路径
+- `kill switch` 不会阻断减仓 / 平仓保护单、减仓或平仓路径
 
 ### 禁止扩展
 
@@ -564,7 +570,7 @@ V1 默认技术栈如下：
 - 建立最小事件驱动回测器
 - 复用相同策略接口
 - 复用相同订单语义
-- 加入手续费和简单滑点
+- 加入与 paper 一致的 A 股成本模型和简单滑点，至少覆盖佣金、过户费和卖出印花税
 - 输出 run manifest 或等价元数据，记录策略、参数、数据和成本假设
 - 输出标准绩效摘要
 
@@ -606,7 +612,7 @@ V1 默认技术栈如下：
 - 在 `paper` 模式下，以本地持久化 `orders / fills / positions / balance_snapshots` 为对账真相源
 - 检查订单、持仓、余额漂移
 - 对账异常时进入保护模式
-- 进入保护模式后取消所有非 `reduce_only` 挂单，并保留减仓和平仓路径
+- 进入保护模式后取消所有非减仓 / 平仓保护挂单，并保留减仓和平仓路径
 - 记录诊断信息并发送告警
 - 提供最小事件回放或诊断入口，例如 `replay_events` 或等价工具，至少支持 `time range / trader_run_id / account_id / symbol`
 
@@ -674,4 +680,4 @@ AI 执行时，只允许按下面顺序前进：
 
 如果 AI 最终交付的是下面这个系统，就算 V1 成功：
 
-> 一个单交易所、单账户、单策略、K 线驱动、可审计、可回放、带基础风控与保护模式的 paper trading 系统。
+> 一个单市场数据源、单账户、单策略、K 线驱动、可审计、可回放、带基础风控与保护模式的 A 股 paper trading 系统。

@@ -11,10 +11,10 @@ from src.shared.types import (
     DomainId,
     NonEmptyStr,
     NonNegativeDecimal,
+    ShanghaiDateTime,
     TimeframeStr,
     UnitIntervalDecimal,
-    UtcDateTime,
-    utc_now,
+    shanghai_now,
 )
 
 
@@ -25,6 +25,15 @@ class SignalType(StrEnum):
     EXIT = "EXIT"
     REDUCE = "REDUCE"
     REBALANCE = "REBALANCE"
+
+
+class SignalStatus(StrEnum):
+    """Persistence-visible lifecycle states for strategy signals."""
+
+    NEW = "NEW"
+    CONSUMED = "CONSUMED"
+    EXPIRED = "EXPIRED"
+    REJECTED = "REJECTED"
 
 
 class Signal(DomainEntity):
@@ -41,9 +50,10 @@ class Signal(DomainEntity):
     target_position: NonNegativeDecimal
     confidence: UnitIntervalDecimal | None = None
     reason_summary: str | None = None
+    status: SignalStatus = SignalStatus.NEW
 
-    event_time: UtcDateTime
-    created_at: UtcDateTime = Field(default_factory=utc_now)
+    event_time: ShanghaiDateTime
+    created_at: ShanghaiDateTime = Field(default_factory=shanghai_now)
 
     @model_validator(mode="after")
     def validate_signal_contract(self) -> Signal:

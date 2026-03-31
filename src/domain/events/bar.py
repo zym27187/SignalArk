@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Any, Literal
 
 from pydantic import Field, computed_field, model_validator
 
+from src.domain.market.state import MarketStateSnapshot
 from src.shared.types import (
     DomainEntity,
     NonNegativeDecimal,
     PositiveDecimal,
+    ShanghaiDateTime,
     TimeframeStr,
-    UtcDateTime,
 )
 
 
@@ -23,10 +25,10 @@ class BarEvent(DomainEntity):
     symbol: str
     timeframe: TimeframeStr
 
-    bar_start_time: UtcDateTime
-    bar_end_time: UtcDateTime
-    event_time: UtcDateTime
-    ingest_time: UtcDateTime
+    bar_start_time: ShanghaiDateTime
+    bar_end_time: ShanghaiDateTime
+    event_time: ShanghaiDateTime
+    ingest_time: ShanghaiDateTime
 
     open: PositiveDecimal
     high: PositiveDecimal
@@ -38,6 +40,9 @@ class BarEvent(DomainEntity):
 
     closed: bool = False
     final: bool = False
+    source_kind: Literal["historical", "realtime"] | None = None
+    market_state: MarketStateSnapshot | None = None
+    source_payload: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_bar_window(self) -> BarEvent:
@@ -62,6 +67,12 @@ class BarEvent(DomainEntity):
 
         if self.final and not self.closed:
             raise ValueError("final bars must also be closed")
+
+        if (
+            self.market_state is not None
+            and self.market_state.trade_date != self.bar_end_time.date()
+        ):
+            raise ValueError("market_state.trade_date must match the bar_end_time trade date")
 
         return self
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from decimal import Decimal
 
 import pytest
 import src.config.settings as settings_module
@@ -22,9 +23,9 @@ def reset_settings_cache() -> Iterator[None]:
 
 
 def test_settings_parse_symbols_from_csv() -> None:
-    settings = Settings(symbols="btcusdt, ethusdt")
+    settings = Settings(symbols="600036.sh, 000001.sz")
 
-    assert settings.symbols == ["BTCUSDT", "ETHUSDT"]
+    assert settings.symbols == ["600036.SH", "000001.SZ"]
 
 
 def test_execution_mode_is_paper_only() -> None:
@@ -48,7 +49,7 @@ def test_load_settings_applies_yaml_dotenv_and_process_env_precedence(
         "\n".join(
             [
                 "SIGNALARK_POSTGRES_DSN=postgresql+psycopg://dotenv:dotenv@localhost:5432/signalark",
-                "SIGNALARK_SYMBOLS=ETHUSDT",
+                "SIGNALARK_SYMBOLS=000001.sz",
                 "SIGNALARK_LOG_LEVEL=WARNING",
             ]
         ),
@@ -60,11 +61,15 @@ def test_load_settings_applies_yaml_dotenv_and_process_env_precedence(
     settings = load_settings()
 
     assert settings.config_profile == "dev"
-    assert settings.exchange == "binance"
-    assert settings.symbols == ["ETHUSDT"]
+    assert settings.exchange == "cn_equity"
+    assert settings.timezone == "Asia/Shanghai"
+    assert settings.symbols == ["000001.SZ"]
+    assert settings.market_data_source == "eastmoney"
     assert settings.log_level == "WARNING"
     assert settings.api_port == 9100
     assert settings.postgres_dsn == "postgresql+psycopg://dotenv:dotenv@localhost:5432/signalark"
+    assert settings.symbol_rules["600036.SH"].lot_size == 100
+    assert settings.paper_cost_model.stamp_duty_sell == Decimal("0.0005")
 
 
 def test_get_settings_returns_cached_settings_until_cache_is_cleared(

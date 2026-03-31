@@ -7,6 +7,8 @@ import sys
 
 import structlog
 
+from src.shared.types import shanghai_now
+
 
 def clear_log_context() -> None:
     """Reset any request or runtime-scoped logging context."""
@@ -20,10 +22,14 @@ def bind_log_context(**values: object) -> None:
         structlog.contextvars.bind_contextvars(**payload)
 
 
+def _add_shanghai_timestamp(_: object, __: str, event_dict: dict[str, object]) -> dict[str, object]:
+    """Attach an Asia/Shanghai timestamp to every structured log event."""
+    event_dict.setdefault("timestamp", shanghai_now().isoformat())
+    return event_dict
+
+
 def configure_logging(level: str = "INFO", *, service: str | None = None) -> None:
     """Configure stdlib logging and structlog for simple JSON output."""
-    timestamper = structlog.processors.TimeStamper(fmt="iso", utc=True)
-
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
         format="%(message)s",
@@ -34,7 +40,7 @@ def configure_logging(level: str = "INFO", *, service: str | None = None) -> Non
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
-            timestamper,
+            _add_shanghai_timestamp,
             structlog.stdlib.add_log_level,
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,

@@ -8,25 +8,47 @@ runtime:
 app:
   name: signalark
   env: dev
-  timezone: UTC
+  timezone: Asia/Shanghai
 
 trading:
-  exchange: binance
-  market: spot
+  exchange: cn_equity
+  market: a_share
   execution_mode: paper
   account_id: paper_account_001
   primary_strategy_id: baseline_momentum_v1
   supported_symbols:
-    - BTCUSDT
-    - ETHUSDT
+    - 600036.SH
+    - 000001.SZ
   symbols:
-    - BTCUSDT
+    - 600036.SH
   primary_timeframe: 15m
   market_data_mode: bar
+  market_data_source: eastmoney
   strategy_trigger: closed_bar
+  symbol_rules:
+    600036.SH:
+      lot_size: 100
+      qty_step: 100
+      price_tick: 0.01
+      min_qty: 100
+      allow_odd_lot_sell: true
+      t_plus_one_sell: true
+      price_limit_pct: 0.10
+    000001.SZ:
+      lot_size: 100
+      qty_step: 100
+      price_tick: 0.01
+      min_qty: 100
+      allow_odd_lot_sell: true
+      t_plus_one_sell: true
+      price_limit_pct: 0.10
 
 paper:
   state_backend: postgres
+  cost_model:
+    commission: 0.0003
+    transfer_fee: 0.00001
+    stamp_duty_sell: 0.0005
   recovery_source: local_persistent_state
 
 api:
@@ -39,9 +61,9 @@ logging:
   include_trader_run_id: true
 
 risk:
-  max_single_symbol_notional_usdt: 5000
-  max_total_open_notional_usdt: 10000
-  min_order_notional_usdt: 25
+  max_single_symbol_notional_cny: 200000
+  max_total_open_notional_cny: 500000
+  min_order_notional_cny: 1000
   market_stale_threshold_seconds: 120
 
 controls:
