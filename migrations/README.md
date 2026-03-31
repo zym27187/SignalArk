@@ -1,9 +1,14 @@
-# Migrations Scaffold
+# Migrations
 
-`migrations/` 已预留给 `Phase 2A / Phase 2` 的 Alembic migration。
+`migrations/` 现在承载 Phase 2 的 Alembic 配置和首个核心持久化版本。
 
-当前只建立目录约定：
+常用命令：
 
+- `.venv/bin/alembic -c migrations/alembic.ini upgrade head`
+- `.venv/bin/alembic -c migrations/alembic.ini downgrade base`
+
+目录说明：
+
+- `migrations/alembic.ini`：Alembic 配置
+- `migrations/env.py`：迁移运行环境
 - `migrations/versions/`：版本脚本
-- 真实 `alembic.ini`、`env.py` 和首个 migration 在 `Phase 2A` 中补齐
-
