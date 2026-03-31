@@ -1,0 +1,14 @@
+app:
+  env: dev
+
+trading:
+  symbols:
+    - BTCUSDT
+
+logging:
+  level: DEBUG
+
+alerts:
+  telegram:
+    enabled: false
+

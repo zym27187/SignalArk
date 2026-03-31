@@ -1,0 +1,2 @@
+"""Trader application package."""
+

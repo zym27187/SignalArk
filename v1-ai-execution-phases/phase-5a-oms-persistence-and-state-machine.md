@@ -31,6 +31,7 @@
 ## 本次必须完成的任务
 
 - 实现 `Signal -> OrderIntent`
+- 固定 `Signal.target_position -> OrderIntent.qty` 的 sizing 契约
 - 实现 `OrderIntent` 先落库再执行的流程骨架
 - 实现 OMS 核心持久化接口
 - 明确订单状态迁移
@@ -47,11 +48,19 @@
 - `OrderIntent` 和 `Order` 的持久化链路成立
 - 订单状态机可执行且可测试
 - OMS 已成为本地事实源的一部分
+- `Signal`、当前持仓、`decision_price` 和 `OrderIntent.qty` 的转换规则已固定且可复现
 
 ## 最低验证要求
 
 - 至少有测试覆盖 `Signal -> OrderIntent -> Order`
 - 至少有测试覆盖订单状态迁移
+
+## 本次交付时必须汇报
+
+- OMS 事实源落在哪些表或对象上
+- 订单状态机已经覆盖了哪些迁移
+- `Signal.target_position` 如何变成 `OrderIntent.qty`
+- 当前哪些执行和账本能力刻意留到 `Phase 5B / 5C`
 
 ## 可直接复制给 AI 的执行提示词
 
@@ -60,6 +69,7 @@
 
 请先阅读：
 - ./00-master-plan.md
+- ./testing-standards.md
 - ./phase-5-oms-and-paper-execution.md
 - ./phase-5a-oms-persistence-and-state-machine.md
 
@@ -72,6 +82,7 @@
 
 本次必须完成：
 - 实现 Signal -> OrderIntent
+- 固定 Signal.target_position -> OrderIntent.qty 的 sizing 契约
 - 实现 OrderIntent 先落库再执行的流程骨架
 - 实现 OMS 核心持久化接口
 - 明确并落地订单状态机
@@ -83,8 +94,16 @@
 
 完成后请输出：
 1. 已修改文件
-2. OMS 事实源设计
-3. 订单状态机说明
-4. 测试结果
-5. 是否可以进入 Phase 5B
+2. 已完成能力
+3. OMS 事实源设计
+4. Signal.target_position 到 OrderIntent.qty 的转换规则
+5. 订单状态机说明
+6. 测试情况：
+   - 已运行哪些测试
+   - 哪些通过
+   - 哪些未运行
+   - 为什么未运行
+   - 当前剩余测试风险
+7. 未解决风险
+8. 是否可以进入 Phase 5B
 ```

@@ -63,13 +63,14 @@
 
 请先阅读：
 - ./00-master-plan.md
+- ./testing-standards.md
 - ./phase-7-baseline-strategy.md
 - ./phase-6-risk-and-control-plane.md
 
 本次只允许修改：
 - src/domain/strategy/
 - configs/strategies/ 或等价目录
-- 与策略接入直接相关的少量 trader 代码
+- apps/trader/ 中与策略接入直接相关的少量代码
 - tests/unit/
 - tests/integration/
 
@@ -85,8 +86,16 @@
 
 完成后请输出：
 1. 已修改文件
-2. 实现了哪种基线策略
-3. 策略输入输出说明
-4. 验证结果
-5. 是否可以进入 Phase 8
+2. 已完成能力
+3. 实现了哪种基线策略
+4. 策略输入输出说明
+5. 这套策略如何验证了交易内核
+6. 测试情况：
+   - 已运行哪些测试
+   - 哪些通过
+   - 哪些未运行
+   - 为什么未运行
+   - 当前剩余测试风险
+7. 未解决风险
+8. 是否可以进入 Phase 8
 ```

@@ -1,12 +1,14 @@
 # Phase 5：OMS 与 Paper Execution
 
-这份文件用于 AI 单次执行 `Phase 5`。
+这份文件用于定义 `Phase 5` 的总目标、边界和总体验收口径。
 
-如果这次改动范围过大，请优先改用下面的子任务文件：
+默认推荐按下面顺序执行子任务；只有当前改动已经非常小、明确只需补一处闭环缺口时，才直接使用本文件：
 
 - `./phase-5a-oms-persistence-and-state-machine.md`
 - `./phase-5b-paper-execution-adapter.md`
 - `./phase-5c-portfolio-balance-and-pnl.md`
+
+完成 `5A -> 5B -> 5C` 后，可以回到本文件做总体验收或小范围补缝。
 
 ## 本次目标
 
@@ -76,8 +78,11 @@
 ```text
 你现在负责本项目的 Phase 5：OMS 与 Paper Execution。
 
+如果当前任务可以明确收敛到 OMS 持久化、执行适配、或组合账本更新中的单一能力域，请优先改用 `Phase 5A / 5B / 5C`，不要默认直接做整个 Phase 5。
+
 请先阅读：
 - ./00-master-plan.md
+- ./testing-standards.md
 - ./phase-5-oms-and-paper-execution.md
 - ./phase-1-domain-model.md
 - ./phase-2-db-and-persistence.md
@@ -108,8 +113,15 @@
 
 完成后请输出：
 1. 已修改文件
-2. OMS 事实源设计
-3. paper execution 如何模拟成交
-4. 测试结果
-5. 是否可以进入 Phase 6
+2. 已完成能力
+3. OMS 事实源设计
+4. paper execution 如何模拟成交
+5. 测试情况：
+   - 已运行哪些测试
+   - 哪些通过
+   - 哪些未运行
+   - 为什么未运行
+   - 当前剩余测试风险
+6. 未解决风险
+7. 是否可以进入 Phase 6
 ```

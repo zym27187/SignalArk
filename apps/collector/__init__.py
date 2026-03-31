@@ -1,0 +1,2 @@
+"""Collector application package."""
+

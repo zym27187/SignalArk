@@ -2,7 +2,11 @@
 
 这份文件用于 AI 单次执行 `Phase 2`。
 
-如果需要更细的数据库实现说明，请继续阅读：
+默认推荐先执行下面的子任务文件，再回到 `Phase 2` 主实现：
+
+- `./phase-2a-db-schema-and-migration-draft.md`
+
+如果需要更细的数据库实现说明，也请继续阅读：
 
 - `./phase-2a-db-schema-and-migration-draft.md`
 
@@ -18,6 +22,7 @@
 
 - `./00-master-plan.md`
 - `./testing-standards.md`
+- `./implementation-decisions.md`
 - `./phase-1-domain-model.md`
 - `./phase-2a-db-schema-and-migration-draft.md`
 
@@ -70,8 +75,11 @@
 
 请先阅读：
 - ./00-master-plan.md
+- ./testing-standards.md
+- ./implementation-decisions.md
 - ./phase-2-db-and-persistence.md
 - ./phase-1-domain-model.md
+- ./phase-2a-db-schema-and-migration-draft.md
 
 本次只允许修改：
 - src/infra/db/
@@ -95,8 +103,15 @@
 
 完成后请输出：
 1. 已修改文件
-2. 新增表结构
-3. 已可持久化对象
-4. 测试结果
-5. 是否可以进入 Phase 3
+2. 已完成能力
+3. 新增表结构
+4. 已可持久化对象
+5. 测试情况：
+   - 已运行哪些测试
+   - 哪些通过
+   - 哪些未运行
+   - 为什么未运行
+   - 当前剩余测试风险
+6. 未解决风险
+7. 是否可以进入 Phase 3
 ```

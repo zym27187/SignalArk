@@ -1,0 +1,43 @@
+app:
+  name: signalark
+  env: dev
+  timezone: UTC
+
+trading:
+  exchange: binance
+  market: spot
+  execution_mode: paper
+  account_id: paper_account_001
+  primary_strategy_id: baseline_momentum_v1
+  symbols:
+    - BTCUSDT
+    - ETHUSDT
+  primary_timeframe: 15m
+
+db:
+  postgres_dsn: ${SIGNALARK_POSTGRES_DSN}
+
+api:
+  host: 0.0.0.0
+  port: 8000
+
+logging:
+  level: INFO
+  format: json
+
+risk:
+  max_single_symbol_notional_usdt: 5000
+  max_total_open_notional_usdt: 10000
+  min_order_notional_usdt: 25
+  market_stale_threshold_seconds: 120
+
+controls:
+  lease_ttl_seconds: 15
+  lease_heartbeat_interval_seconds: 5
+
+alerts:
+  telegram:
+    enabled: false
+    bot_token: ${SIGNALARK_TELEGRAM_BOT_TOKEN}
+    chat_id: ${SIGNALARK_TELEGRAM_CHAT_ID}
+

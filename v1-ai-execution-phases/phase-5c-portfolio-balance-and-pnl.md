@@ -52,6 +52,12 @@
 - 至少有测试覆盖成交后的持仓变化
 - 至少有测试覆盖余额或基础 PnL 更新
 
+## 本次交付时必须汇报
+
+- 持仓、余额和基础 PnL 是如何更新的
+- 当前恢复能力能恢复到什么程度
+- 哪些高阶绩效、归因或账本能力仍是后续项
+
 ## 可直接复制给 AI 的执行提示词
 
 ```text
@@ -59,6 +65,7 @@
 
 请先阅读：
 - ./00-master-plan.md
+- ./testing-standards.md
 - ./phase-5-oms-and-paper-execution.md
 - ./phase-5a-oms-persistence-and-state-machine.md
 - ./phase-5b-paper-execution-adapter.md
@@ -67,7 +74,7 @@
 本次只允许修改：
 - src/domain/portfolio/
 - apps/trader/
-- 与状态更新衔接相关的少量 execution 代码
+- src/domain/execution/ 中与状态更新衔接相关的少量代码
 - tests/unit/
 - tests/integration/
 
@@ -84,8 +91,15 @@
 
 完成后请输出：
 1. 已修改文件
-2. 持仓/余额/PnL 更新规则
-3. 恢复能力说明
-4. 测试结果
-5. 是否可以认为 Phase 5 已完成
+2. 已完成能力
+3. 持仓/余额/PnL 更新规则
+4. 恢复能力说明
+5. 测试情况：
+   - 已运行哪些测试
+   - 哪些通过
+   - 哪些未运行
+   - 为什么未运行
+   - 当前剩余测试风险
+6. 未解决风险
+7. 是否可以认为 Phase 5 已完成
 ```

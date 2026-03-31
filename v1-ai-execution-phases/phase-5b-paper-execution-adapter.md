@@ -49,6 +49,12 @@
 - 至少有测试覆盖 ACK/FILL
 - 至少有测试覆盖 REJECT 或 CANCEL
 
+## 本次交付时必须汇报
+
+- adapter 如何模拟执行
+- 当前已覆盖哪些订单状态变化
+- 哪些组合账本或恢复能力仍留给 `Phase 5C`
+
 ## 可直接复制给 AI 的执行提示词
 
 ```text
@@ -56,6 +62,7 @@
 
 请先阅读：
 - ./00-master-plan.md
+- ./testing-standards.md
 - ./phase-5-oms-and-paper-execution.md
 - ./phase-5a-oms-persistence-and-state-machine.md
 - ./phase-5b-paper-execution-adapter.md
@@ -80,8 +87,15 @@
 
 完成后请输出：
 1. 已修改文件
-2. adapter 如何模拟执行
-3. 已覆盖的订单状态
-4. 测试结果
-5. 是否可以进入 Phase 5C
+2. 已完成能力
+3. adapter 如何模拟执行
+4. 已覆盖的订单状态
+5. 测试情况：
+   - 已运行哪些测试
+   - 哪些通过
+   - 哪些未运行
+   - 为什么未运行
+   - 当前剩余测试风险
+6. 未解决风险
+7. 是否可以进入 Phase 5C
 ```

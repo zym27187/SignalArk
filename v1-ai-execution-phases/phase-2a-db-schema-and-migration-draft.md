@@ -2,6 +2,115 @@
 
 这份文件用于细化 `Phase 2：数据库与核心持久化`。
 
+这份文件既是数据库设计草案，也是 `Phase 2` 默认推荐先执行的单次任务文件。
+
+## 本次目标
+
+先把 V1 的数据库 schema、关键约束和初始 migration 骨架做稳，不在这一阶段扩展到完整 repository 和恢复逻辑。
+
+## 前置依赖
+
+- `Phase 1：事件模型与领域对象`
+
+## 必读上下文
+
+- `./00-master-plan.md`
+- `./testing-standards.md`
+- `./implementation-decisions.md`
+- `./phase-1-domain-model.md`
+- `./phase-2-db-and-persistence.md`
+
+## 允许修改范围
+
+- `src/infra/db/`
+- `migrations/` 或等价目录
+- `src/domain/execution/` 中与 schema 对齐相关的少量代码
+- `src/domain/portfolio/` 中与 schema 对齐相关的少量代码
+- `tests/unit/`
+- `tests/integration/`
+- 当前文档
+
+## 本次必须完成的任务
+
+- 初始化 migration 框架或等价机制
+- 明确并落地核心表结构
+- 明确并落地主键、唯一键、必要索引
+- 让 schema 与 `Signal -> OrderIntent -> Order -> Fill -> Position / Balance` 主链路对齐
+- 产出可执行的第一版 migration 骨架
+
+## 本次不要做
+
+- 不实现完整 repository 层
+- 不实现完整恢复服务
+- 不做复杂分析型表设计
+- 不提前建设大而全查询层
+
+## 完成标准
+
+- 初始 migration 可以表达 V1 核心表结构
+- 关键唯一约束和基础索引已明确
+- schema 设计与主链路一致
+
+## 最低验证要求
+
+- 至少验证 migration 可以创建核心表
+- 至少验证 1 组关键唯一约束
+- 至少验证 1 组基础读写路径
+
+## 本次交付时必须汇报
+
+- 建了哪些表
+- 哪些唯一约束和索引已经落地
+- 当前哪些能力刻意留到 `Phase 2` 主任务或后续阶段
+
+## 可直接复制给 AI 的执行提示词
+
+```text
+你现在负责本项目的 Phase 2A：数据库表结构与 Migration 草案。
+
+请先阅读：
+- ./00-master-plan.md
+- ./testing-standards.md
+- ./implementation-decisions.md
+- ./phase-2-db-and-persistence.md
+- ./phase-2a-db-schema-and-migration-draft.md
+- ./phase-1-domain-model.md
+
+本次只允许修改：
+- src/infra/db/
+- migrations/ 或等价目录
+- src/domain/execution/ 中与 schema 对齐相关的少量代码
+- src/domain/portfolio/ 中与 schema 对齐相关的少量代码
+- tests/unit/
+- tests/integration/
+- 当前文档
+
+本次必须完成：
+- 初始化 migration 框架或等价机制
+- 明确并落地核心表结构
+- 明确并落地主键、唯一键、必要索引
+- 产出可执行的第一版 migration 骨架
+
+严格不要做：
+- 不实现完整 repository 层
+- 不实现完整恢复服务
+- 不做复杂分析型表设计
+- 不提前建设大而全查询层
+
+完成后请输出：
+1. 已修改文件
+2. 已完成能力
+3. 新增或确认的 schema / migration
+4. 测试情况：
+   - 已运行哪些测试
+   - 哪些通过
+   - 哪些未运行
+   - 为什么未运行
+   - 当前剩余测试风险
+5. 未解决风险
+6. 是否可以进入 Phase 2 主实现
+```
+
 它回答三个问题：
 
 1. V1 最少要建哪些表
@@ -20,6 +129,7 @@ V1 数据库设计优先保证：
 - 重启后核心状态可恢复
 - `OrderIntent` 先落库再执行
 - 关键状态变化可追踪
+- 可以按 `trader_run_id` 或等价运行批次回放关键交易事件
 - 结构足够简单，便于个人项目维护
 
 V1 不优先追求：
@@ -58,6 +168,8 @@ V1 建议最少建立下面 7 张核心表：
 
 如果当前实现还没有稳定的 PnL 更新链路，`pnl_snapshots` 可以在 `Phase 5C` 或 `Phase 7` 再补。
 
+即使 `strategy_runs` 或等价表后置，V1 也仍然要求核心交易事实至少能关联 `trader_run_id`。
+
 ---
 
 ## 3. 表职责说明
@@ -73,6 +185,7 @@ V1 建议最少建立下面 7 张核心表：
 
 - `id`
 - `strategy_id`
+- `trader_run_id`
 - `account_id`
 - `exchange`
 - `symbol`
@@ -90,6 +203,7 @@ V1 建议最少建立下面 7 张核心表：
 
 - `signal_type` 可以先支持简单枚举，例如 `ENTRY`、`EXIT`、`REDUCE`
 - `status` 可以先简单定义为 `NEW / CONSUMED / EXPIRED / REJECTED`
+- `target_position` 表示目标成交后的绝对持仓，不表示本次下单增量
 
 ### 3.2 `order_intents`
 
@@ -103,6 +217,7 @@ V1 建议最少建立下面 7 张核心表：
 - `id`
 - `signal_id`
 - `strategy_id`
+- `trader_run_id`
 - `account_id`
 - `exchange`
 - `symbol`
@@ -110,6 +225,7 @@ V1 建议最少建立下面 7 张核心表：
 - `order_type`
 - `qty`
 - `price`
+- `decision_price`
 - `time_in_force`
 - `reduce_only`
 - `idempotency_key`
@@ -122,6 +238,8 @@ V1 建议最少建立下面 7 张核心表：
 
 - `idempotency_key` 必须唯一
 - `risk_decision` 可先支持 `ALLOW / REJECT`
+- `qty` 表示已经过精度、最小下单量和 lot 规则归一化后的实际下单增量
+- `decision_price` 用于记录生成 `OrderIntent` 时采用的参考价格；`market order` 默认取最近可接受 `BarEvent.close`，`limit order` 通常等于 `price`
 
 ### 3.3 `orders`
 
@@ -134,6 +252,7 @@ V1 建议最少建立下面 7 张核心表：
 
 - `id`
 - `order_intent_id`
+- `trader_run_id`
 - `exchange_order_id`
 - `account_id`
 - `exchange`
@@ -167,6 +286,7 @@ V1 建议最少建立下面 7 张核心表：
 
 - `id`
 - `order_id`
+- `trader_run_id`
 - `exchange_fill_id`
 - `account_id`
 - `exchange`
@@ -249,6 +369,7 @@ V1 建议最少建立下面 7 张核心表：
 - `event_id`
 - `event_type`
 - `source`
+- `trader_run_id`
 - `account_id`
 - `exchange`
 - `symbol`
@@ -294,6 +415,7 @@ event_logs
 - 一个 `order_intent` 在第一版通常只对应 1 个主订单，但结构上建议保留 1 对多空间
 - 一个 `order` 可以对应多个 `fill`
 - `positions` 和 `balance_snapshots` 更像“当前状态”或“快照状态”，不建议直接设计成强外键链路中心
+- `event_logs` 应能通过 `trader_run_id + event_time` 回放单次运行中的关键链路
 
 ---
 
@@ -326,12 +448,16 @@ event_logs
 建议优先建立这些索引：
 
 - `signals(strategy_id, symbol, event_time)`
+- `signals(trader_run_id, event_time)`
 - `order_intents(account_id, symbol, created_at)`
+- `order_intents(trader_run_id, created_at)`
 - `orders(account_id, symbol, status, updated_at)`
+- `orders(trader_run_id, updated_at)`
 - `fills(order_id, fill_time)`
 - `positions(account_id, symbol)`
 - `balance_snapshots(account_id, asset, snapshot_time)`
 - `event_logs(event_type, event_time)`
+- `event_logs(trader_run_id, event_time)`
 
 V1 不需要一开始就做复杂复合索引优化，先覆盖最常见查询路径即可。
 
