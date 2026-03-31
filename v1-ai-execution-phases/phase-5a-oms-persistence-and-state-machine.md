@@ -15,6 +15,7 @@
 ## 必读上下文
 
 - `./00-master-plan.md`
+- `./testing-standards.md`
 - `./phase-5-oms-and-paper-execution.md`
 - `./phase-1-domain-model.md`
 - `./phase-2-db-and-persistence.md`

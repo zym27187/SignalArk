@@ -13,6 +13,7 @@
 ## 必读上下文
 
 - `./00-master-plan.md`
+- `./testing-standards.md`
 - `./phase-7-baseline-strategy.md`
 
 ## 允许修改范围

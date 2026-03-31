@@ -14,6 +14,7 @@
 ## 必读上下文
 
 - `./00-master-plan.md`
+- `./testing-standards.md`
 - `./phase-6-risk-and-control-plane.md`
 - `./phase-6a-pretrade-risk-rules.md`
 - `./phase-6b-api-and-operator-controls.md`

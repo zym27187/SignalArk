@@ -19,6 +19,7 @@
 ## 必读上下文
 
 - `./00-master-plan.md`
+- `./testing-standards.md`
 - `./phase-5-oms-and-paper-execution.md`
 
 ## 允许修改范围

@@ -13,6 +13,7 @@
 ## 必读上下文
 
 - `./00-master-plan.md`
+- `./testing-standards.md`
 - `./phase-6-risk-and-control-plane.md`
 - `./phase-5-oms-and-paper-execution.md`
 

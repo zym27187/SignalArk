@@ -13,7 +13,8 @@
 ## 必读上下文
 
 - `./00-master-plan.md`
-- `../ai-quant-trading-architecture.md`
+- `./testing-standards.md`
+- `../archive/ai-quant-trading-architecture.md`
 
 ## 允许修改范围
 

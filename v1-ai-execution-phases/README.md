@@ -5,10 +5,11 @@
 使用方式：
 
 1. 先阅读总控文件：`./00-master-plan.md`
-2. 如果想直接复制提示词，优先使用：`./prompts.md`
-3. 每次只选择 `1 个 phase` 文件或 `1 个提示词` 交给 AI
-4. 当前 phase 未完成前，不进入下一个 phase
-5. AI 完成后，先验收，再进入下一阶段
+2. 再阅读测试规范：`./testing-standards.md`
+3. 如果想直接复制提示词，优先使用：`./prompts.md`
+4. 每次只选择 `1 个 phase` 文件或 `1 个提示词` 交给 AI
+5. 当前 phase 未完成前，不进入下一个 phase
+6. AI 完成后，先验收，再进入下一阶段
 
 执行顺序：
 
@@ -25,6 +26,7 @@
 
 如果需要更细粒度的单次编码任务，请优先使用下面这些子任务文件：
 
+- [Phase 2A：数据库表结构与 Migration 草案](./phase-2a-db-schema-and-migration-draft.md)
 - [Phase 5A：OMS 持久化与状态机](./phase-5a-oms-persistence-and-state-machine.md)
 - [Phase 5B：Paper Execution Adapter](./phase-5b-paper-execution-adapter.md)
 - [Phase 5C：Portfolio / Balance / PnL 更新](./phase-5c-portfolio-balance-and-pnl.md)

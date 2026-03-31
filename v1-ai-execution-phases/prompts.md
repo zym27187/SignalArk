@@ -9,12 +9,14 @@
 3. `Phase 5` 和 `Phase 6` 如果范围偏大，优先使用它们的子任务提示词
 4. 所有提示词都必须遵守总纲文件：
    - `v1-ai-execution-phases/00-master-plan.md`
+   - `v1-ai-execution-phases/testing-standards.md`
 
 推荐阅读顺序：
 
 1. `v1-ai-execution-phases/00-master-plan.md`
-2. `v1-ai-execution-phases/README.md`
-3. 复制本文件中的某一个提示词交给 AI
+2. `v1-ai-execution-phases/testing-standards.md`
+3. `v1-ai-execution-phases/README.md`
+4. 复制本文件中的某一个提示词交给 AI
 
 ---
 
@@ -102,6 +104,7 @@
 - v1-ai-execution-phases/00-master-plan.md
 - v1-ai-execution-phases/phase-2-db-and-persistence.md
 - v1-ai-execution-phases/phase-1-domain-model.md
+- v1-ai-execution-phases/phase-2a-db-schema-and-migration-draft.md
 
 本次只允许修改：
 - src/infra/db/

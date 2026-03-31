@@ -15,6 +15,7 @@
 ## 必读上下文
 
 - `./00-master-plan.md`
+- `./testing-standards.md`
 - `./phase-3-collector-and-market-gateway.md`
 
 ## 允许修改范围

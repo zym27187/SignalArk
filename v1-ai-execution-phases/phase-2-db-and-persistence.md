@@ -2,6 +2,10 @@
 
 这份文件用于 AI 单次执行 `Phase 2`。
 
+如果需要更细的数据库实现说明，请继续阅读：
+
+- `./phase-2a-db-schema-and-migration-draft.md`
+
 ## 本次目标
 
 建立交易系统的本地事实源，让订单、成交、持仓、余额等状态不依赖内存存活。
@@ -13,7 +17,9 @@
 ## 必读上下文
 
 - `./00-master-plan.md`
+- `./testing-standards.md`
 - `./phase-1-domain-model.md`
+- `./phase-2a-db-schema-and-migration-draft.md`
 
 ## 允许修改范围
 
