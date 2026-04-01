@@ -14,3 +14,6 @@ dist/
 .DS_Store
 AGENTS.md
 archive/project-zero-to-one-methodology.md
+.vscode/
+.idea/
+*.log
