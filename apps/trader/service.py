@@ -4,19 +4,25 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
+from uuid import UUID
 
 import structlog
 from src.config import Settings
+from src.config.settings import AshareSymbolRule
 from src.domain.events import BarEvent
+from src.domain.strategy import Signal, build_strategy
+from src.infra.db import create_database_engine, create_session_factory
 from src.infra.messaging import InProcessEventBus
+from src.infra.observability import build_observability
 from src.shared.logging import bind_log_context
-from src.shared.types import shanghai_now
 
 from apps.collector.service import CollectorService, build_default_collector_service
+from apps.trader.control_plane import TraderControlPlaneStore, TraderControlRuntime
+from apps.trader.oms import TraderOmsService, build_default_trader_oms_service
 from apps.trader.runtime import TraderRuntimeState
 
 
@@ -31,13 +37,18 @@ class TraderEventSource(Protocol):
 class StrategyPort(Protocol):
     """Future strategy runtime hook fed by actionable bars."""
 
-    async def on_bar(self, event: BarEvent, context: TraderEventContext) -> None: ...
+    async def on_bar(self, event: BarEvent, context: TraderEventContext) -> object | None: ...
 
 
 class RiskPort(Protocol):
     """Future risk runtime hook reserved for Phase 5 signal handling."""
 
-    async def on_signal(self, signal: object, context: TraderEventContext) -> None: ...
+    async def on_signal(
+        self,
+        signal: object,
+        event: BarEvent,
+        context: TraderEventContext,
+    ) -> object | None: ...
 
 
 class OmsPort(Protocol):
@@ -58,6 +69,10 @@ class TraderEventContext:
     instance_id: str
     received_at: datetime
     runtime_state: TraderRuntimeState
+
+    @property
+    def trader_run_uuid(self) -> UUID:
+        return UUID(self.trader_run_id)
 
 
 @dataclass(slots=True)
@@ -110,6 +125,50 @@ class BarTriggerGate:
         return True, "new_final_bar"
 
 
+@dataclass(slots=True)
+class OmsSignalRiskRouter:
+    """Route strategy-generated signals into the settings-backed OMS service."""
+
+    oms_service: TraderOmsService
+    symbol_rules: Mapping[str, AshareSymbolRule]
+    control_runtime: TraderControlRuntime | None = None
+    _symbol_rules: dict[str, AshareSymbolRule] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._symbol_rules = {
+            str(symbol).strip().upper(): rule for symbol, rule in self.symbol_rules.items()
+        }
+
+    @property
+    def oms_handler_name(self) -> str:
+        return type(self.oms_service).__name__
+
+    async def on_signal(
+        self,
+        signal: object,
+        event: BarEvent,
+        context: TraderEventContext,
+    ) -> object | None:
+        if not isinstance(signal, Signal):
+            return None
+
+        control_state = context.runtime_state.control_state
+        submission_guard = None
+        if self.control_runtime is not None:
+            control_state = self.control_runtime.control_state
+            submission_guard = self.control_runtime.submission_guard()
+
+        return await self.oms_service.submit_signal(
+            signal=signal,
+            symbol_rule=self._symbol_rules.get(signal.symbol),
+            decision_price=event.decision_price,
+            market_context=event.market_state,
+            control_state=control_state,
+            submission_guard=submission_guard,
+            received_at=context.received_at,
+        )
+
+
 class TraderService:
     """Own the trader lifecycle, source loop, event bus, and runtime state."""
 
@@ -120,6 +179,7 @@ class TraderService:
         event_bus: InProcessEventBus | None = None,
         runtime_state: TraderRuntimeState | None = None,
         pipeline: TraderPipelinePorts | None = None,
+        control_runtime: TraderControlRuntime | None = None,
         bind_run_id_to_logs: bool = True,
         bar_trigger_capacity: int = 4096,
     ) -> None:
@@ -127,6 +187,7 @@ class TraderService:
         self._event_bus = event_bus or InProcessEventBus()
         self._runtime_state = runtime_state or TraderRuntimeState()
         self._pipeline = pipeline or TraderPipelinePorts()
+        self._control_runtime = control_runtime
         self._bind_run_id_to_logs = bind_run_id_to_logs
         self._bar_trigger_gate = BarTriggerGate(recent_capacity=bar_trigger_capacity)
         self._logger = structlog.get_logger(__name__)
@@ -164,7 +225,19 @@ class TraderService:
                 self._consume_events(),
                 name="trader-source-loop",
             )
-            self._runtime_state.mark_running()
+            self._runtime_state.mark_running(ready=self._control_runtime is None)
+            if self._control_runtime is not None:
+                try:
+                    await self._control_runtime.start(self._runtime_state)
+                except Exception:
+                    if self._source_task is not None and not self._source_task.done():
+                        self._source_task.cancel()
+                        await asyncio.gather(self._source_task, return_exceptions=True)
+                    await self._event_bus.stop()
+                    await self._source.aclose()
+                    self._runtime_state.mark_stopped("control_runtime_start_failed")
+                    self._closed = True
+                    raise
 
             self._logger.info(
                 "trader_started",
@@ -251,6 +324,8 @@ class TraderService:
                 cleanup_errors.append(exc)
 
             self._runtime_state.mark_stopped(reason)
+            if self._control_runtime is not None:
+                await self._control_runtime.stop(reason=reason)
             self._closed = True
             self._logger.info(
                 "trader_stopped",
@@ -304,6 +379,41 @@ class TraderService:
             return
 
         self._runtime_state.record_event(event)
+        if self._control_runtime is not None:
+            await self._control_runtime.observe_bar(event)
+
+        if self._runtime_state.readiness_status != "ready":
+            self._runtime_state.record_ignored_bar(event, "trader_not_ready")
+            self._logger.info(
+                "trader_bar_ignored",
+                trader_run_id=self._runtime_state.trader_run_id,
+                instance_id=self._runtime_state.instance_id,
+                bar_key=event.bar_key,
+                exchange=event.exchange,
+                symbol=event.symbol,
+                timeframe=event.timeframe,
+                reason="trader_not_ready",
+                final=event.final,
+                closed=event.closed,
+            )
+            return
+
+        if not self._runtime_state.strategy_enabled:
+            self._runtime_state.record_ignored_bar(event, "strategy_paused")
+            self._logger.info(
+                "trader_bar_ignored",
+                trader_run_id=self._runtime_state.trader_run_id,
+                instance_id=self._runtime_state.instance_id,
+                bar_key=event.bar_key,
+                exchange=event.exchange,
+                symbol=event.symbol,
+                timeframe=event.timeframe,
+                reason="strategy_paused",
+                final=event.final,
+                closed=event.closed,
+            )
+            return
+
         allowed, reason = self._bar_trigger_gate.allow(event)
         if not allowed:
             self._runtime_state.record_ignored_bar(event, reason)
@@ -325,7 +435,7 @@ class TraderService:
         context = TraderEventContext(
             trader_run_id=self._runtime_state.trader_run_id,
             instance_id=self._runtime_state.instance_id,
-            received_at=shanghai_now(),
+            received_at=event.ingest_time,
             runtime_state=self._runtime_state,
         )
         self._logger.info(
@@ -340,13 +450,18 @@ class TraderService:
         )
 
         if self._pipeline.strategy is not None:
-            await self._pipeline.strategy.on_bar(event, context)
+            signal = await self._pipeline.strategy.on_bar(event, context)
+            if signal is not None and self._pipeline.risk is not None:
+                await self._pipeline.risk.on_signal(signal, event, context)
 
     def _bind_pipeline_state(self) -> None:
         if self._pipeline.strategy is not None:
             self._runtime_state.pipeline.strategy.bind(type(self._pipeline.strategy).__name__)
         if self._pipeline.risk is not None:
             self._runtime_state.pipeline.risk.bind(type(self._pipeline.risk).__name__)
+            oms_handler_name = getattr(self._pipeline.risk, "oms_handler_name", None)
+            if isinstance(oms_handler_name, str) and oms_handler_name:
+                self._runtime_state.pipeline.oms.bind(oms_handler_name)
         if self._pipeline.oms is not None:
             self._runtime_state.pipeline.oms.bind(type(self._pipeline.oms).__name__)
 
@@ -354,6 +469,7 @@ class TraderService:
 def build_default_trader_service(
     settings: Settings,
     *,
+    strategy: StrategyPort | None = None,
     pipeline: TraderPipelinePorts | None = None,
 ) -> TraderService:
     """Build the default trader runtime entrypoint used by the CLI."""
@@ -364,8 +480,55 @@ def build_default_trader_service(
         symbol_rules=settings.symbol_rules,
     )
     source = CollectorBarEventSource(collector)
+    engine = create_database_engine(settings=settings)
+    session_factory = create_session_factory(engine)
+    control_store = TraderControlPlaneStore(session_factory)
+    observability = build_observability(
+        settings=settings,
+        service="trader",
+        logger_name="signalark.trader.control_plane",
+    )
+    control_runtime = TraderControlRuntime(
+        control_store,
+        account_id=settings.account_id,
+        timeframe=settings.primary_timeframe,
+        market_stale_threshold_seconds=settings.market_stale_threshold_seconds,
+        lease_ttl_seconds=settings.lease_ttl_seconds,
+        heartbeat_interval_seconds=settings.lease_heartbeat_interval_seconds,
+        observability=observability,
+    )
+    resolved_pipeline = pipeline or TraderPipelinePorts()
+    if strategy is not None:
+        if resolved_pipeline.strategy is not None:
+            raise ValueError("pipeline.strategy and strategy cannot both be provided")
+        if resolved_pipeline.risk is not None:
+            raise ValueError("pipeline.risk and strategy cannot both be provided")
+        resolved_pipeline.strategy = strategy
+    elif (
+        resolved_pipeline.strategy is None
+        and resolved_pipeline.risk is None
+        and resolved_pipeline.oms is None
+    ):
+        resolved_pipeline.strategy = build_strategy(
+            strategy_id=settings.primary_strategy_id,
+            account_id=settings.account_id,
+        )
+
+    if resolved_pipeline.strategy is not None and resolved_pipeline.risk is None:
+        oms_service = build_default_trader_oms_service(
+            settings=settings,
+            session_factory=session_factory,
+            control_store=control_store,
+            observability=observability,
+        )
+        resolved_pipeline.risk = OmsSignalRiskRouter(
+            oms_service=oms_service,
+            symbol_rules=settings.symbol_rules,
+            control_runtime=control_runtime,
+        )
     return TraderService(
         source,
-        pipeline=pipeline,
+        pipeline=resolved_pipeline,
+        control_runtime=control_runtime,
         bind_run_id_to_logs=settings.trader_run_id_bind_to_logs,
     )

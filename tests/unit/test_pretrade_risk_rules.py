@@ -15,6 +15,7 @@ from src.domain.risk import (
     PreTradeRiskGate,
     PreTradeRiskPolicy,
     RiskControlState,
+    resolve_risk_control_state,
 )
 from src.domain.strategy import Signal, SignalType
 
@@ -163,6 +164,41 @@ def test_pretrade_risk_rejects_stale_market_data() -> None:
 
     assert result.allowed is False
     assert result.reason_code == "MARKET_DATA_STALE"
+
+
+def test_resolve_risk_control_state_honors_fixed_priority() -> None:
+    assert (
+        resolve_risk_control_state(
+            strategy_enabled=True,
+            kill_switch_active=False,
+            protection_mode_active=False,
+        )
+        is RiskControlState.NORMAL
+    )
+    assert (
+        resolve_risk_control_state(
+            strategy_enabled=False,
+            kill_switch_active=False,
+            protection_mode_active=False,
+        )
+        is RiskControlState.STRATEGY_PAUSED
+    )
+    assert (
+        resolve_risk_control_state(
+            strategy_enabled=False,
+            kill_switch_active=True,
+            protection_mode_active=False,
+        )
+        is RiskControlState.KILL_SWITCH
+    )
+    assert (
+        resolve_risk_control_state(
+            strategy_enabled=True,
+            kill_switch_active=True,
+            protection_mode_active=True,
+        )
+        is RiskControlState.PROTECTION_MODE
+    )
 
 
 def test_pretrade_risk_rejects_limit_without_market_state() -> None:

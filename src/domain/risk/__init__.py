@@ -6,6 +6,7 @@ from src.domain.risk.pretrade import (
     PreTradeRiskPolicy,
     PreTradeRiskResult,
     RiskControlState,
+    resolve_risk_control_state,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "PreTradeRiskPolicy",
     "PreTradeRiskResult",
     "RiskControlState",
+    "resolve_risk_control_state",
 ]

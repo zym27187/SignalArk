@@ -6,7 +6,13 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import pytest
-from apps.trader.oms import OmsPersistencePort, TraderOmsService
+from apps.trader.control_plane import (
+    SubmissionLeaseGuard,
+    TraderControlSnapshot,
+    TraderLeaseSnapshot,
+)
+from apps.trader.oms import OmsPersistencePort, TraderOmsService, build_default_trader_oms_service
+from src.config import Settings
 from src.config.settings import AshareSymbolRule, PaperCostModel
 from src.domain.execution import (
     ExecutionReport,
@@ -14,15 +20,26 @@ from src.domain.execution import (
     Order,
     OrderIntent,
     OrderIntentStatus,
+    OrderSide,
     OrderStatus,
+    OrderType,
+    TimeInForce,
     build_order_id_for_intent,
+    create_order_from_intent,
 )
 from src.domain.market import MarketStateSnapshot, SuspensionStatus, TradingPhase
 from src.domain.portfolio import BalanceSnapshot, Position, PositionStatus
 from src.domain.risk import RiskControlState
 from src.domain.strategy import Signal, SignalType
-from src.infra.db import EventLogEntry, RecoveryState
+from src.infra.db import (
+    Base,
+    EventLogEntry,
+    RecoveryState,
+    create_database_engine,
+    create_session_factory,
+)
 from src.infra.exchanges import PaperExecutionAdapter, PaperExecutionScenario, PaperFillSlice
+from src.infra.observability import AlertRouter, RecordingAlertSink, SignalArkObservability
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 BASE_TIME = datetime(2026, 4, 1, 10, 30, tzinfo=SHANGHAI)
@@ -100,6 +117,14 @@ def _balance_snapshot(*, snapshot_time: datetime | None = None) -> BalanceSnapsh
     )
 
 
+def _observability(sink: RecordingAlertSink) -> SignalArkObservability:
+    return SignalArkObservability(
+        service="tests",
+        alert_router=AlertRouter((sink,), clock=lambda: BASE_TIME),
+        clock=lambda: BASE_TIME,
+    )
+
+
 class RecordingPersistence(OmsPersistencePort):
     def __init__(self) -> None:
         self.operations: list[str] = []
@@ -169,6 +194,19 @@ class RecordingPersistence(OmsPersistencePort):
     def get_order(self, order_id: UUID) -> Order | None:
         self.operations.append("get_order")
         return self.orders.get(order_id)
+
+    def get_order_intent(self, order_intent_id: UUID) -> OrderIntent | None:
+        self.operations.append("get_order_intent")
+        return self.order_intents.get(order_intent_id)
+
+    def list_active_orders(self, *, account_id: str) -> tuple[Order, ...]:
+        self.operations.append("list_active_orders")
+        return tuple(
+            order
+            for order in self.orders.values()
+            if order.account_id == account_id
+            and order.status in {OrderStatus.NEW, OrderStatus.ACK, OrderStatus.PARTIALLY_FILLED}
+        )
 
     def save_event_log(self, event_log: EventLogEntry) -> EventLogEntry:
         self.operations.append(f"save_event_log:{event_log.event_type}")
@@ -253,6 +291,71 @@ class RecordingGateway:
     async def cancel_order(self, order: Order) -> ExecutionReport:
         self.operations.append("gateway.cancel_order")
         return ExecutionReport()
+
+
+class FakeControlStore:
+    def __init__(
+        self,
+        *,
+        control_snapshot: TraderControlSnapshot | None = None,
+        lease_valid: bool = True,
+    ) -> None:
+        self.control_snapshot = control_snapshot or TraderControlSnapshot(
+            account_id="paper_account_001"
+        )
+        self.lease_valid = lease_valid
+        self.protection_mode_requests: list[tuple[str, bool]] = []
+
+    def get_control_snapshot(self, account_id: str) -> TraderControlSnapshot:
+        assert account_id == self.control_snapshot.account_id
+        return self.control_snapshot
+
+    def validate_submission_lease(
+        self,
+        *,
+        account_id: str,
+        instance_id: str,
+        fencing_token: int,
+        now: datetime | None = None,
+    ):
+        return type(
+            "LeaseResult",
+            (),
+            {
+                "accepted": self.lease_valid,
+                "message": "lease_valid_for_submission" if self.lease_valid else "lease_not_held",
+                "snapshot": TraderLeaseSnapshot(
+                    account_id=account_id,
+                    owner_instance_id=("other-instance" if not self.lease_valid else instance_id),
+                    lease_expires_at=now,
+                    last_heartbeat_at=now,
+                    fencing_token=(fencing_token + 1 if not self.lease_valid else fencing_token),
+                ),
+            },
+        )()
+
+    def set_protection_mode(
+        self,
+        *,
+        account_id: str,
+        active: bool,
+    ) -> TraderControlSnapshot:
+        self.protection_mode_requests.append((account_id, active))
+        self.control_snapshot = TraderControlSnapshot(
+            account_id=account_id,
+            strategy_enabled=self.control_snapshot.strategy_enabled,
+            kill_switch_active=self.control_snapshot.kill_switch_active,
+            protection_mode_active=active,
+            cancel_all_token=self.control_snapshot.cancel_all_token,
+            last_cancel_all_at=self.control_snapshot.last_cancel_all_at,
+            updated_at=BASE_TIME,
+        )
+        return self.control_snapshot
+
+
+class FailingOrderIntentPersistence(RecordingPersistence):
+    def save_order_intent(self, order_intent: OrderIntent) -> OrderIntent:
+        raise RuntimeError("order_intent_write_failed")
 
 
 @pytest.mark.asyncio
@@ -553,4 +656,219 @@ async def test_trader_oms_service_rejects_near_duplicate_active_order_intents() 
     assert (
         persistence.event_logs[-1].payload_json["risk_result"]["reason_code"]
         == "DUPLICATE_ORDER_INTENT"
+    )
+
+
+@pytest.mark.asyncio
+async def test_trader_oms_service_rejects_submission_when_submission_guard_is_invalid() -> None:
+    persistence = RecordingPersistence()
+    gateway = RecordingGateway(persistence.operations)
+    sink = RecordingAlertSink()
+    service = TraderOmsService(
+        persistence,
+        execution_gateway=gateway,
+        control_store=FakeControlStore(lease_valid=False),
+        observability=_observability(sink),
+    )
+
+    result = await service.submit_signal(
+        signal=_signal(),
+        symbol_rule=SYMBOL_RULE,
+        decision_price=Decimal("39.50"),
+        market_context=MARKET_STATE,
+        submission_guard=SubmissionLeaseGuard(
+            account_id="paper_account_001",
+            instance_id="instance-A",
+            fencing_token=7,
+        ),
+        received_at=BASE_TIME + timedelta(seconds=2),
+    )
+
+    assert result is None
+    assert not persistence.order_intents
+    assert not persistence.orders
+    assert not gateway.calls
+    assert persistence.event_logs[-1].event_type == "oms.risk_rejected"
+    assert persistence.event_logs[-1].payload_json["risk_result"]["reason_code"] == "LEASE_NOT_HELD"
+    assert [event.event_name for event in sink.events] == ["oms.risk_rejected"]
+    assert sink.events[0].reason_code == "LEASE_NOT_HELD"
+
+
+@pytest.mark.asyncio
+async def test_trader_oms_service_alerts_after_repeated_risk_rejections() -> None:
+    persistence = RecordingPersistence()
+    sink = RecordingAlertSink()
+    service = TraderOmsService(
+        persistence,
+        execution_gateway=RecordingGateway(persistence.operations),
+        observability=_observability(sink),
+    )
+
+    for offset_seconds in (31, 32, 33):
+        result = await service.submit_signal(
+            signal=_signal().model_copy(
+                update={"created_at": BASE_TIME + timedelta(seconds=offset_seconds)}
+            ),
+            symbol_rule=SYMBOL_RULE,
+            decision_price=Decimal("39.50"),
+            market_context=MARKET_STATE,
+            received_at=BASE_TIME + timedelta(minutes=offset_seconds),
+        )
+
+        assert result is None
+
+    assert [event.event_name for event in sink.events] == ["oms.risk_rejected"]
+    assert sink.events[0].reason_code == "MARKET_DATA_STALE"
+
+
+@pytest.mark.asyncio
+async def test_trader_oms_service_alerts_on_order_intent_write_failure() -> None:
+    persistence = FailingOrderIntentPersistence()
+    sink = RecordingAlertSink()
+    service = TraderOmsService(
+        persistence,
+        execution_gateway=RecordingGateway(persistence.operations),
+        observability=_observability(sink),
+    )
+
+    with pytest.raises(RuntimeError, match="order_intent_write_failed"):
+        await service.submit_signal(
+            signal=_signal(),
+            symbol_rule=SYMBOL_RULE,
+            decision_price=Decimal("39.50"),
+            market_context=MARKET_STATE,
+            received_at=BASE_TIME + timedelta(seconds=2),
+        )
+
+    assert [event.event_name for event in sink.events] == ["db.order_intent_write_failed"]
+    assert sink.events[0].reason_code == "ORDER_INTENT_WRITE_FAILED"
+
+
+@pytest.mark.asyncio
+async def test_trader_oms_service_enters_protection_mode_after_critical_write_failure() -> None:
+    persistence = FailingOrderIntentPersistence()
+    sink = RecordingAlertSink()
+    control_store = FakeControlStore()
+    service = TraderOmsService(
+        persistence,
+        execution_gateway=RecordingGateway(persistence.operations),
+        control_store=control_store,
+        observability=_observability(sink),
+    )
+
+    with pytest.raises(RuntimeError, match="order_intent_write_failed"):
+        await service.submit_signal(
+            signal=_signal(),
+            symbol_rule=SYMBOL_RULE,
+            decision_price=Decimal("39.50"),
+            market_context=MARKET_STATE,
+            received_at=BASE_TIME + timedelta(seconds=2),
+        )
+
+    assert control_store.protection_mode_requests == [("paper_account_001", True)]
+    assert [event.event_name for event in sink.events] == [
+        "control.protection_mode_requested",
+        "db.order_intent_write_failed",
+    ]
+    assert sink.events[0].reason_code == "ORDER_INTENT_WRITE_FAILED"
+
+
+def test_build_default_trader_oms_service_uses_settings_backed_risk_policy(tmp_path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'settings_backed_oms.sqlite3'}"
+    engine = create_database_engine(database_url)
+    Base.metadata.create_all(bind=engine)
+    try:
+        session_factory = create_session_factory(engine)
+        settings = Settings(
+            postgres_dsn=database_url,
+            max_single_symbol_notional_cny=Decimal("123456"),
+            max_total_open_notional_cny=Decimal("654321"),
+            min_order_notional_cny=Decimal("4321"),
+            market_stale_threshold_seconds=77,
+        )
+
+        service = build_default_trader_oms_service(
+            settings=settings,
+            session_factory=session_factory,
+        )
+
+        policy = service._risk_gate.policy
+        assert policy.max_single_symbol_notional_cny == Decimal("123456")
+        assert policy.max_total_open_notional_cny == Decimal("654321")
+        assert policy.min_order_notional_cny == Decimal("4321")
+        assert policy.market_stale_threshold_seconds == 77
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_trader_oms_service_cancel_all_preserves_reduce_only_orders_in_kill_switch() -> None:
+    persistence = RecordingPersistence()
+    gateway = PaperExecutionAdapter(cost_model=_paper_cost_model())
+    service = TraderOmsService(persistence, execution_gateway=gateway)
+    buy_signal = _signal().model_copy(update={"id": UUID("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")})
+    sell_signal = _signal().model_copy(update={"id": UUID("ffffffff-ffff-4fff-8fff-ffffffffffff")})
+    buy_intent = OrderIntent(
+        signal_id=buy_signal.id,
+        strategy_id=buy_signal.strategy_id,
+        trader_run_id=buy_signal.trader_run_id,
+        account_id=buy_signal.account_id,
+        exchange=buy_signal.exchange,
+        symbol=buy_signal.symbol,
+        side=OrderSide.BUY,
+        order_type=OrderType.MARKET,
+        time_in_force=TimeInForce.DAY,
+        qty=Decimal("100"),
+        decision_price=Decimal("39.50"),
+        idempotency_key="test-buy-intent",
+        created_at=BASE_TIME + timedelta(seconds=1),
+    )
+    reduce_only_intent = OrderIntent(
+        signal_id=sell_signal.id,
+        strategy_id=sell_signal.strategy_id,
+        trader_run_id=sell_signal.trader_run_id,
+        account_id=sell_signal.account_id,
+        exchange=sell_signal.exchange,
+        symbol=sell_signal.symbol,
+        side=OrderSide.SELL,
+        order_type=OrderType.MARKET,
+        time_in_force=TimeInForce.DAY,
+        qty=Decimal("100"),
+        decision_price=Decimal("39.50"),
+        reduce_only=True,
+        idempotency_key="test-reduce-only-intent",
+        created_at=BASE_TIME + timedelta(seconds=2),
+    )
+    persistence.signals[buy_signal.id] = buy_signal
+    persistence.signals[sell_signal.id] = sell_signal
+    persistence.order_intents[buy_intent.id] = buy_intent.model_copy(
+        update={"status": OrderIntentStatus.SUBMITTED}
+    )
+    persistence.order_intents[reduce_only_intent.id] = reduce_only_intent.model_copy(
+        update={"status": OrderIntentStatus.SUBMITTED}
+    )
+    persistence.orders[build_order_id_for_intent(buy_intent.id)] = create_order_from_intent(
+        persistence.order_intents[buy_intent.id],
+        submitted_at=BASE_TIME + timedelta(seconds=3),
+    )
+    persistence.orders[build_order_id_for_intent(reduce_only_intent.id)] = create_order_from_intent(
+        persistence.order_intents[reduce_only_intent.id],
+        submitted_at=BASE_TIME + timedelta(seconds=4),
+    )
+
+    result = await service.cancel_all_orders(
+        account_id="paper_account_001",
+        control_state=RiskControlState.KILL_SWITCH,
+        received_at=BASE_TIME + timedelta(seconds=10),
+    )
+
+    assert result.requested_order_count == 2
+    assert result.cancelled_order_count == 1
+    assert result.skipped_order_count == 1
+    assert (
+        persistence.orders[build_order_id_for_intent(buy_intent.id)].status is OrderStatus.CANCELED
+    )
+    assert (
+        persistence.orders[build_order_id_for_intent(reduce_only_intent.id)].status
+        is OrderStatus.NEW
     )

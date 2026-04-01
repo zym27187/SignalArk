@@ -10,13 +10,14 @@ from typing import Literal
 from uuid import uuid4
 
 from src.domain.events import BarEvent
+from src.domain.risk import RiskControlState, resolve_risk_control_state
 from src.shared.types import shanghai_now
 
 LifecycleStatus = Literal["created", "starting", "running", "stopping", "stopped"]
 HealthStatus = Literal["booting", "alive", "draining", "stopped"]
 ReadinessStatus = Literal["not_ready", "ready", "draining"]
 IntegrationStatus = Literal["reserved", "bound"]
-SingleActiveStatus = Literal["unbound", "observed"]
+SingleActiveStatus = Literal["unbound", "observed", "acquired", "lost", "rejected"]
 
 
 def default_instance_id() -> str:
@@ -59,8 +60,27 @@ class SingleActiveState:
         fencing_token: int,
         lease_expires_at: datetime,
         last_heartbeat_at: datetime,
+        status: SingleActiveStatus = "observed",
     ) -> None:
-        self.status = "observed"
+        self.status = status
+        self.owner_instance_id = owner_instance_id
+        self.fencing_token = fencing_token
+        self.lease_expires_at = lease_expires_at
+        self.last_heartbeat_at = last_heartbeat_at
+
+    def mark_lost(self, *, owner_instance_id: str | None = None) -> None:
+        self.status = "lost"
+        self.owner_instance_id = owner_instance_id
+
+    def mark_rejected(
+        self,
+        *,
+        owner_instance_id: str | None,
+        fencing_token: int | None,
+        lease_expires_at: datetime | None,
+        last_heartbeat_at: datetime | None,
+    ) -> None:
+        self.status = "rejected"
         self.owner_instance_id = owner_instance_id
         self.fencing_token = fencing_token
         self.lease_expires_at = lease_expires_at
@@ -98,9 +118,18 @@ class TraderRuntimeState:
 
     trader_run_id: str = field(default_factory=lambda: str(uuid4()))
     instance_id: str = field(default_factory=default_instance_id)
+    account_id: str | None = None
     status: LifecycleStatus = "created"
     health_status: HealthStatus = "booting"
     readiness_status: ReadinessStatus = "not_ready"
+    readiness_reason: str | None = None
+    control_state: RiskControlState = RiskControlState.NORMAL
+    strategy_enabled: bool = True
+    kill_switch_active: bool = False
+    protection_mode_active: bool = False
+    market_data_fresh: bool = False
+    latest_final_bar_time: datetime | None = None
+    current_trading_phase: str | None = None
     started_at: datetime | None = None
     ready_at: datetime | None = None
     stopping_at: datetime | None = None
@@ -120,24 +149,33 @@ class TraderRuntimeState:
         self.status = "starting"
         self.health_status = "booting"
         self.readiness_status = "not_ready"
+        self.readiness_reason = "starting"
         self.started_at = now
         self.ready_at = None
         self.stop_reason = None
         self.stopping_at = None
         self.stopped_at = None
 
-    def mark_running(self) -> None:
+    def mark_running(self, *, ready: bool = True) -> None:
         now = shanghai_now()
         self.status = "running"
         self.health_status = "alive"
-        self.readiness_status = "ready"
-        self.ready_at = now
+        if ready:
+            self.readiness_status = "ready"
+            self.readiness_reason = None
+            self.ready_at = now
+            return
+
+        self.readiness_status = "not_ready"
+        self.readiness_reason = "runtime_started_waiting_for_order_submission_readiness"
+        self.ready_at = None
 
     def mark_stopping(self, reason: str) -> None:
         now = shanghai_now()
         self.status = "stopping"
         self.health_status = "draining"
         self.readiness_status = "draining"
+        self.readiness_reason = reason
         self.stop_reason = reason
         self.stopping_at = now
 
@@ -146,8 +184,49 @@ class TraderRuntimeState:
         self.status = "stopped"
         self.health_status = "stopped"
         self.readiness_status = "not_ready"
+        self.readiness_reason = reason
         self.stop_reason = reason
         self.stopped_at = now
+
+    def set_readiness(self, *, ready: bool, reason: str | None = None) -> None:
+        now = shanghai_now()
+        if ready:
+            self.readiness_status = "ready"
+            self.readiness_reason = None
+            if self.ready_at is None:
+                self.ready_at = now
+            return
+
+        self.readiness_status = "not_ready"
+        self.readiness_reason = reason
+        self.ready_at = None
+
+    def apply_control_state(
+        self,
+        *,
+        strategy_enabled: bool,
+        kill_switch_active: bool,
+        protection_mode_active: bool,
+    ) -> None:
+        self.strategy_enabled = strategy_enabled
+        self.kill_switch_active = kill_switch_active
+        self.protection_mode_active = protection_mode_active
+        self.control_state = resolve_risk_control_state(
+            strategy_enabled=strategy_enabled,
+            kill_switch_active=kill_switch_active,
+            protection_mode_active=protection_mode_active,
+        )
+
+    def update_market_observation(
+        self,
+        *,
+        latest_final_bar_time: datetime | None,
+        current_trading_phase: str | None,
+        market_data_fresh: bool,
+    ) -> None:
+        self.latest_final_bar_time = latest_final_bar_time
+        self.current_trading_phase = current_trading_phase
+        self.market_data_fresh = market_data_fresh
 
     def record_event(self, event: object) -> None:
         self.last_event_at = shanghai_now()
@@ -167,17 +246,29 @@ class TraderRuntimeState:
             "status": self.health_status,
             "trader_run_id": self.trader_run_id,
             "instance_id": self.instance_id,
+            "account_id": self.account_id,
             "lifecycle": self.status,
             "event_bus_pending_count": event_bus_pending_count,
             "last_event_at": _isoformat(self.last_event_at),
         }
 
     def readiness_payload(self, *, event_bus_pending_count: int) -> dict[str, object]:
+        market_state_available = self.current_trading_phase is not None
         return {
             "status": self.readiness_status,
             "trader_run_id": self.trader_run_id,
             "instance_id": self.instance_id,
+            "account_id": self.account_id,
             "event_bus_pending_count": event_bus_pending_count,
+            "control_state": self.control_state.value,
+            "strategy_enabled": self.strategy_enabled,
+            "kill_switch_active": self.kill_switch_active,
+            "protection_mode_active": self.protection_mode_active,
+            "market_data_fresh": self.market_data_fresh,
+            "market_state_available": market_state_available,
+            "latest_final_bar_time": _isoformat(self.latest_final_bar_time),
+            "current_trading_phase": self.current_trading_phase,
+            "reason": self.readiness_reason,
             "pipeline": self.pipeline.snapshot(),
             "single_active": self.single_active.snapshot(),
             "last_strategy_bar_key": self.last_strategy_bar_key,
@@ -185,12 +276,23 @@ class TraderRuntimeState:
         }
 
     def snapshot(self, *, event_bus_pending_count: int) -> dict[str, object]:
+        market_state_available = self.current_trading_phase is not None
         return {
             "trader_run_id": self.trader_run_id,
             "instance_id": self.instance_id,
+            "account_id": self.account_id,
             "status": self.status,
             "health_status": self.health_status,
             "readiness_status": self.readiness_status,
+            "readiness_reason": self.readiness_reason,
+            "control_state": self.control_state.value,
+            "strategy_enabled": self.strategy_enabled,
+            "kill_switch_active": self.kill_switch_active,
+            "protection_mode_active": self.protection_mode_active,
+            "market_data_fresh": self.market_data_fresh,
+            "market_state_available": market_state_available,
+            "latest_final_bar_time": _isoformat(self.latest_final_bar_time),
+            "current_trading_phase": self.current_trading_phase,
             "started_at": _isoformat(self.started_at),
             "ready_at": _isoformat(self.ready_at),
             "stopping_at": _isoformat(self.stopping_at),

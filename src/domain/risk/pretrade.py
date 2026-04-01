@@ -39,6 +39,22 @@ class RiskControlState(StrEnum):
     PROTECTION_MODE = "protection_mode"
 
 
+def resolve_risk_control_state(
+    *,
+    strategy_enabled: bool,
+    kill_switch_active: bool,
+    protection_mode_active: bool,
+) -> RiskControlState:
+    """Resolve the effective control state using the fixed Phase 6 priority."""
+    if protection_mode_active:
+        return RiskControlState.PROTECTION_MODE
+    if kill_switch_active:
+        return RiskControlState.KILL_SWITCH
+    if not strategy_enabled:
+        return RiskControlState.STRATEGY_PAUSED
+    return RiskControlState.NORMAL
+
+
 @dataclass(frozen=True, slots=True)
 class PreTradeRiskPolicy:
     """Configuration for the Phase 6A pre-trade risk gate."""

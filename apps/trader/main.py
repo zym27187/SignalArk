@@ -35,7 +35,9 @@ async def _run() -> None:
         timeframe=settings.primary_timeframe,
         trader_run_id=trader_run_id,
         trader_run_id_generation=settings.trader_run_id_generation,
-        note="Phase 4 trader runtime uses an in-process event bus and awaits strategy wiring.",
+        note=(
+            "Phase 6B trader runtime enables single-active lease protection and operator controls."
+        ),
     )
     await trader.run()
 
