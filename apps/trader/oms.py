@@ -945,6 +945,38 @@ class TraderOmsService:
             recent_event_logs=recovered_state.recent_event_logs,
         )
 
+    def recover_account_state(
+        self,
+        *,
+        account_id: str,
+        recovery_trader_run_id: UUID,
+        effective_trade_date: date,
+        event_limit: int = 100,
+    ) -> RecoveryState:
+        """Recover persisted paper state on startup and release T+1 sellable_qty when needed."""
+        recovered_state = self._persistence.load_recovery_state(
+            account_id=account_id,
+            event_limit=event_limit,
+        )
+        occurred_at = shanghai_now()
+        released_positions = tuple(
+            self._release_position_for_trade_date(
+                position=position,
+                effective_trade_date=effective_trade_date,
+                occurred_at=occurred_at,
+                trader_run_id=recovery_trader_run_id,
+            )
+            for position in recovered_state.open_positions
+        )
+        return RecoveryState(
+            open_orders=recovered_state.open_orders,
+            open_positions=tuple(
+                position for position in released_positions if position is not None
+            ),
+            latest_balance_snapshots=recovered_state.latest_balance_snapshots,
+            recent_event_logs=recovered_state.recent_event_logs,
+        )
+
     def _apply_execution_report(
         self,
         *,

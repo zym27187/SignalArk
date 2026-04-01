@@ -23,6 +23,10 @@ from src.shared.logging import bind_log_context
 from apps.collector.service import CollectorService, build_default_collector_service
 from apps.trader.control_plane import TraderControlPlaneStore, TraderControlRuntime
 from apps.trader.oms import TraderOmsService, build_default_trader_oms_service
+from apps.trader.reconciliation import (
+    SessionFactoryBackedReconciliationStore,
+    TraderReconciliationRuntime,
+)
 from apps.trader.runtime import TraderRuntimeState
 
 
@@ -183,6 +187,7 @@ class TraderService:
         runtime_state: TraderRuntimeState | None = None,
         pipeline: TraderPipelinePorts | None = None,
         control_runtime: TraderControlRuntime | None = None,
+        reconciliation_runtime: TraderReconciliationRuntime | None = None,
         bind_run_id_to_logs: bool = True,
         bar_trigger_capacity: int = 4096,
     ) -> None:
@@ -191,6 +196,7 @@ class TraderService:
         self._runtime_state = runtime_state or TraderRuntimeState()
         self._pipeline = pipeline or TraderPipelinePorts()
         self._control_runtime = control_runtime
+        self._reconciliation_runtime = reconciliation_runtime
         self._bind_run_id_to_logs = bind_run_id_to_logs
         self._bar_trigger_gate = BarTriggerGate(recent_capacity=bar_trigger_capacity)
         self._logger = structlog.get_logger(__name__)
@@ -229,18 +235,28 @@ class TraderService:
                 name="trader-source-loop",
             )
             self._runtime_state.mark_running(ready=self._control_runtime is None)
-            if self._control_runtime is not None:
-                try:
+            control_runtime_started = False
+            reconciliation_runtime_started = False
+            try:
+                if self._control_runtime is not None:
                     await self._control_runtime.start(self._runtime_state)
-                except Exception:
-                    if self._source_task is not None and not self._source_task.done():
-                        self._source_task.cancel()
-                        await asyncio.gather(self._source_task, return_exceptions=True)
-                    await self._event_bus.stop()
-                    await self._source.aclose()
-                    self._runtime_state.mark_stopped("control_runtime_start_failed")
-                    self._closed = True
-                    raise
+                    control_runtime_started = True
+                if self._reconciliation_runtime is not None:
+                    await self._reconciliation_runtime.start(self._runtime_state)
+                    reconciliation_runtime_started = True
+            except Exception:
+                if self._source_task is not None and not self._source_task.done():
+                    self._source_task.cancel()
+                    await asyncio.gather(self._source_task, return_exceptions=True)
+                if reconciliation_runtime_started and self._reconciliation_runtime is not None:
+                    await self._reconciliation_runtime.stop()
+                if control_runtime_started and self._control_runtime is not None:
+                    await self._control_runtime.stop(reason="runtime_dependency_start_failed")
+                await self._event_bus.stop()
+                await self._source.aclose()
+                self._runtime_state.mark_stopped("runtime_dependency_start_failed")
+                self._closed = True
+                raise
 
             self._logger.info(
                 "trader_started",
@@ -327,6 +343,8 @@ class TraderService:
                 cleanup_errors.append(exc)
 
             self._runtime_state.mark_stopped(reason)
+            if self._reconciliation_runtime is not None:
+                await self._reconciliation_runtime.stop()
             if self._control_runtime is not None:
                 await self._control_runtime.stop(reason=reason)
             self._closed = True
@@ -575,10 +593,28 @@ def build_default_trader_service(
             symbol_rules=settings.symbol_rules,
             control_runtime=control_runtime,
         )
+    reconciliation_oms_service = build_default_trader_oms_service(
+        settings=settings,
+        session_factory=session_factory,
+        control_store=control_store,
+        observability=observability,
+    )
+    reconciliation_runtime = TraderReconciliationRuntime(
+        SessionFactoryBackedReconciliationStore(session_factory),
+        oms_service=reconciliation_oms_service,
+        control_store=control_store,
+        account_id=settings.account_id,
+        exchange=settings.exchange,
+        cost_model=settings.paper_cost_model,
+        control_runtime=control_runtime,
+        observability=observability,
+        reconciliation_interval_seconds=60,
+    )
     return TraderService(
         source,
         pipeline=resolved_pipeline,
         control_runtime=control_runtime,
+        reconciliation_runtime=reconciliation_runtime,
         bind_run_id_to_logs=settings.trader_run_id_bind_to_logs,
     )
 

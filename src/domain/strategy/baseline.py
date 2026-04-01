@@ -174,6 +174,17 @@ class BaselineMomentumStrategy:
             reason_summary=signal.reason_summary or "",
         )
 
+    def backtest_metadata(self) -> dict[str, object]:
+        """Expose reproducible strategy metadata for research/backtest runs."""
+        return {
+            "strategy_id": self._strategy_id,
+            "description": self._description,
+            "parameters": {
+                "target_position": str(self._target_position),
+                "entry_threshold_pct": str(self._entry_threshold_pct),
+            },
+        }
+
 
 def build_strategy(*, strategy_id: str, account_id: str) -> BaselineMomentumStrategy:
     """Resolve the configured primary strategy into a runtime implementation."""

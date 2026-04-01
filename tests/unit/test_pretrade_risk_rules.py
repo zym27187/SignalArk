@@ -276,6 +276,26 @@ def test_pretrade_risk_enforces_kill_switch_reduce_only_boundary() -> None:
     assert sell_result.allowed is True
 
 
+def test_pretrade_risk_enforces_protection_mode_reduce_only_boundary() -> None:
+    buy_gate, buy_context = _context(
+        signal=_signal(target_position=Decimal("300")),
+        current_position=_position(qty=Decimal("0"), sellable_qty=Decimal("0")),
+        control_state=RiskControlState.PROTECTION_MODE,
+    )
+    sell_gate, sell_context = _context(
+        signal=_signal(target_position=Decimal("0"), signal_type=SignalType.EXIT),
+        current_position=_position(qty=Decimal("300"), sellable_qty=Decimal("300")),
+        control_state=RiskControlState.PROTECTION_MODE,
+    )
+
+    buy_result = buy_gate.evaluate(buy_context)
+    sell_result = sell_gate.evaluate(sell_context)
+
+    assert buy_result.allowed is False
+    assert buy_result.reason_code == "PROTECTION_MODE_REDUCE_ONLY"
+    assert sell_result.allowed is True
+
+
 def test_pretrade_risk_rejects_duplicate_active_intent_but_ignores_same_signal_retry() -> None:
     current_position = _position(qty=Decimal("250"), sellable_qty=Decimal("250"))
     new_signal = _signal(signal_id=UUID("33333333-3333-4333-8333-333333333333"))

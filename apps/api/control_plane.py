@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 from src.config import Settings
 from src.domain.execution import OrderStatus
+from src.domain.reconciliation import ReplayEventFilters
 from src.infra.db import SqlAlchemyRepositories, session_scope
 from src.infra.db.models import OrderIntentRecord, OrderRecord
 from src.infra.observability import SignalArkObservability, build_observability
@@ -13,6 +17,7 @@ from src.shared.types import shanghai_now
 
 from apps.trader.control_plane import TraderControlPlaneStore
 from apps.trader.oms import build_default_trader_oms_service
+from apps.trader.reconciliation import SessionFactoryBackedReconciliationStore
 
 
 class ApiControlPlaneService:
@@ -34,6 +39,7 @@ class ApiControlPlaneService:
             service="api",
             logger_name="signalark.api.control_plane",
         )
+        self._reconciliation_store = SessionFactoryBackedReconciliationStore(session_factory)
         self._control_store.ensure_schema()
 
     def live_payload(self) -> dict[str, object]:
@@ -231,6 +237,31 @@ class ApiControlPlaneService:
             }
         )
         return response
+
+    def replay_events_payload(
+        self,
+        *,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        trader_run_id: UUID | None = None,
+        account_id: str | None = None,
+        symbol: str | None = None,
+        limit: int = 200,
+    ) -> dict[str, object]:
+        filters = ReplayEventFilters(
+            start_time=start_time,
+            end_time=end_time,
+            trader_run_id=trader_run_id,
+            account_id=account_id or self._settings.account_id,
+            symbol=symbol,
+            limit=limit,
+        )
+        events = self._reconciliation_store.replay_events(filters)
+        return {
+            "filters": filters.model_dump(mode="json"),
+            "count": len(events),
+            "events": [event.model_dump(mode="json") for event in events],
+        }
 
     def _control_action_response(
         self,

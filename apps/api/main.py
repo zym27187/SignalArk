@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from datetime import datetime
+from uuid import UUID
+
+from fastapi import FastAPI, Query
 from src.config import get_settings
 from src.infra.db import create_database_engine, create_session_factory
 from src.infra.observability import build_observability
@@ -75,6 +78,24 @@ def create_app(
     @app.get("/v1/orders/active")
     async def active_orders() -> dict[str, object]:
         return service.active_orders_payload()
+
+    @app.get("/v1/diagnostics/replay-events")
+    async def replay_events(
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        trader_run_id: UUID | None = None,
+        account_id: str | None = None,
+        symbol: str | None = None,
+        limit: int = Query(default=200, ge=1, le=1000),
+    ) -> dict[str, object]:
+        return service.replay_events_payload(
+            start_time=start_time,
+            end_time=end_time,
+            trader_run_id=trader_run_id,
+            account_id=account_id,
+            symbol=symbol,
+            limit=limit,
+        )
 
     @app.post("/v1/controls/strategy/pause")
     async def strategy_pause() -> dict[str, object]:

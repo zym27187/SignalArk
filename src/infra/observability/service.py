@@ -82,7 +82,9 @@ class ObservabilityEvent:
         lines = [
             f"[{self.severity.upper()}] {self.event_name}",
             f"time: {self.timestamp.isoformat()}",
+            f"trader_run_id: {self.trader_run_id or '-'}",
             f"account_id: {self.account_id or '-'}",
+            f"exchange: {self.exchange or '-'}",
             f"symbol: {self.symbol or '-'}",
             f"control_state: {self.control_state or '-'}",
             f"reason_code: {self.reason_code or '-'}",
@@ -360,11 +362,7 @@ def build_observability(
 ) -> SignalArkObservability:
     """Build the default observability service for API/trader entrypoints."""
     sinks = list(alert_sinks or ())
-    if (
-        settings.telegram_enabled
-        and settings.telegram_bot_token
-        and settings.telegram_chat_id
-    ):
+    if settings.telegram_enabled and settings.telegram_bot_token and settings.telegram_chat_id:
         sinks.append(
             TelegramAlertSink(
                 bot_token=settings.telegram_bot_token,
