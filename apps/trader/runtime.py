@@ -139,6 +139,11 @@ class TraderRuntimeState:
     last_event_type: str | None = None
     last_bar_key: str | None = None
     last_strategy_bar_key: str | None = None
+    last_strategy_decision_at: datetime | None = None
+    last_strategy_id: str | None = None
+    last_strategy_input_snapshot: dict[str, str | None] | None = None
+    last_strategy_signal_snapshot: dict[str, str] | None = None
+    last_strategy_reason_summary: str | None = None
     last_ignored_bar_key: str | None = None
     last_ignored_bar_reason: str | None = None
     pipeline: PipelineState = field(default_factory=PipelineState)
@@ -237,6 +242,21 @@ class TraderRuntimeState:
     def record_strategy_bar(self, event: BarEvent) -> None:
         self.last_strategy_bar_key = event.bar_key
 
+    def record_strategy_decision(
+        self,
+        *,
+        strategy_id: str,
+        decision_at: datetime,
+        input_snapshot: dict[str, str | None],
+        signal_snapshot: dict[str, str],
+        reason_summary: str | None,
+    ) -> None:
+        self.last_strategy_decision_at = decision_at
+        self.last_strategy_id = strategy_id
+        self.last_strategy_input_snapshot = dict(input_snapshot)
+        self.last_strategy_signal_snapshot = dict(signal_snapshot)
+        self.last_strategy_reason_summary = reason_summary
+
     def record_ignored_bar(self, event: BarEvent, reason: str) -> None:
         self.last_ignored_bar_key = event.bar_key
         self.last_ignored_bar_reason = reason
@@ -272,6 +292,11 @@ class TraderRuntimeState:
             "pipeline": self.pipeline.snapshot(),
             "single_active": self.single_active.snapshot(),
             "last_strategy_bar_key": self.last_strategy_bar_key,
+            "last_strategy_decision_at": _isoformat(self.last_strategy_decision_at),
+            "last_strategy_id": self.last_strategy_id,
+            "last_strategy_input_snapshot": self.last_strategy_input_snapshot,
+            "last_strategy_signal_snapshot": self.last_strategy_signal_snapshot,
+            "last_strategy_reason_summary": self.last_strategy_reason_summary,
             "last_ignored_bar_reason": self.last_ignored_bar_reason,
         }
 
@@ -302,6 +327,11 @@ class TraderRuntimeState:
             "last_event_type": self.last_event_type,
             "last_bar_key": self.last_bar_key,
             "last_strategy_bar_key": self.last_strategy_bar_key,
+            "last_strategy_decision_at": _isoformat(self.last_strategy_decision_at),
+            "last_strategy_id": self.last_strategy_id,
+            "last_strategy_input_snapshot": self.last_strategy_input_snapshot,
+            "last_strategy_signal_snapshot": self.last_strategy_signal_snapshot,
+            "last_strategy_reason_summary": self.last_strategy_reason_summary,
             "last_ignored_bar_key": self.last_ignored_bar_key,
             "last_ignored_bar_reason": self.last_ignored_bar_reason,
             "event_bus_pending_count": event_bus_pending_count,

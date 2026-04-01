@@ -163,6 +163,9 @@ class OmsSignalRiskRouter:
             symbol_rule=self._symbol_rules.get(signal.symbol),
             decision_price=event.decision_price,
             market_context=event.market_state,
+            strategy_input_snapshot=context.runtime_state.last_strategy_input_snapshot,
+            strategy_signal_snapshot=context.runtime_state.last_strategy_signal_snapshot,
+            strategy_reason_summary=context.runtime_state.last_strategy_reason_summary,
             control_state=control_state,
             submission_guard=submission_guard,
             received_at=context.received_at,
@@ -451,6 +454,11 @@ class TraderService:
 
         if self._pipeline.strategy is not None:
             signal = await self._pipeline.strategy.on_bar(event, context)
+            self._record_strategy_decision(
+                strategy=self._pipeline.strategy,
+                event=event,
+                signal=signal,
+            )
             if signal is not None and self._pipeline.risk is not None:
                 await self._pipeline.risk.on_signal(signal, event, context)
 
@@ -464,6 +472,47 @@ class TraderService:
                 self._runtime_state.pipeline.oms.bind(oms_handler_name)
         if self._pipeline.oms is not None:
             self._runtime_state.pipeline.oms.bind(type(self._pipeline.oms).__name__)
+
+    def _record_strategy_decision(
+        self,
+        *,
+        strategy: StrategyPort,
+        event: BarEvent,
+        signal: object | None,
+    ) -> None:
+        if not isinstance(signal, Signal):
+            return
+
+        input_snapshot = _default_strategy_input_snapshot(event)
+        signal_snapshot = _default_signal_snapshot(signal)
+        reason_summary = signal.reason_summary
+
+        audit_builder = getattr(strategy, "build_decision_audit", None)
+        if callable(audit_builder):
+            audit = audit_builder(event, signal)
+            input_snapshot = audit.input_snapshot
+            signal_snapshot = audit.signal_snapshot
+            reason_summary = audit.reason_summary
+
+        self._runtime_state.record_strategy_decision(
+            strategy_id=signal.strategy_id,
+            decision_at=signal.created_at,
+            input_snapshot=input_snapshot,
+            signal_snapshot=signal_snapshot,
+            reason_summary=reason_summary,
+        )
+        self._logger.info(
+            "strategy_signal_generated",
+            trader_run_id=self._runtime_state.trader_run_id,
+            instance_id=self._runtime_state.instance_id,
+            strategy_id=signal.strategy_id,
+            exchange=signal.exchange,
+            symbol=signal.symbol,
+            timeframe=signal.timeframe,
+            input_snapshot=input_snapshot,
+            signal_snapshot=signal_snapshot,
+            reason_summary=reason_summary,
+        )
 
 
 def build_default_trader_service(
@@ -532,3 +581,28 @@ def build_default_trader_service(
         control_runtime=control_runtime,
         bind_run_id_to_logs=settings.trader_run_id_bind_to_logs,
     )
+
+
+def _default_strategy_input_snapshot(event: BarEvent) -> dict[str, str | None]:
+    market_state = event.market_state
+    snapshot = {
+        "bar_key": event.bar_key,
+        "source_kind": event.source_kind,
+        "bar_start_time": event.bar_start_time.isoformat(),
+        "bar_end_time": event.bar_end_time.isoformat(),
+        "close": str(event.close),
+        "trade_date": market_state.trade_date.isoformat() if market_state is not None else None,
+        "trading_phase": market_state.trading_phase.value if market_state is not None else None,
+        "previous_close": str(market_state.previous_close) if market_state is not None else None,
+    }
+    return snapshot
+
+
+def _default_signal_snapshot(signal: Signal) -> dict[str, str]:
+    return {
+        "signal_id": str(signal.id),
+        "signal_type": signal.signal_type.value,
+        "target_position": str(signal.target_position),
+        "event_time": signal.event_time.isoformat(),
+        "created_at": signal.created_at.isoformat(),
+    }

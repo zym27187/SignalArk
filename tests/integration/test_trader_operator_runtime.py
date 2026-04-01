@@ -19,20 +19,26 @@ from apps.trader.service import (
     TraderPipelinePorts,
     TraderService,
 )
+from sqlalchemy import select
 from src.config import Settings
 from src.domain.events import BarEvent
 from src.domain.execution import ExecutionReport
 from src.domain.market import MarketStateSnapshot, SuspensionStatus, TradingPhase
+from src.domain.portfolio import BalanceSnapshot
 from src.domain.strategy import BaselineMomentumStrategy, Signal, SignalType
 from src.infra.db import (
     Base,
+    EventLogRecord,
+    FillRecord,
     OrderIntentRecord,
     OrderRecord,
     SignalRecord,
+    SqlAlchemyRepositories,
     create_database_engine,
     create_session_factory,
     session_scope,
 )
+from src.infra.exchanges import PaperExecutionAdapter
 from src.infra.observability import AlertRouter, RecordingAlertSink, SignalArkObservability
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -66,6 +72,7 @@ def _bar_event(
     *,
     event_time: datetime = BASE_TIME,
     market_state: MarketStateSnapshot | None = MARKET_STATE,
+    close: Decimal = Decimal("39.50"),
 ) -> BarEvent:
     bar_end = event_time
     bar_start = bar_end - timedelta(minutes=15)
@@ -78,9 +85,9 @@ def _bar_event(
         event_time=bar_end,
         ingest_time=bar_end + timedelta(seconds=2),
         open=Decimal("39.40"),
-        high=Decimal("39.55"),
-        low=Decimal("39.38"),
-        close=Decimal("39.50"),
+        high=max(close, Decimal("39.55")),
+        low=min(close, Decimal("39.38")),
+        close=close,
         volume=Decimal("1000"),
         closed=True,
         final=True,
@@ -157,6 +164,20 @@ class NoFillExecutionGateway:
 
     async def cancel_order(self, order) -> ExecutionReport:
         return ExecutionReport()
+
+
+def _balance_snapshot() -> BalanceSnapshot:
+    snapshot_time = BASE_TIME - timedelta(minutes=20)
+    return BalanceSnapshot(
+        account_id="paper_account_001",
+        exchange="cn_equity",
+        asset="CNY",
+        total=Decimal("100000"),
+        available=Decimal("100000"),
+        locked=Decimal("0"),
+        snapshot_time=snapshot_time,
+        created_at=snapshot_time,
+    )
 
 
 def _build_store(
@@ -395,6 +416,110 @@ async def test_trader_runtime_routes_baseline_strategy_signal_into_oms_pipeline(
     assert signal_record.target_position == Decimal("400")
     assert order_intent_count == 1
     assert order_count == 1
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_trader_runtime_runs_baseline_strategy_through_paper_execution(
+    tmp_path: Path,
+) -> None:
+    clock = MutableClock(BASE_TIME)
+    store, session_factory, engine = _build_store(tmp_path, clock)
+    settings = Settings(postgres_dsn=_database_url(tmp_path))
+    observability = SignalArkObservability(
+        service="tests",
+        alert_router=AlertRouter((), clock=clock.now),
+        clock=clock.now,
+    )
+    control_runtime = _control_runtime(store, clock)
+    with session_scope(session_factory) as session:
+        repositories = SqlAlchemyRepositories.from_session(session)
+        repositories.balance_snapshots.save(_balance_snapshot())
+
+    oms_service = build_default_trader_oms_service(
+        settings=settings,
+        session_factory=session_factory,
+        control_store=store,
+        observability=observability,
+        execution_gateway=PaperExecutionAdapter(
+            cost_model=settings.paper_cost_model,
+            clock=lambda: clock.now() + timedelta(seconds=3),
+        ),
+    )
+    trader = TraderService(
+        SequenceEventSource((_bar_event(close=Decimal("39.50")),)),
+        runtime_state=TraderRuntimeState(instance_id="instance-A"),
+        pipeline=TraderPipelinePorts(
+            strategy=BaselineMomentumStrategy(account_id=settings.account_id),
+            risk=OmsSignalRiskRouter(
+                oms_service=oms_service,
+                symbol_rules=settings.symbol_rules,
+                control_runtime=control_runtime,
+            ),
+        ),
+        control_runtime=control_runtime,
+    )
+
+    await trader.run()
+
+    with session_scope(session_factory) as session:
+        repositories = SqlAlchemyRepositories.from_session(session)
+        signal_record = session.query(SignalRecord).one()
+        order_record = session.query(OrderRecord).one()
+        fill_record = session.query(FillRecord).one()
+        event_types = tuple(
+            session.scalars(
+                select(EventLogRecord.event_type).order_by(
+                    EventLogRecord.created_at.asc(),
+                    EventLogRecord.id.asc(),
+                )
+            )
+        )
+        order_intent_payload = session.scalar(
+            select(EventLogRecord.payload_json).where(
+                EventLogRecord.event_type == "oms.order_intent_persisted"
+            )
+        )
+        position = repositories.positions.get_by_symbol(
+            account_id="paper_account_001",
+            exchange="cn_equity",
+            symbol="600036.SH",
+        )
+        latest_balance = repositories.recovery.load_runtime_state(
+            account_id="paper_account_001",
+            trader_run_id=UUID(trader.runtime_state.trader_run_id),
+            event_limit=20,
+        ).latest_balance_snapshots[0]
+
+    snapshot = trader.runtime_snapshot()
+
+    assert snapshot["last_strategy_id"] == "baseline_momentum_v1"
+    assert snapshot["last_strategy_input_snapshot"]["entry_threshold_pct"] == "0.0500"
+    assert snapshot["last_strategy_input_snapshot"]["momentum_pct"] == "0.0760"
+    assert snapshot["last_strategy_signal_snapshot"]["signal_type"] == "REBALANCE"
+    assert snapshot["last_strategy_signal_snapshot"]["target_position"] == "400"
+    assert snapshot["last_strategy_reason_summary"] is not None
+    assert "rebalance to 400" in snapshot["last_strategy_reason_summary"]
+    assert signal_record.reason_summary == snapshot["last_strategy_reason_summary"]
+    assert order_record.status == "FILLED"
+    assert fill_record.qty == Decimal("400")
+    assert order_intent_payload is not None
+    assert order_intent_payload["strategy_input_snapshot"]["momentum_pct"] == "0.0760"
+    assert order_intent_payload["strategy_signal_snapshot"]["signal_type"] == "REBALANCE"
+    assert order_intent_payload["reason_summary"] == snapshot["last_strategy_reason_summary"]
+    assert position is not None
+    assert position.qty == Decimal("400")
+    assert position.sellable_qty == Decimal("0")
+    assert latest_balance.available == Decimal("84195.1020")
+    assert latest_balance.total == Decimal("84195.1020")
+    assert len(event_types) == 8
+    assert event_types.count("oms.order_intent_persisted") == 1
+    assert event_types.count("oms.order_persisted") == 1
+    assert event_types.count("oms.execution_submission_requested") == 1
+    assert event_types.count("execution.order_updated") == 2
+    assert event_types.count("execution.fill_recorded") == 1
+    assert event_types.count("portfolio.position_updated") == 1
+    assert event_types.count("portfolio.balance_updated") == 1
     engine.dispose()
 
 

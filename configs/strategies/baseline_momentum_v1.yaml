@@ -1,0 +1,4 @@
+strategy_id: baseline_momentum_v1
+description: Long-only threshold momentum against previous close.
+target_position: 400
+entry_threshold_pct: 0.0005

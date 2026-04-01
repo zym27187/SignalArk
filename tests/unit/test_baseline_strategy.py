@@ -15,6 +15,7 @@ from src.domain.strategy import (
     BaselineMomentumStrategy,
     SignalType,
     build_strategy,
+    load_baseline_momentum_config,
 )
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -74,6 +75,7 @@ async def test_baseline_momentum_strategy_targets_long_position_on_positive_mome
     assert signal.target_position == Decimal("400")
     assert signal.reason_summary is not None
     assert "previous_close" in signal.reason_summary
+    assert "threshold_pct" in signal.reason_summary
 
 
 @pytest.mark.asyncio
@@ -85,6 +87,8 @@ async def test_baseline_momentum_strategy_flattens_on_non_positive_momentum() ->
     assert signal is not None
     assert signal.signal_type is SignalType.EXIT
     assert signal.target_position == Decimal("0")
+    assert signal.reason_summary is not None
+    assert "flatten" in signal.reason_summary
 
 
 @pytest.mark.asyncio
@@ -105,6 +109,24 @@ def test_build_strategy_resolves_configured_baseline() -> None:
     )
 
     assert isinstance(strategy, BaselineMomentumStrategy)
+
+
+@pytest.mark.asyncio
+async def test_build_strategy_loads_repo_local_strategy_configuration() -> None:
+    config = load_baseline_momentum_config(BASELINE_MOMENTUM_V1)
+    strategy = build_strategy(
+        strategy_id=BASELINE_MOMENTUM_V1,
+        account_id="paper_account_001",
+    )
+    event = _bar_event(close=Decimal("39.50"))
+    signal = await strategy.on_bar(event, _context())
+
+    assert config.target_position == Decimal("400")
+    assert config.entry_threshold_pct == Decimal("0.0005")
+    assert signal is not None
+    audit = strategy.build_decision_audit(event, signal)
+    assert audit.input_snapshot["entry_threshold_pct"] == "0.0500"
+    assert audit.signal_snapshot["signal_type"] == "REBALANCE"
 
 
 @pytest.mark.asyncio
