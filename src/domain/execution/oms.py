@@ -9,11 +9,13 @@ from typing import Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from src.domain.execution.models import (
+    ExecutionReport,
     Order,
     OrderIntent,
     OrderSide,
     OrderStatus,
     OrderType,
+    OrderUpdate,
     TimeInForce,
 )
 from src.domain.market import MarketStateSnapshot
@@ -129,6 +131,43 @@ def create_order_from_intent(
         submitted_at=timestamp,
         updated_at=timestamp,
     )
+
+
+def apply_order_update(order: Order, update: OrderUpdate) -> Order:
+    """Apply one normalized execution update onto the persisted OMS order."""
+    if order.id != update.order_id:
+        raise ValueError("order.id must match update.order_id")
+    if order.order_intent_id != update.order_intent_id:
+        raise ValueError("order.order_intent_id must match update.order_intent_id")
+    if order.trader_run_id != update.trader_run_id:
+        raise ValueError("order.trader_run_id must match update.trader_run_id")
+    if order.account_id != update.account_id:
+        raise ValueError("order.account_id must match update.account_id")
+    if order.exchange != update.exchange:
+        raise ValueError("order.exchange must match update.exchange")
+    if order.symbol != update.symbol:
+        raise ValueError("order.symbol must match update.symbol")
+    if (
+        order.exchange_order_id is not None
+        and update.exchange_order_id is not None
+        and order.exchange_order_id != update.exchange_order_id
+    ):
+        raise ValueError("update.exchange_order_id cannot replace an existing exchange_order_id")
+
+    return order.transition_to(
+        update.status,
+        exchange_order_id=update.exchange_order_id or order.exchange_order_id,
+        filled_qty=update.filled_qty,
+        avg_fill_price=update.avg_fill_price,
+        updated_at=update.event_time,
+        last_error_code=update.error_code,
+        last_error_message=update.error_message,
+    )
+
+
+def execution_report_is_empty(report: ExecutionReport) -> bool:
+    """Return whether an execution report contains any order or fill events."""
+    return not report.order_updates and not report.fill_events
 
 
 def build_signal_order_intent_plan(

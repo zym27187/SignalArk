@@ -10,14 +10,18 @@ from uuid import UUID
 
 from src.config.settings import AshareSymbolRule
 from src.domain.execution import (
+    ExecutionReport,
+    Fill,
     Order,
     OrderIntent,
     OrderIntentStatus,
     OrderType,
     SignalOrderIntentPlan,
+    apply_order_update,
     build_order_id_for_intent,
     build_signal_order_intent_plan,
     create_order_from_intent,
+    execution_report_is_empty,
 )
 from src.domain.market import MarketStateSnapshot
 from src.domain.portfolio import Position
@@ -35,6 +39,8 @@ class OmsPersistencePort(Protocol):
 
     def save_event_log(self, event_log: EventLogEntry) -> EventLogEntry: ...
 
+    def save_fill(self, fill: Fill) -> Fill: ...
+
     def save_order(self, order: Order) -> Order: ...
 
     def save_order_intent(self, order_intent: OrderIntent) -> OrderIntent: ...
@@ -45,7 +51,9 @@ class OmsPersistencePort(Protocol):
 class ExecutionGateway(Protocol):
     """Reserved async execution adapter point for Phase 5B."""
 
-    async def submit_order(self, order: Order, order_intent: OrderIntent) -> None: ...
+    async def submit_order(self, order: Order, order_intent: OrderIntent) -> ExecutionReport: ...
+
+    async def cancel_order(self, order: Order) -> ExecutionReport: ...
 
 
 @dataclass(slots=True)
@@ -76,12 +84,18 @@ class RepositoryBackedOmsPersistence:
     def save_event_log(self, event_log: EventLogEntry) -> EventLogEntry:
         return self.repositories.event_logs.save(event_log)
 
+    def save_fill(self, fill: Fill) -> Fill:
+        return self.repositories.fills.save(fill)
+
 
 class NoopExecutionGateway:
     """No-op adapter used until Phase 5B lands paper execution details."""
 
-    async def submit_order(self, order: Order, order_intent: OrderIntent) -> None:
-        return None
+    async def submit_order(self, order: Order, order_intent: OrderIntent) -> ExecutionReport:
+        return ExecutionReport()
+
+    async def cancel_order(self, order: Order) -> ExecutionReport:
+        return ExecutionReport()
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +155,10 @@ class TraderOmsService:
                 event_type="oms.signal_skipped",
                 related_object_type="signal",
                 related_object_id=persisted_signal.id,
-                signal=persisted_signal,
+                trader_run_id=persisted_signal.trader_run_id,
+                account_id=persisted_signal.account_id,
+                exchange=persisted_signal.exchange,
+                symbol=persisted_signal.symbol,
                 occurred_at=occurred_at,
                 payload={
                     "skip_reason": plan.skip_reason,
@@ -179,7 +196,10 @@ class TraderOmsService:
             event_type="oms.order_intent_persisted",
             related_object_type="order_intent",
             related_object_id=persisted_intent.id,
-            signal=persisted_signal,
+            trader_run_id=persisted_signal.trader_run_id,
+            account_id=persisted_signal.account_id,
+            exchange=persisted_signal.exchange,
+            symbol=persisted_signal.symbol,
             occurred_at=occurred_at,
             payload={
                 "signal_id": persisted_signal.id,
@@ -206,7 +226,10 @@ class TraderOmsService:
             event_type="oms.order_persisted",
             related_object_type="order",
             related_object_id=persisted_order.id,
-            signal=persisted_signal,
+            trader_run_id=persisted_signal.trader_run_id,
+            account_id=persisted_signal.account_id,
+            exchange=persisted_signal.exchange,
+            symbol=persisted_signal.symbol,
             occurred_at=occurred_at,
             payload={
                 "order_intent_id": persisted_intent.id,
@@ -217,7 +240,10 @@ class TraderOmsService:
         )
 
         try:
-            await self._execution_gateway.submit_order(persisted_order, persisted_intent)
+            execution_report = await self._execution_gateway.submit_order(
+                persisted_order,
+                persisted_intent,
+            )
         except Exception as exc:
             errored_order = persisted_order.model_copy(
                 update={
@@ -231,7 +257,10 @@ class TraderOmsService:
                 event_type="oms.execution_submission_failed",
                 related_object_type="order",
                 related_object_id=persisted_order.id,
-                signal=persisted_signal,
+                trader_run_id=persisted_signal.trader_run_id,
+                account_id=persisted_signal.account_id,
+                exchange=persisted_signal.exchange,
+                symbol=persisted_signal.symbol,
                 occurred_at=occurred_at,
                 payload={"order_intent_id": persisted_intent.id, "error": str(exc)},
             )
@@ -246,22 +275,114 @@ class TraderOmsService:
             event_type="oms.execution_submission_requested",
             related_object_type="order",
             related_object_id=persisted_order.id,
-            signal=persisted_signal,
+            trader_run_id=persisted_signal.trader_run_id,
+            account_id=persisted_signal.account_id,
+            exchange=persisted_signal.exchange,
+            symbol=persisted_signal.symbol,
             occurred_at=occurred_at,
             payload={
                 "order_intent_id": persisted_intent.id,
                 "order_status": persisted_order.status,
                 "decision_price": decision_price,
                 "market_context": market_context,
+                "execution_source": execution_report.source,
             },
+        )
+
+        latest_order = (
+            persisted_order
+            if execution_report_is_empty(execution_report)
+            else self._apply_execution_report(
+                report=execution_report,
+                initial_order=persisted_order,
+            )
         )
 
         return OmsSubmission(
             signal=persisted_signal,
             plan=plan,
             order_intent=persisted_submitted_intent,
-            order=persisted_order,
+            order=latest_order,
         )
+
+    async def cancel_order(
+        self,
+        *,
+        order_id: UUID,
+        received_at: datetime | None = None,
+    ) -> Order | None:
+        """Cancel one active order through the execution gateway."""
+        occurred_at = received_at or shanghai_now()
+        order = self._persistence.get_order(order_id)
+        if order is None:
+            return None
+
+        execution_report = await self._execution_gateway.cancel_order(order)
+        if execution_report_is_empty(execution_report):
+            return order
+
+        self._persist_event(
+            event_type="oms.execution_cancel_requested",
+            related_object_type="order",
+            related_object_id=order.id,
+            trader_run_id=order.trader_run_id,
+            account_id=order.account_id,
+            exchange=order.exchange,
+            symbol=order.symbol,
+            occurred_at=occurred_at,
+            payload={"execution_source": execution_report.source},
+        )
+        return self._apply_execution_report(
+            report=execution_report,
+            initial_order=order,
+        )
+
+    def _apply_execution_report(
+        self,
+        *,
+        report: ExecutionReport,
+        initial_order: Order,
+    ) -> Order:
+        current_order = initial_order
+        for order_update in report.order_updates:
+            current_order = self._persistence.save_order(
+                apply_order_update(current_order, order_update)
+            )
+            self._persist_event(
+                event_type="execution.order_updated",
+                related_object_type="order",
+                related_object_id=current_order.id,
+                source=report.source,
+                trader_run_id=current_order.trader_run_id,
+                account_id=current_order.account_id,
+                exchange=current_order.exchange,
+                symbol=current_order.symbol,
+                occurred_at=order_update.event_time,
+                payload={
+                    "execution_source": report.source,
+                    "order_update": order_update,
+                },
+            )
+
+        for fill_event in report.fill_events:
+            persisted_fill = self._persistence.save_fill(fill_event.fill)
+            self._persist_event(
+                event_type="execution.fill_recorded",
+                related_object_type="fill",
+                related_object_id=persisted_fill.id,
+                source=report.source,
+                trader_run_id=fill_event.trader_run_id,
+                account_id=fill_event.account_id,
+                exchange=fill_event.exchange,
+                symbol=fill_event.symbol,
+                occurred_at=fill_event.event_time,
+                payload={
+                    "execution_source": report.source,
+                    "fill_event": fill_event,
+                },
+            )
+
+        return current_order
 
     def _persist_event(
         self,
@@ -269,18 +390,22 @@ class TraderOmsService:
         event_type: str,
         related_object_type: str,
         related_object_id: UUID,
-        signal: Signal,
+        trader_run_id: UUID,
+        account_id: str,
+        exchange: str,
+        symbol: str,
         occurred_at: datetime,
         payload: dict[str, object],
+        source: str = "trader_oms",
     ) -> None:
         self._persistence.save_event_log(
             EventLogEntry(
                 event_type=event_type,
-                source="trader_oms",
-                trader_run_id=signal.trader_run_id,
-                account_id=signal.account_id,
-                exchange=signal.exchange,
-                symbol=signal.symbol,
+                source=source,
+                trader_run_id=trader_run_id,
+                account_id=account_id,
+                exchange=exchange,
+                symbol=symbol,
                 related_object_type=related_object_type,
                 related_object_id=related_object_id,
                 event_time=occurred_at,

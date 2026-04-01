@@ -14,6 +14,7 @@ from src.domain.market import MarketStateSnapshot
 from src.shared.types import (
     DomainEntity,
     DomainId,
+    DomainModel,
     NonEmptyStr,
     NonNegativeDecimal,
     PositiveDecimal,
@@ -349,3 +350,125 @@ class Fill(DomainEntity):
     def notional(self) -> Decimal:
         """Return the gross notional traded by this fill."""
         return self.qty * self.price
+
+
+class AshareExecutionCostBreakdown(DomainModel):
+    """A-share paper-trading cost fields reserved for the later ledger stage."""
+
+    currency: NonEmptyStr = "CNY"
+    gross_notional: NonNegativeDecimal
+    commission: NonNegativeDecimal = Decimal("0")
+    transfer_fee: NonNegativeDecimal = Decimal("0")
+    stamp_duty: NonNegativeDecimal = Decimal("0")
+    total_fee: NonNegativeDecimal
+    net_cash_flow: Decimal
+
+    @model_validator(mode="after")
+    def validate_cost_breakdown(self) -> AshareExecutionCostBreakdown:
+        """Keep component fees and the aggregate total in sync."""
+        expected_total = self.commission + self.transfer_fee + self.stamp_duty
+        if self.total_fee != expected_total:
+            raise ValueError("total_fee must equal commission + transfer_fee + stamp_duty")
+        return self
+
+
+class OrderUpdate(DomainEntity):
+    """A normalized execution-side order update consumed by the OMS."""
+
+    order_id: DomainId
+    order_intent_id: DomainId
+    trader_run_id: DomainId
+    account_id: NonEmptyStr
+    exchange: NonEmptyStr
+    symbol: NonEmptyStr
+
+    status: OrderStatus
+    exchange_order_id: str | None = None
+    filled_qty: NonNegativeDecimal = Decimal("0")
+    avg_fill_price: PositiveDecimal | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    event_time: ShanghaiDateTime
+    created_at: ShanghaiDateTime = Field(default_factory=shanghai_now)
+
+    @model_validator(mode="after")
+    def validate_order_update_contract(self) -> OrderUpdate:
+        """Apply the same fill-aggregate invariants the OMS order model enforces."""
+        if self.avg_fill_price is not None and self.filled_qty == 0:
+            raise ValueError("avg_fill_price requires filled_qty greater than zero")
+
+        if self.status in {OrderStatus.NEW, OrderStatus.ACK, OrderStatus.REJECTED}:
+            if self.filled_qty != 0:
+                raise ValueError(f"{self.status} updates cannot carry filled_qty")
+            if self.status == OrderStatus.REJECTED and self.avg_fill_price is not None:
+                raise ValueError("REJECTED updates cannot carry avg_fill_price")
+
+        if self.status == OrderStatus.PARTIALLY_FILLED:
+            if self.filled_qty <= 0:
+                raise ValueError("PARTIALLY_FILLED updates require filled_qty greater than zero")
+            if self.avg_fill_price is None:
+                raise ValueError("PARTIALLY_FILLED updates require avg_fill_price")
+
+        if self.status == OrderStatus.FILLED:
+            if self.filled_qty <= 0:
+                raise ValueError("FILLED updates require filled_qty greater than zero")
+            if self.avg_fill_price is None:
+                raise ValueError("FILLED updates require avg_fill_price")
+
+        if (
+            self.status == OrderStatus.CANCELED
+            and self.filled_qty > 0
+            and self.avg_fill_price is None
+        ):
+            raise ValueError("Partially filled canceled updates require avg_fill_price")
+
+        if self.created_at < self.event_time:
+            raise ValueError("created_at cannot be earlier than event_time")
+
+        return self
+
+
+class FillEvent(DomainEntity):
+    """A normalized fill event plus the A-share cost breakdown reserved for Phase 5C."""
+
+    order_id: DomainId
+    order_intent_id: DomainId
+    trader_run_id: DomainId
+    account_id: NonEmptyStr
+    exchange: NonEmptyStr
+    symbol: NonEmptyStr
+    fill: Fill
+    cost_breakdown: AshareExecutionCostBreakdown
+    event_time: ShanghaiDateTime
+    created_at: ShanghaiDateTime = Field(default_factory=shanghai_now)
+
+    @model_validator(mode="after")
+    def validate_fill_event_contract(self) -> FillEvent:
+        """Keep the envelope fields aligned with the embedded fill payload."""
+        if self.order_id != self.fill.order_id:
+            raise ValueError("order_id must match fill.order_id")
+        if self.trader_run_id != self.fill.trader_run_id:
+            raise ValueError("trader_run_id must match fill.trader_run_id")
+        if self.account_id != self.fill.account_id:
+            raise ValueError("account_id must match fill.account_id")
+        if self.exchange != self.fill.exchange:
+            raise ValueError("exchange must match fill.exchange")
+        if self.symbol != self.fill.symbol:
+            raise ValueError("symbol must match fill.symbol")
+        if self.cost_breakdown.gross_notional != self.fill.notional:
+            raise ValueError("cost_breakdown.gross_notional must match fill.notional")
+        if self.cost_breakdown.total_fee != self.fill.fee:
+            raise ValueError("cost_breakdown.total_fee must match fill.fee")
+        if self.event_time < self.fill.fill_time:
+            raise ValueError("event_time cannot be earlier than fill.fill_time")
+        if self.created_at < self.event_time:
+            raise ValueError("created_at cannot be earlier than event_time")
+        return self
+
+
+class ExecutionReport(DomainModel):
+    """The standard execution result returned by one adapter interaction."""
+
+    source: NonEmptyStr = "execution_gateway"
+    order_updates: tuple[OrderUpdate, ...] = ()
+    fill_events: tuple[FillEvent, ...] = ()
