@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
+from sqlalchemy import or_, select
 from src.config.settings import AshareSymbolRule
 from src.domain.execution import (
     ExecutionReport,
@@ -29,9 +30,26 @@ from src.domain.portfolio.ledger import (
     apply_fill_event_to_portfolio,
     release_position_sellable_qty,
 )
+from src.domain.risk import (
+    PreTradeRiskContext,
+    PreTradeRiskGate,
+    PreTradeRiskResult,
+    RiskControlState,
+)
 from src.domain.strategy import Signal
 from src.infra.db import EventLogEntry, RecoveryState, SqlAlchemyRepositories
-from src.shared.types import shanghai_now
+from src.infra.db.models import OrderIntentRecord, OrderRecord
+from src.shared.types import SHANGHAI_TIMEZONE, shanghai_now
+
+ACTIVE_ORDER_INTENT_STATUSES = (
+    OrderIntentStatus.NEW.value,
+    OrderIntentStatus.SUBMITTED.value,
+)
+ACTIVE_ORDER_STATUSES = (
+    "NEW",
+    "ACK",
+    "PARTIALLY_FILLED",
+)
 
 
 class OmsPersistencePort(Protocol):
@@ -62,6 +80,15 @@ class OmsPersistencePort(Protocol):
     def save_order(self, order: Order) -> Order: ...
 
     def save_order_intent(self, order_intent: OrderIntent) -> OrderIntent: ...
+
+    def list_recent_active_order_intents(
+        self,
+        *,
+        account_id: str,
+        exchange: str,
+        symbol: str,
+        created_after: datetime,
+    ) -> tuple[OrderIntent, ...]: ...
 
     def save_signal(self, signal: Signal) -> Signal: ...
 
@@ -103,6 +130,33 @@ class RepositoryBackedOmsPersistence:
 
     def save_order_intent(self, order_intent: OrderIntent) -> OrderIntent:
         return self.repositories.order_intents.save(order_intent)
+
+    def list_recent_active_order_intents(
+        self,
+        *,
+        account_id: str,
+        exchange: str,
+        symbol: str,
+        created_after: datetime,
+    ) -> tuple[OrderIntent, ...]:
+        session = self.repositories.order_intents.session
+        query = (
+            select(OrderIntentRecord)
+            .outerjoin(OrderRecord, OrderRecord.order_intent_id == OrderIntentRecord.id)
+            .where(OrderIntentRecord.account_id == account_id)
+            .where(OrderIntentRecord.exchange == exchange)
+            .where(OrderIntentRecord.symbol == symbol)
+            .where(OrderIntentRecord.created_at >= created_after)
+            .where(OrderIntentRecord.status.in_(ACTIVE_ORDER_INTENT_STATUSES))
+            .where(
+                or_(
+                    OrderRecord.id.is_(None),
+                    OrderRecord.status.in_(ACTIVE_ORDER_STATUSES),
+                )
+            )
+            .order_by(OrderIntentRecord.created_at.desc(), OrderIntentRecord.id.desc())
+        )
+        return tuple(_order_intent_from_record(record) for record in session.scalars(query))
 
     def save_order(self, order: Order) -> Order:
         return self.repositories.orders.save(order)
@@ -162,6 +216,37 @@ class NoopExecutionGateway:
         return ExecutionReport()
 
 
+def _shanghai_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=SHANGHAI_TIMEZONE)
+    return value.astimezone(SHANGHAI_TIMEZONE)
+
+
+def _order_intent_from_record(record: OrderIntentRecord) -> OrderIntent:
+    return OrderIntent(
+        id=record.id,
+        signal_id=record.signal_id,
+        strategy_id=record.strategy_id,
+        trader_run_id=record.trader_run_id,
+        account_id=record.account_id,
+        exchange=record.exchange,
+        symbol=record.symbol,
+        side=record.side,
+        order_type=record.order_type,
+        time_in_force=record.time_in_force,
+        qty=record.qty,
+        price=record.price,
+        decision_price=record.decision_price,
+        reduce_only=record.reduce_only,
+        market_context_json=record.market_context_json,
+        idempotency_key=record.idempotency_key,
+        status=record.status,
+        risk_decision=record.risk_decision,
+        risk_reason=record.risk_reason,
+        created_at=_shanghai_datetime(record.created_at),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class OmsSubmission:
     """The persisted OMS objects produced by one signal-handling attempt."""
@@ -180,20 +265,23 @@ class TraderOmsService:
         persistence: OmsPersistencePort,
         *,
         execution_gateway: ExecutionGateway | None = None,
+        risk_gate: PreTradeRiskGate | None = None,
     ) -> None:
         self._persistence = persistence
         self._execution_gateway = execution_gateway or NoopExecutionGateway()
+        self._risk_gate = risk_gate or PreTradeRiskGate()
 
     async def submit_signal(
         self,
         *,
         signal: Signal,
-        symbol_rule: AshareSymbolRule,
-        decision_price: Decimal,
-        market_context: MarketStateSnapshot,
+        symbol_rule: AshareSymbolRule | None,
+        decision_price: Decimal | None,
+        market_context: MarketStateSnapshot | None,
         current_position: Position | None = None,
         order_type: OrderType = OrderType.MARKET,
         price: Decimal | None = None,
+        control_state: RiskControlState = RiskControlState.NORMAL,
         received_at: datetime | None = None,
     ) -> OmsSubmission | None:
         """Persist Signal -> OrderIntent -> Order before execution handoff."""
@@ -204,23 +292,78 @@ class TraderOmsService:
             exchange=signal.exchange,
             symbol=signal.symbol,
         )
-        resolved_position = self._release_position_for_trade_date(
-            position=resolved_position,
-            effective_trade_date=market_context.trade_date,
-            occurred_at=occurred_at,
-            trader_run_id=persisted_signal.trader_run_id,
-        )
-        plan = build_signal_order_intent_plan(
-            signal=persisted_signal,
-            symbol_rule=symbol_rule,
-            current_position=resolved_position,
-            decision_price=decision_price,
-            market_context=market_context,
-            order_type=order_type,
-            price=price,
-        )
+        if market_context is not None:
+            resolved_position = self._release_position_for_trade_date(
+                position=resolved_position,
+                effective_trade_date=market_context.trade_date,
+                occurred_at=occurred_at,
+                trader_run_id=persisted_signal.trader_run_id,
+            )
 
-        if not plan.actionable:
+        plan: SignalOrderIntentPlan | None = None
+        if (
+            market_context is not None
+            and symbol_rule is not None
+            and decision_price is not None
+            and decision_price > 0
+        ):
+            plan = build_signal_order_intent_plan(
+                signal=persisted_signal,
+                symbol_rule=symbol_rule,
+                current_position=resolved_position,
+                decision_price=decision_price,
+                market_context=market_context,
+                order_type=order_type,
+                price=price,
+            )
+
+        open_positions = ()
+        recent_active_order_intents = ()
+        if plan is not None and plan.actionable:
+            open_positions = self._persistence.load_recovery_state(
+                account_id=persisted_signal.account_id,
+                event_limit=0,
+            ).open_positions
+            recent_active_order_intents = self._persistence.list_recent_active_order_intents(
+                account_id=persisted_signal.account_id,
+                exchange=persisted_signal.exchange,
+                symbol=persisted_signal.symbol,
+                created_after=occurred_at
+                - timedelta(seconds=self._risk_gate.policy.duplicate_window_seconds),
+            )
+
+        risk_result = self._risk_gate.evaluate(
+            PreTradeRiskContext(
+                signal=persisted_signal,
+                decision_price=decision_price,
+                received_at=occurred_at,
+                symbol_rule=symbol_rule,
+                market_context=market_context,
+                current_position=resolved_position,
+                open_positions=open_positions,
+                recent_active_order_intents=recent_active_order_intents,
+                plan=plan,
+                order_type=order_type,
+                price=price,
+                control_state=control_state,
+            )
+        )
+        if not risk_result.allowed:
+            self._persist_risk_rejection(
+                signal=persisted_signal,
+                risk_result=risk_result,
+                occurred_at=occurred_at,
+                current_position=resolved_position,
+                market_context=market_context,
+                order_type=order_type,
+                price=price,
+                decision_price=decision_price,
+                control_state=control_state,
+                plan=plan,
+            )
+            return None
+
+        if plan is None or not plan.actionable:
             self._persist_event(
                 event_type="oms.signal_skipped",
                 related_object_type="signal",
@@ -231,10 +374,25 @@ class TraderOmsService:
                 symbol=persisted_signal.symbol,
                 occurred_at=occurred_at,
                 payload={
-                    "skip_reason": plan.skip_reason,
+                    "skip_reason": plan.skip_reason if plan is not None else "no_order_plan",
+                    "risk_result": risk_result,
                     "target_position": persisted_signal.target_position,
-                    "current_position_qty": plan.current_position_qty,
-                    "current_sellable_qty": plan.current_sellable_qty,
+                    "current_position_qty": (
+                        plan.current_position_qty
+                        if plan is not None
+                        else (
+                            resolved_position.qty if resolved_position is not None else Decimal("0")
+                        )
+                    ),
+                    "current_sellable_qty": (
+                        plan.current_sellable_qty
+                        if plan is not None
+                        else (
+                            resolved_position.sellable_qty
+                            if resolved_position is not None
+                            else Decimal("0")
+                        )
+                    ),
                     "decision_price": decision_price,
                     "market_context": market_context,
                 },
@@ -282,6 +440,8 @@ class TraderOmsService:
                 "market_context": market_context,
                 "reduce_only": plan.reduce_only,
                 "odd_lot_sell": plan.odd_lot_sell,
+                "risk_decision": risk_result.risk_decision,
+                "risk_reason_code": risk_result.reason_code,
             },
         )
 
@@ -589,6 +749,55 @@ class TraderOmsService:
             },
         )
         return persisted_position
+
+    def _persist_risk_rejection(
+        self,
+        *,
+        signal: Signal,
+        risk_result: PreTradeRiskResult,
+        occurred_at: datetime,
+        current_position: Position | None,
+        market_context: MarketStateSnapshot | None,
+        order_type: OrderType,
+        price: Decimal | None,
+        decision_price: Decimal | None,
+        control_state: RiskControlState,
+        plan: SignalOrderIntentPlan | None,
+    ) -> None:
+        self._persist_event(
+            event_type="oms.risk_rejected",
+            related_object_type="signal",
+            related_object_id=signal.id,
+            trader_run_id=signal.trader_run_id,
+            account_id=signal.account_id,
+            exchange=signal.exchange,
+            symbol=signal.symbol,
+            occurred_at=occurred_at,
+            payload={
+                "risk_result": risk_result,
+                "target_position": signal.target_position,
+                "current_position_qty": (
+                    plan.current_position_qty
+                    if plan is not None
+                    else (current_position.qty if current_position is not None else Decimal("0"))
+                ),
+                "current_sellable_qty": (
+                    plan.current_sellable_qty
+                    if plan is not None
+                    else (
+                        current_position.sellable_qty
+                        if current_position is not None
+                        else Decimal("0")
+                    )
+                ),
+                "raw_delta_qty": plan.raw_delta_qty if plan is not None else None,
+                "order_type": order_type,
+                "price": price,
+                "decision_price": decision_price,
+                "control_state": control_state.value,
+                "market_context": market_context,
+            },
+        )
 
     def _persist_event(
         self,

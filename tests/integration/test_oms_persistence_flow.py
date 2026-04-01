@@ -161,6 +161,66 @@ async def test_oms_service_persists_signal_order_intent_order_and_market_contrac
     )
 
 
+@pytest.mark.asyncio
+async def test_oms_service_rejects_duplicate_active_order_intent_before_persisting_a_new_one(
+    session_factory,
+) -> None:
+    first_signal = _signal()
+    duplicate_signal = _signal().model_copy(
+        update={
+            "id": UUID("33333333-3333-4333-8333-333333333333"),
+            "created_at": BASE_TIME + timedelta(seconds=4),
+        }
+    )
+
+    with session_scope(session_factory) as session:
+        repositories = SqlAlchemyRepositories.from_session(session)
+        current_position = _position(qty=Decimal("250"), sellable_qty=Decimal("250"))
+        repositories.positions.save(current_position)
+        first_plan = build_signal_order_intent_plan(
+            signal=first_signal,
+            symbol_rule=SYMBOL_RULE,
+            current_position=current_position,
+            decision_price=Decimal("39.50"),
+            market_context=MARKET_STATE,
+        )
+        repositories.signals.save(first_signal)
+        first_intent = repositories.order_intents.save(
+            first_plan.to_order_intent(created_at=BASE_TIME + timedelta(seconds=2))
+        )
+        repositories.orders.save(
+            create_order_from_intent(
+                first_intent,
+                submitted_at=BASE_TIME + timedelta(seconds=3),
+            )
+        )
+        oms_service = TraderOmsService(RepositoryBackedOmsPersistence(repositories))
+
+        result = await oms_service.submit_signal(
+            signal=duplicate_signal,
+            symbol_rule=SYMBOL_RULE,
+            decision_price=Decimal("39.50"),
+            market_context=MARKET_STATE,
+            received_at=BASE_TIME + timedelta(seconds=5),
+        )
+
+        assert result is None
+
+    with session_scope(session_factory) as session:
+        order_intent_count = session.scalar(select(func.count()).select_from(OrderIntentRecord))
+        order_count = session.scalar(select(func.count()).select_from(OrderRecord))
+        risk_payload = session.scalar(
+            select(EventLogRecord.payload_json).where(
+                EventLogRecord.event_type == "oms.risk_rejected"
+            )
+        )
+
+    assert order_intent_count == 1
+    assert order_count == 1
+    assert risk_payload is not None
+    assert risk_payload["risk_result"]["reason_code"] == "DUPLICATE_ORDER_INTENT"
+
+
 def test_order_repository_rejects_invalid_persisted_status_transition(session_factory) -> None:
     signal = _signal()
     position = _position(qty=Decimal("250"), sellable_qty=Decimal("250"))

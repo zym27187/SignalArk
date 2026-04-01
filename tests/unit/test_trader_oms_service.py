@@ -15,9 +15,11 @@ from src.domain.execution import (
     OrderIntent,
     OrderIntentStatus,
     OrderStatus,
+    build_order_id_for_intent,
 )
 from src.domain.market import MarketStateSnapshot, SuspensionStatus, TradingPhase
 from src.domain.portfolio import BalanceSnapshot, Position, PositionStatus
+from src.domain.risk import RiskControlState
 from src.domain.strategy import Signal, SignalType
 from src.infra.db import EventLogEntry, RecoveryState
 from src.infra.exchanges import PaperExecutionAdapter, PaperExecutionScenario, PaperFillSlice
@@ -127,6 +129,37 @@ class RecordingPersistence(OmsPersistencePort):
         self.operations.append(f"save_order_intent:{order_intent.status}")
         self.order_intents[order_intent.id] = order_intent
         return order_intent
+
+    def list_recent_active_order_intents(
+        self,
+        *,
+        account_id: str,
+        exchange: str,
+        symbol: str,
+        created_after: datetime,
+    ) -> tuple[OrderIntent, ...]:
+        self.operations.append("list_recent_active_order_intents")
+        active_order_statuses = {OrderStatus.NEW, OrderStatus.ACK, OrderStatus.PARTIALLY_FILLED}
+        matches: list[OrderIntent] = []
+        for intent in self.order_intents.values():
+            if intent.account_id != account_id:
+                continue
+            if intent.exchange != exchange:
+                continue
+            if intent.symbol != symbol:
+                continue
+            if intent.created_at < created_after:
+                continue
+            if intent.status not in {OrderIntentStatus.NEW, OrderIntentStatus.SUBMITTED}:
+                continue
+
+            order = self.orders.get(build_order_id_for_intent(intent.id))
+            if order is not None and order.status not in active_order_statuses:
+                continue
+            matches.append(intent)
+
+        matches.sort(key=lambda intent: intent.created_at, reverse=True)
+        return tuple(matches)
 
     def save_order(self, order: Order) -> Order:
         self.operations.append(f"save_order:{order.status}")
@@ -378,3 +411,146 @@ async def test_trader_oms_service_can_cancel_a_partially_filled_paper_order() ->
     assert canceled_order.avg_fill_price == Decimal("39.50")
     event_types = [event.event_type for event in persistence.event_logs]
     assert "oms.execution_cancel_requested" in event_types
+
+
+@pytest.mark.asyncio
+async def test_trader_oms_service_rejects_stale_market_data_before_persisting_order_intent() -> (
+    None
+):
+    persistence = RecordingPersistence()
+    gateway = RecordingGateway(persistence.operations)
+    service = TraderOmsService(persistence, execution_gateway=gateway)
+
+    result = await service.submit_signal(
+        signal=_signal(),
+        symbol_rule=SYMBOL_RULE,
+        decision_price=Decimal("39.50"),
+        market_context=MARKET_STATE,
+        received_at=BASE_TIME + timedelta(minutes=31),
+    )
+
+    assert result is None
+    assert not persistence.order_intents
+    assert not persistence.orders
+    assert not gateway.calls
+    assert persistence.event_logs[-1].event_type == "oms.risk_rejected"
+    assert (
+        persistence.event_logs[-1].payload_json["risk_result"]["reason_code"] == "MARKET_DATA_STALE"
+    )
+
+
+@pytest.mark.asyncio
+async def test_trader_oms_service_kill_switch_rejects_opening_buy_orders() -> None:
+    persistence = RecordingPersistence()
+    persistence.position = Position(
+        account_id="paper_account_001",
+        exchange="cn_equity",
+        symbol="600036.SH",
+        qty=Decimal("0"),
+        sellable_qty=Decimal("0"),
+        avg_entry_price=None,
+        mark_price=None,
+        unrealized_pnl=Decimal("0"),
+        realized_pnl=Decimal("0"),
+        status=PositionStatus.CLOSED,
+        updated_at=BASE_TIME - timedelta(minutes=15),
+    )
+    gateway = RecordingGateway(persistence.operations)
+    service = TraderOmsService(persistence, execution_gateway=gateway)
+
+    result = await service.submit_signal(
+        signal=_signal().model_copy(update={"target_position": Decimal("300")}),
+        symbol_rule=SYMBOL_RULE,
+        decision_price=Decimal("39.50"),
+        market_context=MARKET_STATE,
+        control_state=RiskControlState.KILL_SWITCH,
+        received_at=BASE_TIME + timedelta(seconds=2),
+    )
+
+    assert result is None
+    assert not persistence.order_intents
+    assert not persistence.orders
+    assert not gateway.calls
+    assert persistence.event_logs[-1].event_type == "oms.risk_rejected"
+    assert (
+        persistence.event_logs[-1].payload_json["risk_result"]["reason_code"]
+        == "KILL_SWITCH_REDUCE_ONLY"
+    )
+
+
+@pytest.mark.asyncio
+async def test_trader_oms_service_kill_switch_allows_reducing_sell_orders() -> None:
+    persistence = RecordingPersistence()
+    persistence.position = Position(
+        account_id="paper_account_001",
+        exchange="cn_equity",
+        symbol="600036.SH",
+        qty=Decimal("300"),
+        sellable_qty=Decimal("300"),
+        avg_entry_price=Decimal("39.20"),
+        mark_price=Decimal("39.50"),
+        unrealized_pnl=Decimal("90"),
+        realized_pnl=Decimal("0"),
+        status=PositionStatus.OPEN,
+        updated_at=BASE_TIME - timedelta(minutes=15),
+    )
+    gateway = RecordingGateway(persistence.operations)
+    service = TraderOmsService(persistence, execution_gateway=gateway)
+
+    result = await service.submit_signal(
+        signal=_signal().model_copy(
+            update={"signal_type": SignalType.EXIT, "target_position": Decimal("0")}
+        ),
+        symbol_rule=SYMBOL_RULE,
+        decision_price=Decimal("39.50"),
+        market_context=MARKET_STATE,
+        control_state=RiskControlState.KILL_SWITCH,
+        received_at=BASE_TIME + timedelta(seconds=2),
+    )
+
+    assert result is not None
+    assert result.plan.side.value == "SELL"
+    assert result.plan.qty == Decimal("300")
+    assert len(gateway.calls) == 1
+    assert persistence.event_logs[0].event_type == "oms.order_intent_persisted"
+
+
+@pytest.mark.asyncio
+async def test_trader_oms_service_rejects_near_duplicate_active_order_intents() -> None:
+    persistence = RecordingPersistence()
+    gateway = RecordingGateway(persistence.operations)
+    service = TraderOmsService(persistence, execution_gateway=gateway)
+    first_signal = _signal().model_copy(update={"id": UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")})
+    first_result = await service.submit_signal(
+        signal=first_signal,
+        symbol_rule=SYMBOL_RULE,
+        decision_price=Decimal("39.50"),
+        market_context=MARKET_STATE,
+        received_at=BASE_TIME + timedelta(seconds=2),
+    )
+
+    assert first_result is not None
+
+    duplicate_signal = _signal().model_copy(
+        update={
+            "id": UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
+            "created_at": BASE_TIME + timedelta(seconds=3),
+        }
+    )
+    duplicate_result = await service.submit_signal(
+        signal=duplicate_signal,
+        symbol_rule=SYMBOL_RULE,
+        decision_price=Decimal("39.50"),
+        market_context=MARKET_STATE,
+        received_at=BASE_TIME + timedelta(seconds=4),
+    )
+
+    assert duplicate_result is None
+    assert len(persistence.order_intents) == 1
+    assert len(persistence.orders) == 1
+    assert not gateway.calls[1:]
+    assert persistence.event_logs[-1].event_type == "oms.risk_rejected"
+    assert (
+        persistence.event_logs[-1].payload_json["risk_result"]["reason_code"]
+        == "DUPLICATE_ORDER_INTENT"
+    )
