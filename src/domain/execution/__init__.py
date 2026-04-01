@@ -16,6 +16,15 @@ from src.domain.execution.models import (
     can_transition_order_status,
     validate_order_status_transition,
 )
+from src.domain.execution.oms import (
+    SignalOrderIntentError,
+    SignalOrderIntentPlan,
+    SymbolRuleLike,
+    build_order_id_for_intent,
+    build_order_intent_idempotency_key,
+    build_signal_order_intent_plan,
+    create_order_from_intent,
+)
 
 __all__ = [
     "ORDER_STATUS_TRANSITIONS",
@@ -29,7 +38,14 @@ __all__ = [
     "OrderStatus",
     "OrderType",
     "RiskDecision",
+    "SignalOrderIntentError",
+    "SignalOrderIntentPlan",
+    "SymbolRuleLike",
     "TimeInForce",
+    "build_order_id_for_intent",
+    "build_order_intent_idempotency_key",
+    "build_signal_order_intent_plan",
     "can_transition_order_status",
+    "create_order_from_intent",
     "validate_order_status_transition",
 ]

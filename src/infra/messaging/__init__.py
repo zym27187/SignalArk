@@ -1,2 +1,5 @@
-"""In-process messaging and event routing land here in Phase 4."""
+"""In-process messaging primitives for the trader runtime."""
 
+from src.infra.messaging.bus import EventSubscription, InProcessEventBus
+
+__all__ = ["EventSubscription", "InProcessEventBus"]

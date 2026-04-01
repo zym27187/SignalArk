@@ -10,7 +10,13 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.orm import Session
 
-from src.domain.execution import Fill, Order, OrderIntent, OrderStatus
+from src.domain.execution import (
+    Fill,
+    Order,
+    OrderIntent,
+    OrderStatus,
+    validate_order_status_transition,
+)
 from src.domain.portfolio import BalanceSnapshot, Position, PositionStatus
 from src.domain.strategy import Signal
 from src.infra.db.audit import EventLogEntry
@@ -229,18 +235,27 @@ class SqlAlchemyOrderIntentRepository:
         self.session = session
 
     def save(self, order_intent: OrderIntent) -> OrderIntent:
-        existing = self.session.scalar(
-            select(OrderIntentRecord).where(
-                OrderIntentRecord.idempotency_key == order_intent.idempotency_key
+        existing = self.session.get(OrderIntentRecord, order_intent.id)
+        if existing is None:
+            existing = self.session.scalar(
+                select(OrderIntentRecord).where(
+                    OrderIntentRecord.idempotency_key == order_intent.idempotency_key
+                )
             )
-        )
-        if existing is not None:
+
+        payload = order_intent.model_dump(mode="python")
+        if existing is None:
+            record = OrderIntentRecord(**payload)
+            self.session.add(record)
+            self.session.flush()
+            return _order_intent_from_record(record)
+
+        if existing.id != order_intent.id:
             return _order_intent_from_record(existing)
 
-        record = OrderIntentRecord(**order_intent.model_dump(mode="python"))
-        self.session.add(record)
+        _update_record_from_model(existing, payload, exclude={"id"})
         self.session.flush()
-        return _order_intent_from_record(record)
+        return _order_intent_from_record(existing)
 
     def get(self, order_intent_id: UUID) -> OrderIntent | None:
         record = self.session.get(OrderIntentRecord, order_intent_id)
@@ -270,6 +285,7 @@ class SqlAlchemyOrderRepository:
             self.session.flush()
             return _order_from_record(record)
 
+        validate_order_status_transition(OrderStatus(existing.status), order.status)
         _update_record_from_model(existing, payload, exclude={"id"})
         self.session.flush()
         return _order_from_record(existing)
