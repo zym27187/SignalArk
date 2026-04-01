@@ -17,9 +17,9 @@ from src.domain.execution import (
     OrderStatus,
 )
 from src.domain.market import MarketStateSnapshot, SuspensionStatus, TradingPhase
-from src.domain.portfolio import Position, PositionStatus
+from src.domain.portfolio import BalanceSnapshot, Position, PositionStatus
 from src.domain.strategy import Signal, SignalType
-from src.infra.db import EventLogEntry
+from src.infra.db import EventLogEntry, RecoveryState
 from src.infra.exchanges import PaperExecutionAdapter, PaperExecutionScenario, PaperFillSlice
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -84,10 +84,25 @@ def _paper_cost_model() -> PaperCostModel:
     )
 
 
+def _balance_snapshot(*, snapshot_time: datetime | None = None) -> BalanceSnapshot:
+    timestamp = snapshot_time or (BASE_TIME - timedelta(minutes=20))
+    return BalanceSnapshot(
+        account_id="paper_account_001",
+        exchange="cn_equity",
+        asset="CNY",
+        total=Decimal("100000"),
+        available=Decimal("100000"),
+        locked=Decimal("0"),
+        snapshot_time=timestamp,
+        created_at=timestamp,
+    )
+
+
 class RecordingPersistence(OmsPersistencePort):
     def __init__(self) -> None:
         self.operations: list[str] = []
         self.position = _position()
+        self.balance_snapshots: list[BalanceSnapshot] = [_balance_snapshot()]
         self.signals: dict[UUID, Signal] = {}
         self.order_intents: dict[UUID, OrderIntent] = {}
         self.orders: dict[UUID, Order] = {}
@@ -102,6 +117,11 @@ class RecordingPersistence(OmsPersistencePort):
     def get_position(self, *, account_id: str, exchange: str, symbol: str) -> Position | None:
         self.operations.append("get_position")
         return self.position
+
+    def save_position(self, position: Position) -> Position:
+        self.operations.append("save_position")
+        self.position = position
+        return position
 
     def save_order_intent(self, order_intent: OrderIntent) -> OrderIntent:
         self.operations.append(f"save_order_intent:{order_intent.status}")
@@ -122,10 +142,69 @@ class RecordingPersistence(OmsPersistencePort):
         self.event_logs.append(event_log)
         return event_log
 
+    def get_fill(self, fill_id: UUID) -> Fill | None:
+        self.operations.append("get_fill")
+        return self.fills.get(fill_id)
+
     def save_fill(self, fill: Fill) -> Fill:
         self.operations.append("save_fill")
         self.fills[fill.id] = fill
         return fill
+
+    def get_latest_balance_snapshot(
+        self,
+        *,
+        account_id: str,
+        exchange: str,
+        asset: str,
+    ) -> BalanceSnapshot | None:
+        self.operations.append("get_latest_balance_snapshot")
+        candidates = [
+            snapshot
+            for snapshot in self.balance_snapshots
+            if snapshot.account_id == account_id
+            and snapshot.exchange == exchange
+            and snapshot.asset == asset
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda snapshot: snapshot.snapshot_time)
+
+    def save_balance_snapshot(self, balance_snapshot: BalanceSnapshot) -> BalanceSnapshot:
+        self.operations.append("save_balance_snapshot")
+        self.balance_snapshots.append(balance_snapshot)
+        return balance_snapshot
+
+    def load_recovery_state(
+        self,
+        *,
+        account_id: str,
+        trader_run_id: UUID | None = None,
+        event_limit: int = 100,
+    ) -> RecoveryState:
+        open_orders = tuple(
+            order
+            for order in self.orders.values()
+            if order.status in {OrderStatus.NEW, OrderStatus.ACK, OrderStatus.PARTIALLY_FILLED}
+        )
+        open_positions = ()
+        if self.position is not None and self.position.status is PositionStatus.OPEN:
+            open_positions = (self.position,)
+        latest_balance_snapshots = ()
+        latest_balance = self.get_latest_balance_snapshot(
+            account_id=account_id,
+            exchange="cn_equity",
+            asset="CNY",
+        )
+        if latest_balance is not None:
+            latest_balance_snapshots = (latest_balance,)
+        recent_event_logs = tuple(self.event_logs[-event_limit:])
+        return RecoveryState(
+            open_orders=open_orders,
+            open_positions=open_positions,
+            latest_balance_snapshots=latest_balance_snapshots,
+            recent_event_logs=recent_event_logs,
+        )
 
 
 class RecordingGateway:
@@ -196,9 +275,60 @@ async def test_trader_oms_service_applies_paper_execution_updates_and_fill_event
     assert "save_order:ACK" in persistence.operations
     assert "save_order:FILLED" in persistence.operations
     assert "save_fill" in persistence.operations
+    assert "save_position" in persistence.operations
+    assert "save_balance_snapshot" in persistence.operations
+    assert persistence.position.qty == Decimal("350")
+    assert persistence.position.sellable_qty == Decimal("250")
+    assert persistence.position.realized_pnl == Decimal("-1.2245")
+    latest_balance = persistence.get_latest_balance_snapshot(
+        account_id="paper_account_001",
+        exchange="cn_equity",
+        asset="CNY",
+    )
+    assert latest_balance is not None
+    assert latest_balance.available == Decimal("96048.7755")
     event_types = [event.event_type for event in persistence.event_logs]
     assert "execution.order_updated" in event_types
     assert "execution.fill_recorded" in event_types
+    assert "portfolio.position_updated" in event_types
+    assert "portfolio.balance_updated" in event_types
+
+
+@pytest.mark.asyncio
+async def test_trader_oms_service_releases_sellable_qty_before_sizing_on_new_trade_date() -> None:
+    persistence = RecordingPersistence()
+    persistence.position = Position(
+        account_id="paper_account_001",
+        exchange="cn_equity",
+        symbol="600036.SH",
+        qty=Decimal("300"),
+        sellable_qty=Decimal("0"),
+        avg_entry_price=Decimal("39.20"),
+        mark_price=Decimal("39.20"),
+        unrealized_pnl=Decimal("0"),
+        realized_pnl=Decimal("0"),
+        status=PositionStatus.OPEN,
+        updated_at=BASE_TIME - timedelta(days=1),
+    )
+    gateway = RecordingGateway(persistence.operations)
+    service = TraderOmsService(persistence, execution_gateway=gateway)
+    reduction_signal = _signal().model_copy(update={"target_position": Decimal("0")})
+    next_day_market_state = MARKET_STATE.model_copy(update={"trade_date": BASE_TIME.date()})
+
+    result = await service.submit_signal(
+        signal=reduction_signal,
+        symbol_rule=SYMBOL_RULE,
+        decision_price=Decimal("39.50"),
+        market_context=next_day_market_state,
+        received_at=BASE_TIME + timedelta(seconds=2),
+    )
+
+    assert result is not None
+    assert result.plan.qty == Decimal("300")
+    assert result.plan.side.value == "SELL"
+    assert persistence.position.sellable_qty == Decimal("300")
+    event_types = [event.event_type for event in persistence.event_logs]
+    assert "portfolio.sellable_qty_released" in event_types
 
 
 @pytest.mark.asyncio

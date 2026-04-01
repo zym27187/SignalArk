@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from src.config.settings import AshareSymbolRule, PaperCostModel
 from src.domain.execution import OrderStatus, OrderType
 from src.domain.market import MarketStateSnapshot, SuspensionStatus, TradingPhase
-from src.domain.portfolio import Position, PositionStatus
+from src.domain.portfolio import BalanceSnapshot, Position, PositionStatus
 from src.domain.strategy import Signal, SignalType
 from src.infra.db import (
     EventLogRecord,
@@ -112,6 +112,20 @@ def _position(*, qty: Decimal, sellable_qty: Decimal) -> Position:
     )
 
 
+def _balance_snapshot() -> BalanceSnapshot:
+    snapshot_time = BASE_TIME - timedelta(minutes=20)
+    return BalanceSnapshot(
+        account_id="paper_account_001",
+        exchange="cn_equity",
+        asset="CNY",
+        total=Decimal("100000"),
+        available=Decimal("100000"),
+        locked=Decimal("0"),
+        snapshot_time=snapshot_time,
+        created_at=snapshot_time,
+    )
+
+
 @pytest.mark.asyncio
 async def test_oms_service_with_paper_execution_persists_ack_fill_and_cost_events(
     session_factory,
@@ -119,6 +133,7 @@ async def test_oms_service_with_paper_execution_persists_ack_fill_and_cost_event
     with session_scope(session_factory) as session:
         repositories = SqlAlchemyRepositories.from_session(session)
         repositories.positions.save(_position(qty=Decimal("250"), sellable_qty=Decimal("250")))
+        repositories.balance_snapshots.save(_balance_snapshot())
         oms_service = TraderOmsService(
             RepositoryBackedOmsPersistence(repositories),
             execution_gateway=PaperExecutionAdapter(
@@ -142,6 +157,17 @@ async def test_oms_service_with_paper_execution_persists_ack_fill_and_cost_event
     with session_scope(session_factory) as session:
         order_record = session.scalar(select(OrderRecord))
         fill_record = session.scalar(select(FillRecord))
+        repositories = SqlAlchemyRepositories.from_session(session)
+        position = repositories.positions.get_by_symbol(
+            account_id="paper_account_001",
+            exchange="cn_equity",
+            symbol="600036.SH",
+        )
+        recovered_state = repositories.recovery.load_runtime_state(
+            account_id="paper_account_001",
+            trader_run_id=TRADER_RUN_ID,
+            event_limit=20,
+        )
         event_types = tuple(
             session.scalars(
                 select(EventLogRecord.event_type).order_by(
@@ -162,12 +188,22 @@ async def test_oms_service_with_paper_execution_persists_ack_fill_and_cost_event
     assert order_record.avg_fill_price == Decimal("39.50")
     assert fill_record is not None
     assert fill_record.fee == Decimal("1.2245")
-    assert len(event_types) == 6
+    assert position is not None
+    assert position.qty == Decimal("350")
+    assert position.sellable_qty == Decimal("250")
+    assert position.realized_pnl == Decimal("-1.2245")
+    assert position.mark_price == Decimal("39.5000000000")
+    assert len(recovered_state.latest_balance_snapshots) == 1
+    assert recovered_state.latest_balance_snapshots[0].available == Decimal("96048.7755")
+    assert recovered_state.latest_balance_snapshots[0].total == Decimal("96048.7755")
+    assert len(event_types) == 8
     assert event_types.count("oms.order_intent_persisted") == 1
     assert event_types.count("oms.order_persisted") == 1
     assert event_types.count("oms.execution_submission_requested") == 1
     assert event_types.count("execution.order_updated") == 2
     assert event_types.count("execution.fill_recorded") == 1
+    assert event_types.count("portfolio.position_updated") == 1
+    assert event_types.count("portfolio.balance_updated") == 1
     assert fill_event_payload is not None
     assert fill_event_payload["execution_source"] == "paper_execution"
     assert fill_event_payload["fill_event"]["cost_breakdown"]["commission"] == "1.1850"
@@ -181,6 +217,7 @@ async def test_oms_service_with_paper_execution_rejects_non_marketable_limit_ord
     with session_scope(session_factory) as session:
         repositories = SqlAlchemyRepositories.from_session(session)
         repositories.positions.save(_position(qty=Decimal("250"), sellable_qty=Decimal("250")))
+        repositories.balance_snapshots.save(_balance_snapshot())
         oms_service = TraderOmsService(
             RepositoryBackedOmsPersistence(repositories),
             execution_gateway=PaperExecutionAdapter(
@@ -216,3 +253,40 @@ async def test_oms_service_with_paper_execution_rejects_non_marketable_limit_ord
     assert fill_count == 0
     assert reject_payload is not None
     assert reject_payload["order_update"]["error_code"] == "RESTING_LIMIT_NOT_SUPPORTED"
+
+
+def test_oms_service_recovery_releases_sellable_qty_for_the_new_trade_date(
+    session_factory,
+) -> None:
+    with session_scope(session_factory) as session:
+        repositories = SqlAlchemyRepositories.from_session(session)
+        repositories.positions.save(
+            Position(
+                account_id="paper_account_001",
+                exchange="cn_equity",
+                symbol="600036.SH",
+                qty=Decimal("300"),
+                sellable_qty=Decimal("0"),
+                avg_entry_price=Decimal("39.20"),
+                mark_price=Decimal("39.20"),
+                unrealized_pnl=Decimal("0"),
+                realized_pnl=Decimal("0"),
+                status=PositionStatus.OPEN,
+                updated_at=BASE_TIME - timedelta(days=1),
+            )
+        )
+        repositories.balance_snapshots.save(_balance_snapshot())
+        oms_service = TraderOmsService(RepositoryBackedOmsPersistence(repositories))
+
+        recovered_state = oms_service.load_recovery_state(
+            account_id="paper_account_001",
+            trader_run_id=TRADER_RUN_ID,
+            event_limit=10,
+            effective_trade_date=BASE_TIME.date(),
+        )
+
+    assert len(recovered_state.open_positions) == 1
+    assert recovered_state.open_positions[0].qty == Decimal("300")
+    assert recovered_state.open_positions[0].sellable_qty == Decimal("300")
+    assert len(recovered_state.latest_balance_snapshots) == 1
+    assert recovered_state.latest_balance_snapshots[0].available == Decimal("100000")

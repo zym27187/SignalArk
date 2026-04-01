@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
@@ -24,9 +24,13 @@ from src.domain.execution import (
     execution_report_is_empty,
 )
 from src.domain.market import MarketStateSnapshot
-from src.domain.portfolio import Position
+from src.domain.portfolio import BalanceSnapshot, Position
+from src.domain.portfolio.ledger import (
+    apply_fill_event_to_portfolio,
+    release_position_sellable_qty,
+)
 from src.domain.strategy import Signal
-from src.infra.db import EventLogEntry, SqlAlchemyRepositories
+from src.infra.db import EventLogEntry, RecoveryState, SqlAlchemyRepositories
 from src.shared.types import shanghai_now
 
 
@@ -35,17 +39,39 @@ class OmsPersistencePort(Protocol):
 
     def get_position(self, *, account_id: str, exchange: str, symbol: str) -> Position | None: ...
 
+    def save_position(self, position: Position) -> Position: ...
+
     def get_order(self, order_id: UUID) -> Order | None: ...
 
     def save_event_log(self, event_log: EventLogEntry) -> EventLogEntry: ...
 
+    def get_fill(self, fill_id: UUID) -> Fill | None: ...
+
     def save_fill(self, fill: Fill) -> Fill: ...
+
+    def get_latest_balance_snapshot(
+        self,
+        *,
+        account_id: str,
+        exchange: str,
+        asset: str,
+    ) -> BalanceSnapshot | None: ...
+
+    def save_balance_snapshot(self, balance_snapshot: BalanceSnapshot) -> BalanceSnapshot: ...
 
     def save_order(self, order: Order) -> Order: ...
 
     def save_order_intent(self, order_intent: OrderIntent) -> OrderIntent: ...
 
     def save_signal(self, signal: Signal) -> Signal: ...
+
+    def load_recovery_state(
+        self,
+        *,
+        account_id: str,
+        trader_run_id: UUID | None = None,
+        event_limit: int = 100,
+    ) -> RecoveryState: ...
 
 
 class ExecutionGateway(Protocol):
@@ -72,6 +98,9 @@ class RepositoryBackedOmsPersistence:
             symbol=symbol,
         )
 
+    def save_position(self, position: Position) -> Position:
+        return self.repositories.positions.save(position)
+
     def save_order_intent(self, order_intent: OrderIntent) -> OrderIntent:
         return self.repositories.order_intents.save(order_intent)
 
@@ -84,8 +113,43 @@ class RepositoryBackedOmsPersistence:
     def save_event_log(self, event_log: EventLogEntry) -> EventLogEntry:
         return self.repositories.event_logs.save(event_log)
 
+    def get_fill(self, fill_id: UUID) -> Fill | None:
+        return self.repositories.fills.get(fill_id)
+
     def save_fill(self, fill: Fill) -> Fill:
         return self.repositories.fills.save(fill)
+
+    def get_latest_balance_snapshot(
+        self,
+        *,
+        account_id: str,
+        exchange: str,
+        asset: str,
+    ) -> BalanceSnapshot | None:
+        recovered_state = self.repositories.recovery.load_runtime_state(
+            account_id=account_id,
+            event_limit=1,
+        )
+        for snapshot in recovered_state.latest_balance_snapshots:
+            if snapshot.exchange == exchange and snapshot.asset == asset:
+                return snapshot
+        return None
+
+    def save_balance_snapshot(self, balance_snapshot: BalanceSnapshot) -> BalanceSnapshot:
+        return self.repositories.balance_snapshots.save(balance_snapshot)
+
+    def load_recovery_state(
+        self,
+        *,
+        account_id: str,
+        trader_run_id: UUID | None = None,
+        event_limit: int = 100,
+    ) -> RecoveryState:
+        return self.repositories.recovery.load_runtime_state(
+            account_id=account_id,
+            trader_run_id=trader_run_id,
+            event_limit=event_limit,
+        )
 
 
 class NoopExecutionGateway:
@@ -139,6 +203,12 @@ class TraderOmsService:
             account_id=signal.account_id,
             exchange=signal.exchange,
             symbol=signal.symbol,
+        )
+        resolved_position = self._release_position_for_trade_date(
+            position=resolved_position,
+            effective_trade_date=market_context.trade_date,
+            occurred_at=occurred_at,
+            trader_run_id=persisted_signal.trader_run_id,
         )
         plan = build_signal_order_intent_plan(
             signal=persisted_signal,
@@ -337,6 +407,38 @@ class TraderOmsService:
             initial_order=order,
         )
 
+    def load_recovery_state(
+        self,
+        *,
+        account_id: str,
+        trader_run_id: UUID | None = None,
+        event_limit: int = 100,
+        effective_trade_date: date | None = None,
+    ) -> RecoveryState:
+        """Return the persisted OMS/portfolio state needed after restart."""
+        recovered_state = self._persistence.load_recovery_state(
+            account_id=account_id,
+            trader_run_id=trader_run_id,
+            event_limit=event_limit,
+        )
+        if effective_trade_date is None:
+            return recovered_state
+
+        released_at = shanghai_now()
+        return RecoveryState(
+            open_orders=recovered_state.open_orders,
+            open_positions=tuple(
+                release_position_sellable_qty(
+                    position,
+                    effective_trade_date=effective_trade_date,
+                    released_at=released_at,
+                ).position
+                for position in recovered_state.open_positions
+            ),
+            latest_balance_snapshots=recovered_state.latest_balance_snapshots,
+            recent_event_logs=recovered_state.recent_event_logs,
+        )
+
     def _apply_execution_report(
         self,
         *,
@@ -365,6 +467,9 @@ class TraderOmsService:
             )
 
         for fill_event in report.fill_events:
+            if self._persistence.get_fill(fill_event.fill.id) is not None:
+                continue
+
             persisted_fill = self._persistence.save_fill(fill_event.fill)
             self._persist_event(
                 event_type="execution.fill_recorded",
@@ -381,8 +486,109 @@ class TraderOmsService:
                     "fill_event": fill_event,
                 },
             )
+            portfolio_update = apply_fill_event_to_portfolio(
+                fill_event,
+                current_position=self._persistence.get_position(
+                    account_id=fill_event.account_id,
+                    exchange=fill_event.exchange,
+                    symbol=fill_event.symbol,
+                ),
+                current_balance=self._persistence.get_latest_balance_snapshot(
+                    account_id=fill_event.account_id,
+                    exchange=fill_event.exchange,
+                    asset=fill_event.cost_breakdown.currency,
+                ),
+            )
+            persisted_position = self._persistence.save_position(portfolio_update.position)
+            persisted_balance_snapshot = self._persistence.save_balance_snapshot(
+                portfolio_update.balance_snapshot
+            )
+            self._persist_event(
+                event_type="portfolio.position_updated",
+                related_object_type="position",
+                related_object_id=persisted_position.id,
+                source=report.source,
+                trader_run_id=fill_event.trader_run_id,
+                account_id=fill_event.account_id,
+                exchange=fill_event.exchange,
+                symbol=fill_event.symbol,
+                occurred_at=fill_event.event_time,
+                payload={
+                    "fill_id": persisted_fill.id,
+                    "fill_side": fill_event.fill.side,
+                    "fill_qty": fill_event.fill.qty,
+                    "fill_price": fill_event.fill.price,
+                    "released_sellable_qty": portfolio_update.released_sellable_qty,
+                    "realized_pnl_delta": portfolio_update.realized_pnl_delta,
+                    "position_qty": persisted_position.qty,
+                    "sellable_qty": persisted_position.sellable_qty,
+                    "avg_entry_price": persisted_position.avg_entry_price,
+                    "mark_price": persisted_position.mark_price,
+                    "realized_pnl": persisted_position.realized_pnl,
+                    "unrealized_pnl": persisted_position.unrealized_pnl,
+                    "cost_breakdown": fill_event.cost_breakdown,
+                },
+            )
+            self._persist_event(
+                event_type="portfolio.balance_updated",
+                related_object_type="balance_snapshot",
+                related_object_id=persisted_balance_snapshot.id,
+                source=report.source,
+                trader_run_id=fill_event.trader_run_id,
+                account_id=fill_event.account_id,
+                exchange=fill_event.exchange,
+                symbol=fill_event.symbol,
+                occurred_at=fill_event.event_time,
+                payload={
+                    "fill_id": persisted_fill.id,
+                    "asset": persisted_balance_snapshot.asset,
+                    "cash_delta": portfolio_update.cash_delta,
+                    "total": persisted_balance_snapshot.total,
+                    "available": persisted_balance_snapshot.available,
+                    "locked": persisted_balance_snapshot.locked,
+                    "cost_breakdown": fill_event.cost_breakdown,
+                },
+            )
 
         return current_order
+
+    def _release_position_for_trade_date(
+        self,
+        *,
+        position: Position | None,
+        effective_trade_date: date,
+        occurred_at: datetime,
+        trader_run_id: UUID,
+    ) -> Position | None:
+        if position is None:
+            return None
+
+        release = release_position_sellable_qty(
+            position,
+            effective_trade_date=effective_trade_date,
+            released_at=occurred_at,
+        )
+        if not release.applied:
+            return position
+
+        persisted_position = self._persistence.save_position(release.position)
+        self._persist_event(
+            event_type="portfolio.sellable_qty_released",
+            related_object_type="position",
+            related_object_id=persisted_position.id,
+            trader_run_id=trader_run_id,
+            account_id=persisted_position.account_id,
+            exchange=persisted_position.exchange,
+            symbol=persisted_position.symbol,
+            occurred_at=occurred_at,
+            payload={
+                "effective_trade_date": str(effective_trade_date),
+                "released_qty": release.released_qty,
+                "qty": persisted_position.qty,
+                "sellable_qty": persisted_position.sellable_qty,
+            },
+        )
+        return persisted_position
 
     def _persist_event(
         self,
