@@ -9,13 +9,13 @@ interface EventTimelineProps {
 export function EventTimeline({ events, error }: EventTimelineProps) {
   return (
     <div className="event-timeline">
-      {error ? <p className="section-error">Events feed issue: {error}</p> : null}
+      {error ? <p className="section-error">事件流异常：{error}</p> : null}
 
       {events.length === 0 ? (
         <div className="empty-state">
-          <p className="empty-state__title">No replay events loaded</p>
+          <p className="empty-state__title">暂无回放事件</p>
           <p className="empty-state__copy">
-            Once the trader emits audit events, this rail becomes a quick operator timeline.
+            交易运行时开始产出审计事件后，这里会形成一条便于值守查看的时间线。
           </p>
         </div>
       ) : (
@@ -30,7 +30,7 @@ export function EventTimeline({ events, error }: EventTimelineProps) {
                 <span>{formatDateTime(event.event_time)}</span>
               </div>
               <p className="event-list__meta">
-                {event.source} · {event.symbol ?? "Account scope"} · Run {compactId(event.trader_run_id)}
+                {event.source} · {event.symbol ?? "账户范围"} · 运行 {compactId(event.trader_run_id)}
               </p>
               <p className="event-list__payload">{summarizePayload(event.payload_json)}</p>
             </li>
@@ -40,4 +40,3 @@ export function EventTimeline({ events, error }: EventTimelineProps) {
     </div>
   );
 }
-

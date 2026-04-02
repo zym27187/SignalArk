@@ -7,7 +7,7 @@ import "./styles.css";
 const container = document.getElementById("root");
 
 if (container === null) {
-  throw new Error("Root container #root was not found.");
+  throw new Error("未找到根节点容器 #root。");
 }
 
 createRoot(container).render(
@@ -15,4 +15,3 @@ createRoot(container).render(
     <App />
   </StrictMode>,
 );
-

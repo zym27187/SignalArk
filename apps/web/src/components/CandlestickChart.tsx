@@ -52,19 +52,19 @@ export function CandlestickChart({ title, subtitle, bars }: CandlestickChartProp
 
       <div className="mini-metric-grid">
         <div className="mini-metric">
-          <span className="mini-label">Session High</span>
+          <span className="mini-label">区间最高</span>
           <strong>{formatDecimal(Math.max(...bars.map((bar) => bar.high)), 2)}</strong>
         </div>
         <div className="mini-metric">
-          <span className="mini-label">Session Low</span>
+          <span className="mini-label">区间最低</span>
           <strong>{formatDecimal(Math.min(...bars.map((bar) => bar.low)), 2)}</strong>
         </div>
         <div className="mini-metric">
-          <span className="mini-label">Bars</span>
+          <span className="mini-label">K 线数</span>
           <strong>{bars.length}</strong>
         </div>
         <div className="mini-metric">
-          <span className="mini-label">Volume</span>
+          <span className="mini-label">成交量</span>
           <strong>{formatDecimal(totalVolume, 0)}</strong>
         </div>
       </div>
@@ -74,7 +74,7 @@ export function CandlestickChart({ title, subtitle, bars }: CandlestickChartProp
           viewBox={`0 0 ${width} ${height}`}
           className="chart__svg"
           role="img"
-          aria-label={`${title} candlestick chart`}
+          aria-label={`${title}K线图`}
         >
           {ticks.map((tick) => {
             const y = scaleY(tick);
@@ -144,4 +144,3 @@ export function CandlestickChart({ title, subtitle, bars }: CandlestickChartProp
     </div>
   );
 }
-

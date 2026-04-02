@@ -43,35 +43,35 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
 
         <section className="metric-grid">
           <MetricCard
-            label="Ready State"
-            value={status?.ready ? "Ready" : "Standby"}
+            label="就绪状态"
+            value={status?.ready ? "就绪" : "待命"}
             hint={titleCase(status?.status)}
             tone={status?.ready ? "positive" : "warning"}
           />
           <MetricCard
-            label="Control State"
+            label="控制状态"
             value={titleCase(status?.control_state)}
-            hint={status?.strategy_enabled ? "Strategy enabled" : "Strategy paused by operator"}
+            hint={status?.strategy_enabled ? "策略已启用" : "策略已被操作员暂停"}
             tone={controlTone(status?.control_state)}
           />
           <MetricCard
-            label="Market Feed"
-            value={status?.market_data_fresh ? "Fresh" : "Stale"}
+            label="行情数据"
+            value={status?.market_data_fresh ? "最新" : "过期"}
             hint={titleCase(status?.current_trading_phase)}
             tone={status?.market_data_fresh ? "positive" : "warning"}
           />
           <MetricCard
-            label="Lease Token"
+            label="租约令牌"
             value={status?.fencing_token ?? "--"}
-            hint={`Owner ${compactId(status?.lease_owner_instance_id)}`}
+            hint={`持有者 ${compactId(status?.lease_owner_instance_id)}`}
             tone="default"
           />
         </section>
 
         <SectionCard
-          eyebrow="Portfolio"
-          title="Open Positions"
-          description="Current persisted position state as seen by the control plane."
+          eyebrow="组合"
+          title="当前持仓"
+          description="控制平面当前看到的已持久化持仓状态。"
         >
           <PositionsTable
             positions={dashboard.snapshot.positions}
@@ -80,9 +80,9 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         </SectionCard>
 
         <SectionCard
-          eyebrow="Execution"
-          title="Active Orders"
-          description="Live order queue surface for operator review and cancel-all actions."
+          eyebrow="执行"
+          title="活动订单"
+          description="供人工复核与一键撤单的实时订单队列。"
         >
           <OrdersTable
             orders={dashboard.snapshot.orders}
@@ -93,9 +93,9 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
 
       <aside className="dashboard-grid__rail">
         <SectionCard
-          eyebrow="Operator"
-          title="Control Actions"
-          description="Manual interventions should stay visible, explicit, and reversible."
+          eyebrow="操作员"
+          title="控制动作"
+          description="人工干预应保持可见、明确且可回退。"
         >
           <ControlPanel
             status={status}
@@ -106,9 +106,9 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         </SectionCard>
 
         <SectionCard
-          eyebrow="Diagnostics"
-          title="Recent Event Replay"
-          description="A compact audit rail sourced from the reconciliation replay endpoint."
+          eyebrow="诊断"
+          title="近期事件回放"
+          description="来自对账回放接口的精简审计时间线。"
         >
           <EventTimeline
             events={deferredEvents}

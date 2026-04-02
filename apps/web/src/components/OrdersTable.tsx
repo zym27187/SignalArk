@@ -9,27 +9,27 @@ interface OrdersTableProps {
 export function OrdersTable({ orders, error }: OrdersTableProps) {
   return (
     <div className="table-shell">
-      {error ? <p className="section-error">Orders feed issue: {error}</p> : null}
+      {error ? <p className="section-error">订单数据异常：{error}</p> : null}
 
       {orders.length === 0 ? (
         <div className="empty-state">
-          <p className="empty-state__title">No active orders</p>
+          <p className="empty-state__title">暂无活动订单</p>
           <p className="empty-state__copy">
-            The control plane will list only `NEW`, `ACK`, and `PARTIALLY_FILLED` orders here.
+            这里只展示控制平面中的 `NEW`、`ACK` 和 `PARTIALLY_FILLED` 订单。
           </p>
         </div>
       ) : (
         <table className="data-table">
           <thead>
             <tr>
-              <th>Symbol</th>
-              <th>Side</th>
-              <th>Type</th>
-              <th>Qty</th>
-              <th>Filled</th>
-              <th>Status</th>
-              <th>Reduce Only</th>
-              <th>Submitted</th>
+              <th>标的</th>
+              <th>方向</th>
+              <th>类型</th>
+              <th>数量</th>
+              <th>已成交</th>
+              <th>状态</th>
+              <th>只减仓</th>
+              <th>提交时间</th>
             </tr>
           </thead>
           <tbody>
@@ -41,7 +41,7 @@ export function OrdersTable({ orders, error }: OrdersTableProps) {
                 <td>{formatDecimal(order.qty, 0)}</td>
                 <td>{formatDecimal(order.filled_qty, 0)}</td>
                 <td>{titleCase(order.status)}</td>
-                <td>{order.reduce_only ? "Yes" : "No"}</td>
+                <td>{order.reduce_only ? "是" : "否"}</td>
                 <td>{formatDateTime(order.submitted_at)}</td>
               </tr>
             ))}
@@ -51,4 +51,3 @@ export function OrdersTable({ orders, error }: OrdersTableProps) {
     </div>
   );
 }
-

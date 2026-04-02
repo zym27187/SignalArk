@@ -26,11 +26,11 @@ export function MarketView({ status }: MarketViewProps) {
     <main className="page-stack">
       <section className="page-hero">
         <div className="page-hero__copy">
-          <p className="page-hero__eyebrow">Market Monitor</p>
-          <h2 className="page-hero__title">K-line region and intraday PnL skeleton</h2>
+          <p className="page-hero__eyebrow">市场监控</p>
+          <h2 className="page-hero__title">K 线区域与盘中盈亏骨架</h2>
           <p className="page-hero__summary">
-            This view is intentionally shaped like the future live market monitor. Until a bars API
-            exists, it renders a local fixture with the same symbol and timeframe semantics.
+            这个视图按未来实时市场监控页的结构搭建。在 K 线 API 就绪前，先使用本地
+            示例数据模拟相同的标的与周期语义。
           </p>
         </div>
         <div className="page-hero__chips">
@@ -42,21 +42,21 @@ export function MarketView({ status }: MarketViewProps) {
 
       <section className="metric-grid metric-grid--three">
         <MetricCard
-          label="Last Price"
+          label="最新价"
           value={formatDecimal(lastBar.close, 2)}
-          hint={`Close ${status?.market_data_fresh ? "fresh" : "fixture"}`}
+          hint={`收盘来源：${status?.market_data_fresh ? "实时" : "示例数据"}`}
           tone="positive"
         />
         <MetricCard
-          label="Session Move"
+          label="区间涨跌"
           value={`${sessionMove >= 0 ? "+" : ""}${formatDecimal(sessionMovePct, 2)}%`}
-          hint={`${sessionMove >= 0 ? "+" : ""}${formatDecimal(sessionMove, 2)} CNY`}
+          hint={`${sessionMove >= 0 ? "+" : ""}${formatDecimal(sessionMove, 2)} 元`}
           tone={sessionMove >= 0 ? "positive" : "danger"}
         />
         <MetricCard
-          label="Session Equity Band"
+          label="区间权益带"
           value={`${formatDecimal(minEquity, 0)} - ${formatDecimal(maxEquity, 0)}`}
-          hint="Derived from local curve fixture"
+          hint="基于本地曲线示例数据推导"
           tone="default"
         />
       </section>
@@ -64,25 +64,25 @@ export function MarketView({ status }: MarketViewProps) {
       <section className="page-grid">
         <div className="page-grid__main">
           <SectionCard
-            eyebrow="Price Action"
-            title="K-line Region"
-            description="Candlestick scaffold for one tracked symbol and one active timeframe."
+            eyebrow="价格走势"
+            title="K 线区域"
+            description="针对单个跟踪标的和单条活跃周期的蜡烛图骨架。"
           >
             <CandlestickChart
               title={activeSymbol}
-              subtitle="15m bars with room for future live overlays"
+              subtitle="15m K 线，预留后续实时叠加层"
               bars={bars}
             />
           </SectionCard>
 
           <SectionCard
-            eyebrow="PnL"
-            title="Intraday Equity Curve"
-            description="Runtime PnL area chart placeholder for a future live positions timeline."
+            eyebrow="盈亏"
+            title="盘中权益曲线"
+            description="为未来实时持仓时间线预留的运行时盈亏面积图占位。"
           >
             <AreaChart
-              title="Session Equity"
-              subtitle="From baseline 100,000 paper capital"
+              title="区间权益"
+              subtitle="以 100,000 模拟本金为基线"
               points={runtimePnlCurve}
               accent="amber"
               formatAsMoney
@@ -92,31 +92,31 @@ export function MarketView({ status }: MarketViewProps) {
 
         <aside className="page-grid__rail">
           <SectionCard
-            eyebrow="Readiness"
-            title="Data Surface Plan"
-            description="The visual structure is ready before the market-history APIs land."
+            eyebrow="就绪度"
+            title="数据面规划"
+            description="在行情历史 API 落地前，视觉结构已经可以先行验证。"
           >
             <DefinitionGrid
               items={[
                 {
-                  label: "Current Source",
-                  value: "Local fixture",
-                  hint: "Rendered from typed frontend fixtures, not HTTP bars.",
+                  label: "当前来源",
+                  value: "本地示例数据",
+                  hint: "来自前端强类型示例数据，而非 HTTP K 线接口。",
                 },
                 {
-                  label: "Future Bars API",
+                  label: "未来 K 线 API",
                   value: "/v1/market/bars",
-                  hint: "Likely query: symbol + timeframe + limit.",
+                  hint: "可能的查询参数：symbol + timeframe + limit。",
                 },
                 {
-                  label: "Future PnL API",
+                  label: "未来权益 API",
                   value: "/v1/portfolio/equity-curve",
-                  hint: "Would support live mark-to-market history.",
+                  hint: "可支持实时盯市权益历史。",
                 },
                 {
-                  label: "Trader State",
+                  label: "交易器状态",
                   value: titleCase(status?.control_state),
-                  hint: "Real-time control state already comes from the API.",
+                  hint: "控制状态已经可以实时从 API 获取。",
                 },
               ]}
             />

@@ -13,11 +13,11 @@ export function ResearchView() {
     <main className="page-stack">
       <section className="page-hero">
         <div className="page-hero__copy">
-          <p className="page-hero__eyebrow">Research Lab</p>
-          <h2 className="page-hero__title">Backtest results page skeleton</h2>
+          <p className="page-hero__eyebrow">研究实验室</p>
+          <h2 className="page-hero__title">回测结果页骨架</h2>
           <p className="page-hero__summary">
-            This page mirrors the structure of `BacktestRunResult`: run manifest, performance
-            summary, equity curve, and bar-driven decision audit.
+            本页对应 `BacktestRunResult` 的结构：运行清单、绩效摘要、权益曲线，以及
+            逐根 K 线驱动的决策审计。
           </p>
         </div>
         <div className="page-hero__chips">
@@ -29,27 +29,27 @@ export function ResearchView() {
 
       <section className="metric-grid">
         <MetricCard
-          label="Net PnL"
+          label="净收益"
           value={formatSignedMoney(performance.netPnl)}
-          hint={`Return ${formatDecimal(performance.totalReturnPct, 4)}%`}
+          hint={`收益率 ${formatDecimal(performance.totalReturnPct, 4)}%`}
           tone={performance.netPnl >= 0 ? "positive" : "danger"}
         />
         <MetricCard
-          label="Max Drawdown"
+          label="最大回撤"
           value={`${formatDecimal(performance.maxDrawdownPct, 4)}%`}
-          hint="Peak-to-trough drawdown over the replay"
+          hint="整段回放过程中的峰谷回撤"
           tone="warning"
         />
         <MetricCard
-          label="Trades"
+          label="交易次数"
           value={performance.tradeCount}
-          hint={`${performance.fillCount} fills / ${performance.signalCount} signals`}
+          hint={`${performance.fillCount} 笔成交 / ${performance.signalCount} 个信号`}
           tone="default"
         />
         <MetricCard
-          label="Ending Equity"
+          label="期末权益"
           value={formatDecimal(performance.endingEquity, 2)}
-          hint={`Starting ${formatDecimal(performance.startingEquity, 2)}`}
+          hint={`期初 ${formatDecimal(performance.startingEquity, 2)}`}
           tone="default"
         />
       </section>
@@ -57,13 +57,13 @@ export function ResearchView() {
       <section className="page-grid">
         <div className="page-grid__main">
           <SectionCard
-            eyebrow="Performance"
-            title="Equity Curve"
-            description="Area chart prepared for a future research API that returns end-of-bar equity points."
+            eyebrow="绩效"
+            title="权益曲线"
+            description="为未来研究 API 返回逐 Bar 期末权益点预留的面积图。"
           >
             <AreaChart
-              title="Backtest Equity"
-              subtitle={`${manifest.symbols.join(", ")} · ${manifest.timeframe} · ${manifest.barCount} bars`}
+              title="回测权益"
+              subtitle={`${manifest.symbols.join(", ")} · ${manifest.timeframe} · ${manifest.barCount} 根 K 线`}
               points={backtestEquityCurve}
               accent="red"
               formatAsMoney
@@ -71,9 +71,9 @@ export function ResearchView() {
           </SectionCard>
 
           <SectionCard
-            eyebrow="Audit"
-            title="Decision Timeline"
-            description="Bar-level signal and order-plan audit aligned to the backtest decision record model."
+            eyebrow="审计"
+            title="决策时间线"
+            description="与回测决策记录模型对齐的逐 Bar 信号与订单计划审计。"
           >
             <BacktestDecisionTable decisions={decisions} />
           </SectionCard>
@@ -81,37 +81,37 @@ export function ResearchView() {
 
         <aside className="page-grid__rail">
           <SectionCard
-            eyebrow="Manifest"
-            title="Run Metadata"
-            description="Serializable run identity and replay assumptions."
+            eyebrow="清单"
+            title="运行元数据"
+            description="可序列化的运行标识与回放假设。"
           >
             <DefinitionGrid
               items={[
                 {
-                  label: "Run ID",
+                  label: "运行 ID",
                   value: manifest.runId,
                   hint: manifest.description,
                 },
                 {
-                  label: "Time Window",
-                  value: `${formatDateTime(manifest.startTime)} -> ${formatDateTime(manifest.endTime)}`,
+                  label: "时间窗口",
+                  value: `${formatDateTime(manifest.startTime)} 至 ${formatDateTime(manifest.endTime)}`,
                 },
                 {
-                  label: "Account / Symbols",
+                  label: "账户 / 标的",
                   value: `${manifest.accountId} / ${manifest.symbols.join(", ")}`,
-                  hint: `${manifest.handlerName} on ${manifest.timeframe}`,
+                  hint: `${manifest.handlerName} · ${manifest.timeframe}`,
                 },
                 {
-                  label: "Cost Assumptions",
-                  value: `${formatDecimal(manifest.slippageBps, 0)} bps slippage`,
+                  label: "成本假设",
+                  value: `滑点 ${formatDecimal(manifest.slippageBps, 0)} bps`,
                   hint: `${manifest.feeModel} + ${manifest.slippageModel}`,
                 },
                 {
-                  label: "Dataset Fingerprint",
+                  label: "数据指纹",
                   value: manifest.dataFingerprint,
                 },
                 {
-                  label: "Manifest Fingerprint",
+                  label: "清单指纹",
                   value: manifest.manifestFingerprint,
                 },
               ]}
@@ -119,9 +119,9 @@ export function ResearchView() {
           </SectionCard>
 
           <SectionCard
-            eyebrow="Notes"
-            title="Frontend Integration Notes"
-            description="What is real today, and what this page is waiting for next."
+            eyebrow="说明"
+            title="前端集成说明"
+            description="当前已真实可用的部分，以及本页后续等待接入的能力。"
           >
             <ul className="note-list">
               {notes.map((note) => (

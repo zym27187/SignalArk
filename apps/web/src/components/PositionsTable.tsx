@@ -9,28 +9,28 @@ interface PositionsTableProps {
 export function PositionsTable({ positions, error }: PositionsTableProps) {
   return (
     <div className="table-shell">
-      {error ? <p className="section-error">Positions feed issue: {error}</p> : null}
+      {error ? <p className="section-error">持仓数据异常：{error}</p> : null}
 
       {positions.length === 0 ? (
         <div className="empty-state">
-          <p className="empty-state__title">No open positions</p>
+          <p className="empty-state__title">暂无持仓</p>
           <p className="empty-state__copy">
-            Once paper fills settle, open positions will appear here with sellable quantity and PnL.
+            模拟成交完成后，这里会展示可卖数量以及实时盈亏信息。
           </p>
         </div>
       ) : (
         <table className="data-table">
           <thead>
             <tr>
-              <th>Symbol</th>
-              <th>Qty</th>
-              <th>Sellable</th>
-              <th>Avg</th>
-              <th>Mark</th>
-              <th>Unrealized</th>
-              <th>Realized</th>
-              <th>Status</th>
-              <th>Updated</th>
+              <th>标的</th>
+              <th>数量</th>
+              <th>可卖</th>
+              <th>均价</th>
+              <th>标记价</th>
+              <th>浮动盈亏</th>
+              <th>已实现盈亏</th>
+              <th>状态</th>
+              <th>更新时间</th>
             </tr>
           </thead>
           <tbody>
@@ -53,4 +53,3 @@ export function PositionsTable({ positions, error }: PositionsTableProps) {
     </div>
   );
 }
-

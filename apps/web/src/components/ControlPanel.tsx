@@ -1,5 +1,5 @@
 import { API_BASE_URL, type ControlActionKey } from "../lib/api";
-import { formatDateTime, titleCase } from "../lib/format";
+import { formatDateTime, localizeMessage, titleCase } from "../lib/format";
 import type { StatusPayload } from "../types/api";
 
 interface ControlPanelProps {
@@ -17,32 +17,32 @@ const controlActions: Array<{
 }> = [
   {
     key: "pauseStrategy",
-    title: "Pause Strategy",
-    description: "Stop new strategy-triggered actions while keeping runtime visibility.",
+    title: "暂停策略",
+    description: "停止新的策略触发动作，同时保留运行时可见性。",
     tone: "default",
   },
   {
     key: "resumeStrategy",
-    title: "Resume Strategy",
-    description: "Re-enable strategy-triggered submissions after operator review.",
+    title: "恢复策略",
+    description: "在人工复核后重新允许策略触发提交流程。",
     tone: "default",
   },
   {
     key: "enableKillSwitch",
-    title: "Enable Kill Switch",
-    description: "Block new opening flow and keep only reducing actions available.",
+    title: "开启熔断开关",
+    description: "阻断新的开仓流程，仅保留减仓或清仓动作。",
     tone: "danger",
   },
   {
     key: "disableKillSwitch",
-    title: "Disable Kill Switch",
-    description: "Return from manual emergency mode without changing protection state.",
+    title: "关闭熔断开关",
+    description: "退出人工应急模式，同时不改变现有保护状态。",
     tone: "default",
   },
   {
     key: "cancelAll",
-    title: "Cancel All Orders",
-    description: "Request cancellation of every eligible active order in the control plane.",
+    title: "全部撤单",
+    description: "请求撤销控制平面内所有符合条件的活动订单。",
     tone: "danger",
   },
 ];
@@ -57,11 +57,11 @@ export function ControlPanel({
     <div className="control-panel">
       <div className="control-panel__status-strip">
         <div>
-          <span className="mini-label">Current Control State</span>
+          <span className="mini-label">当前控制状态</span>
           <strong>{titleCase(status?.control_state)}</strong>
         </div>
         <div>
-          <span className="mini-label">Last Cancel-All</span>
+          <span className="mini-label">最近一次全撤</span>
           <strong>{formatDateTime(status?.last_cancel_all_at)}</strong>
         </div>
       </div>
@@ -81,7 +81,7 @@ export function ControlPanel({
               disabled={pendingAction !== null}
             >
               <span className="control-button__title">
-                {busy ? "Working..." : action.title}
+                {busy ? "处理中..." : action.title}
               </span>
               <span className="control-button__description">{action.description}</span>
             </button>
@@ -91,11 +91,10 @@ export function ControlPanel({
 
       <div className="control-panel__footer">
         <p className="control-panel__message">
-          {actionMessage ?? "Operator actions will post to the live FastAPI control plane."}
+          {localizeMessage(actionMessage) || "操作动作将提交到在线 FastAPI 控制平面。"}
         </p>
-        <p className="control-panel__endpoint">API target: {API_BASE_URL}</p>
+        <p className="control-panel__endpoint">API 目标：{API_BASE_URL}</p>
       </div>
     </div>
   );
 }
-

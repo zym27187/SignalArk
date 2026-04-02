@@ -12,18 +12,18 @@ const viewOptions: Array<{
 }> = [
   {
     key: "operations",
-    label: "Operations",
-    description: "Control plane, positions, orders, and operator actions.",
+    label: "运维",
+    description: "控制平面、持仓、订单与人工操作。",
   },
   {
     key: "market",
-    label: "Market",
-    description: "K-line monitoring and intraday PnL visualization skeleton.",
+    label: "市场",
+    description: "K 线监控与盘中盈亏可视化骨架。",
   },
   {
     key: "research",
-    label: "Research",
-    description: "Backtest results page aligned to the Phase 8 result contract.",
+    label: "研究",
+    description: "与第 8 阶段结果契约对齐的回测结果页。",
   },
 ];
 
@@ -31,7 +31,7 @@ export function ViewSwitcher({ value, onChange }: ViewSwitcherProps) {
   return (
     <nav
       className="view-switcher"
-      aria-label="Primary web console view"
+      aria-label="控制台主视图导航"
     >
       {viewOptions.map((option) => (
         <button
@@ -49,4 +49,3 @@ export function ViewSwitcher({ value, onChange }: ViewSwitcherProps) {
     </nav>
   );
 }
-

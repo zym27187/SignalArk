@@ -28,17 +28,16 @@ export default function App() {
 
       <header className="masthead">
         <div className="masthead__copy">
-          <p className="masthead__eyebrow">Paper Trading / Control Plane / Phase 1</p>
-          <h1 className="masthead__title">SignalArk Console</h1>
+          <p className="masthead__eyebrow">模拟交易 / 控制平面 / 第一阶段</p>
+          <h1 className="masthead__title">SignalArk 控制台</h1>
           <p className="masthead__summary">
-            A multi-view frontend shell for operator supervision, market visualization, and
-            research output review.
+            用于运维值守、市场可视化与研究结果复核的多视图前端控制台。
           </p>
         </div>
 
         <div className="masthead__actions">
           <div className="masthead__meta">
-            <span className="mini-label">Last Refresh</span>
+            <span className="mini-label">最近刷新</span>
             <strong>{formatDateTime(dashboard.snapshot.fetchedAt)}</strong>
           </div>
           <button
@@ -49,7 +48,7 @@ export default function App() {
             }}
             disabled={dashboard.isRefreshing}
           >
-            {dashboard.isRefreshing ? "Refreshing..." : "Refresh Snapshot"}
+            {dashboard.isRefreshing ? "刷新中..." : "刷新快照"}
           </button>
         </div>
       </header>

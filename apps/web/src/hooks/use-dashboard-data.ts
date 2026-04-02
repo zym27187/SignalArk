@@ -8,6 +8,7 @@ import {
   postControlAction,
   type ControlActionKey,
 } from "../lib/api";
+import { localizeMessage } from "../lib/format";
 import type {
   ActiveOrder,
   DashboardSectionKey,
@@ -38,10 +39,10 @@ const EMPTY_SNAPSHOT: DashboardSnapshot = {
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
-    return error.message;
+    return localizeMessage(error.message);
   }
 
-  return "Request failed.";
+  return localizeMessage("Request failed.");
 }
 
 export function useDashboardData() {
@@ -125,7 +126,7 @@ export function useDashboardData() {
         return;
       }
 
-      setActionMessage(response.message);
+      setActionMessage(localizeMessage(response.message));
       await refresh();
     } catch (error) {
       if (!mountedRef.current) {

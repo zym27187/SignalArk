@@ -66,7 +66,9 @@ export function AreaChart({
         </div>
         <div className="chart-shell__summary">
           <strong>{formatter(lastPoint.value)}</strong>
-          <span>{formatAsMoney ? `Net ${formatSignedMoney(delta)}` : `Change ${formatDecimal(delta)}`}</span>
+          <span>
+            {formatAsMoney ? `净变化 ${formatSignedMoney(delta)}` : `变化 ${formatDecimal(delta)}`}
+          </span>
         </div>
       </div>
 
@@ -75,7 +77,7 @@ export function AreaChart({
           viewBox={`0 0 ${width} ${height}`}
           className="chart__svg"
           role="img"
-          aria-label={`${title} chart`}
+          aria-label={`${title}图表`}
         >
           {ticks.map((tick) => {
             const y =
@@ -134,4 +136,3 @@ export function AreaChart({
     </div>
   );
 }
-

@@ -11,20 +11,20 @@ export function BacktestDecisionTable({ decisions }: BacktestDecisionTableProps)
       <table className="data-table">
         <thead>
           <tr>
-            <th>Event Time</th>
-            <th>Action</th>
-            <th>Signal</th>
-            <th>Target Position</th>
-            <th>Fill Count</th>
-            <th>Reason</th>
+            <th>事件时间</th>
+            <th>动作</th>
+            <th>信号</th>
+            <th>目标仓位</th>
+            <th>成交次数</th>
+            <th>原因</th>
           </tr>
         </thead>
         <tbody>
           {decisions.map((decision) => (
             <tr key={decision.barKey}>
               <td>{formatDateTime(decision.eventTime)}</td>
-              <td>{decision.action}</td>
-              <td>{decision.signalType ? titleCase(decision.signalType) : "None"}</td>
+              <td>{titleCase(decision.action)}</td>
+              <td>{decision.signalType ? titleCase(decision.signalType) : "无"}</td>
               <td>
                 {decision.targetPosition === null
                   ? "--"
@@ -34,8 +34,8 @@ export function BacktestDecisionTable({ decisions }: BacktestDecisionTableProps)
               <td>
                 <div className="decision-reason">
                   <strong>{decision.reasonSummary}</strong>
-                  {decision.skipReason ? <span>Skip: {decision.skipReason}</span> : null}
-                  {decision.orderPlanSide ? <span>Order: {decision.orderPlanSide}</span> : null}
+                  {decision.skipReason ? <span>跳过：{titleCase(decision.skipReason)}</span> : null}
+                  {decision.orderPlanSide ? <span>订单：{titleCase(decision.orderPlanSide)}</span> : null}
                 </div>
               </td>
             </tr>
@@ -45,4 +45,3 @@ export function BacktestDecisionTable({ decisions }: BacktestDecisionTableProps)
     </div>
   );
 }
-

@@ -28,39 +28,38 @@ export function StatusHero({ status, isLoading, error }: StatusHeroProps) {
   return (
     <section className={`status-hero status-hero--${tone}`}>
       <div className="status-hero__copy">
-        <p className="status-hero__eyebrow">SignalArk Operator Console</p>
+        <p className="status-hero__eyebrow">SignalArk 运维控制台</p>
         <h1 className="status-hero__title">
-          {isLoading ? "Preparing runtime snapshot..." : "Paper trading control surface"}
+          {isLoading ? "正在准备运行时快照..." : "模拟交易控制面板"}
         </h1>
         <p className="status-hero__summary">
           {status
             ? `${titleCase(status.control_state)} · ${titleCase(status.lifecycle_status)} · ${
-                status.ready ? "Ready" : "Standby"
+                status.ready ? "就绪" : "待命"
               }`
-            : "Connect the frontend to the API and confirm the trader runtime is publishing status."}
+            : "前端接入 API 后，即可确认交易运行时是否正在持续发布状态。"}
         </p>
-        {error ? <p className="status-hero__error">Status feed issue: {error}</p> : null}
+        {error ? <p className="status-hero__error">状态流异常：{error}</p> : null}
       </div>
 
       <div className="status-hero__meta-grid">
         <div className="status-chip">
-          <span className="status-chip__label">Env</span>
-          <strong>{status?.env ?? "dev"}</strong>
+          <span className="status-chip__label">环境</span>
+          <strong>{titleCase(status?.env ?? "dev")}</strong>
         </div>
         <div className="status-chip">
-          <span className="status-chip__label">Mode</span>
-          <strong>{status?.execution_mode ?? "paper"}</strong>
+          <span className="status-chip__label">模式</span>
+          <strong>{titleCase(status?.execution_mode ?? "paper")}</strong>
         </div>
         <div className="status-chip">
-          <span className="status-chip__label">Lease Owner</span>
+          <span className="status-chip__label">租约持有者</span>
           <strong>{compactId(status?.lease_owner_instance_id)}</strong>
         </div>
         <div className="status-chip">
-          <span className="status-chip__label">Latest Bar</span>
+          <span className="status-chip__label">最新 K 线</span>
           <strong>{formatDateTime(status?.latest_final_bar_time)}</strong>
         </div>
       </div>
     </section>
   );
 }
-

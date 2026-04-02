@@ -5,6 +5,7 @@ import type {
   ReplayEventsPayload,
   StatusPayload,
 } from "../types/api";
+import { localizeMessage } from "./format";
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
 
@@ -63,17 +64,17 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 function resolveErrorMessage(payload: unknown, status: number): string {
   if (typeof payload === "string" && payload.trim()) {
-    return payload;
+    return localizeMessage(payload);
   }
 
   if (payload && typeof payload === "object" && "detail" in payload) {
     const detail = (payload as { detail?: unknown }).detail;
     if (typeof detail === "string" && detail.trim()) {
-      return detail;
+      return localizeMessage(detail);
     }
   }
 
-  return `Request failed with status ${status}.`;
+  return localizeMessage(`Request failed with status ${status}.`);
 }
 
 export async function fetchStatus(): Promise<StatusPayload> {
@@ -99,4 +100,3 @@ export async function postControlAction(
     method: "POST",
   });
 }
-
