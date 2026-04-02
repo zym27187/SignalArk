@@ -1,41 +1,50 @@
-# SignalArk 待完善清单
+# SignalArk 当前待办（重新评估版）
 
 生成时间：2026-04-02
 
-## 梳理依据
+## 本次评估依据
 
-- 本地执行 `.venv/bin/python -m pytest -q`：共收集 122 个测试，当前有 9 个错误，其余 113 个通过。
+- 本地执行 `.venv/bin/python -m pytest -q`：`127 passed in 2.48s`。
+- 本地执行 `.venv/bin/python -m pytest --collect-only -q`：当前共收集 `127` 个测试。
 - 本地执行 `.venv/bin/ruff check .`：通过。
-- 本地执行 `npm --prefix apps/web run build`：通过。
-- 补充阅读了 `README.md`、`apps/research/README.md`、`apps/web/README.md`、`migrations/env.py`、`apps/api/main.py`、`apps/web/src/components/views/*` 等关键文件。
+- 本地执行 `make web-build`：通过。
+- 本地检索 `apps/web` 自动化测试文件：当前没有 `*.test.*` / `*.spec.*`。
+- 补充阅读了 `README.md`、`apps/research/README.md`、`apps/web/README.md`、`apps/trader/control_plane.py`、`migrations/README.md`、`tests/integration/test_api_market_endpoints.py`、`tests/integration/test_research_cli.py`、`apps/web/package.json`。
 
-## P0：建议优先处理
+## 当前结论
 
-- [x] done：修复 Alembic URL 优先级问题：`migrations/env.py` 现在优先显式传入的 `sqlalchemy.url`，未显式传入时再回退到项目 settings，避免覆盖测试或命令行指定的临时库。
+- 当前仓库已经不处于“修红灯”阶段；后端测试、lint 和前端构建都已是绿灯。
+- 旧 todo 里的大部分 P0 / P1 事项已经完成，不建议继续把“已完成项”放在主待办里。
+- 当前 P0 已完成；接下来最值得做的是补前端测试基线，并继续修正文档漂移。
 
-- [x] done：把迁移路径纳入稳定回归门禁：新增 `make test-migrations` 和 Alembic 临时库 smoke check，并把 `tests/smoke` 纳入 `make test-integration`。
+## P0：已完成
 
-- [x] done：改善空库启动体验：`/v1/positions`、`/v1/orders/active`、`/v1/diagnostics/replay-events` 在核心持久化表尚未迁移时会返回空结果，前端 README 说明也已同步更新。
+- [x] done：统一数据库 schema 的唯一来源到 Alembic。
+  已完成内容：新增控制面表迁移，`trader_controls`、`trader_account_leases`、`trader_runtime_status` 现在由 Alembic 创建；`apps/trader/control_plane.py` 的 `ensure_schema()` 改为校验并在缺失迁移时明确报错，不再静默建表。
 
-## P1：下一阶段建议补齐的能力
+- [x] done：让集成 / E2E 初始化默认走真实 Alembic 迁移。
+  已完成内容：新增共享 migration helper，集成 / smoke / E2E 相关测试默认通过 `alembic upgrade head` 初始化测试库；空库只读 API 测试也额外锁定了“不会因 service 初始化自动创建 control-plane 表”的行为。
 
-- [x] done：给市场页接真实后端数据：已补 `/v1/market/bars` 和 `/v1/portfolio/equity-curve` 两个只读接口，市场页优先读取真实 API，并在空数据或接口暂时不可用时自动回退到 `researchSnapshotFixture`。
+## P1：下一步最值得补齐
 
-- [x] done：给研究页提供正式入口：本次选择补 `research CLI`。已新增 `python -m apps.research` / `make research ARGS="..."` 入口，支持读取 `BarEvent` JSON、执行回测、导出 `BacktestRunResult`，并可选导出前端友好的 research snapshot JSON。
+- [ ] 给 `apps/web` 建立最小自动化测试基线，并接入 CI。
+  现状：`apps/web/package.json` 只有 `dev`、`build`、`preview`、`check-types`，仓库里也没有前端测试文件。
+  建议最小范围：先补 `src/lib/api.ts` 的数据适配、`use-market-data` / `use-dashboard-data` 的回退逻辑、symbol/timeframe 切换，以及 1 到 2 个关键视图渲染测试。
 
-- [x] done：支持前端的多标的/多视图切换：市场页与研究页现在共享当前选中的 `symbol` 上下文，研究页补齐了多标的 / 多周期 fixture 目录，市场页也支持 `15m / 1h` 切换并随之请求真实只读 API 或回退对应示例数据。
+- [ ] 修正文档漂移，优先同步根 README 的 research 说明。
+  现状：`README.md` 仍写“当前回测能力以 Python API 形式提供，而不是独立 CLI”，但 `apps/research/README.md`、`Makefile` 和 `tests/integration/test_research_cli.py` 已明确支持 `python -m apps.research` / `make research ARGS="..."`。
+  建议结果：把根 README 的 research 章节、常用命令和输出说明更新到与现状一致；后续若控制面表迁入 Alembic，也一并改掉“运行时自动补齐控制面表”的描述。
 
-- [x] done：评估是否引入推送式刷新：结论是 V1 继续保持 `REST 轮询 + 手动刷新`，当前不引入 WebSocket / SSE；若后续出现低延迟盘中监控、追加式事件流或更细粒度 runtime 反馈需求，再优先评估 `SSE`。相关决策已写入 `apps/web/README.md` 和 `v1-ai-execution-phases/implementation-decisions.md`。
+## 已完成且不再列为当前主待办
 
-## P2：工程化与交付质量
-
-- [x] done：增加 CI：已新增 `.github/workflows/ci.yml`，在 `push / pull_request / workflow_dispatch` 下并行执行后端检查与前端构建，自动跑 `ruff`、`pytest` 和 `npm --prefix apps/web run build`。
-
-- [ ] 给前端补自动化测试：`apps/web/` 下目前没有 `*.test.*` 或 `*.spec.*` 文件。建议先补最小的 API 适配、视图切换和关键组件渲染测试，避免页面结构和数据契约漂移。
-
-- [ ] 评估把控制面表纳入 Alembic：现在 `apps/trader/control_plane.py` 通过 `Base.metadata.create_all(...)` 自动补齐 `trader_controls`、`trader_account_leases`、`trader_runtime_status`。这对本地开发方便，但长期看会带来“迁移脚本”和“运行时自建表”双轨并存的问题，建议后续统一到迁移体系里。
-
-- [ ] 让更多集成/E2E 流程走真实迁移初始化，而不是直接 `Base.metadata.create_all(...)`：这样更容易提前发现 schema 漂移、约束缺失和初始化顺序问题。
+- Alembic URL 优先级修复。
+- 迁移 smoke check 与 `make test-migrations` 补齐。
+- 空库只读接口容错。
+- 市场页真实数据接口接入与 fallback。
+- research CLI 与 web snapshot 导出。
+- 多标的 / 多视图切换。
+- `REST polling + 手动刷新` 的 V1 决策固定。
+- 基础 CI 搭建。
 
 ## 不计入当前待办的范围项
 
@@ -43,6 +52,6 @@
 - 多账户
 - 多市场数据源
 - 多策略组合
-- AI/ML 训练平台
+- AI / ML 训练平台
 
-上面这些在 `README.md` 和 `v1-ai-execution-phases/00-master-plan.md` 里都属于 V1 明确不做的范围，不建议混入当前修补清单。
+这些范围在 `README.md` 和 `v1-ai-execution-phases/00-master-plan.md` 里仍然属于 V1 明确不做的内容，不建议重新混入当前 todo。

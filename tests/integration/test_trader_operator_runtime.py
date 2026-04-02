@@ -27,7 +27,6 @@ from src.domain.market import MarketStateSnapshot, SuspensionStatus, TradingPhas
 from src.domain.portfolio import BalanceSnapshot
 from src.domain.strategy import BaselineMomentumStrategy, Signal, SignalType
 from src.infra.db import (
-    Base,
     EventLogRecord,
     FillRecord,
     OrderIntentRecord,
@@ -40,6 +39,7 @@ from src.infra.db import (
 )
 from src.infra.exchanges import PaperExecutionAdapter
 from src.infra.observability import AlertRouter, RecordingAlertSink, SignalArkObservability
+from tests.support.migrations import upgrade_database
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 BASE_TIME = datetime(2026, 4, 1, 14, 0, tzinfo=SHANGHAI)
@@ -184,11 +184,11 @@ def _build_store(
     tmp_path: Path,
     clock: MutableClock,
 ) -> tuple[TraderControlPlaneStore, object, object]:
-    engine = create_database_engine(_database_url(tmp_path))
-    Base.metadata.create_all(bind=engine)
+    database_url = _database_url(tmp_path)
+    upgrade_database(database_url)
+    engine = create_database_engine(database_url)
     session_factory = create_session_factory(engine)
     store = TraderControlPlaneStore(session_factory, clock=clock.now)
-    store.ensure_schema()
     return store, session_factory, engine
 
 
@@ -213,6 +213,22 @@ def _control_runtime(
         clock=clock.now,
         enable_background_task=False,
     )
+
+
+def test_control_plane_store_requires_migrated_control_plane_tables(tmp_path: Path) -> None:
+    clock = MutableClock(BASE_TIME)
+    engine = create_database_engine(_database_url(tmp_path))
+    session_factory = create_session_factory(engine)
+    store = TraderControlPlaneStore(session_factory, clock=clock.now)
+
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="Control-plane schema is missing required tables",
+        ):
+            store.ensure_schema()
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.asyncio

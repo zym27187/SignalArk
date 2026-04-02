@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, select, update
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, inspect, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Mapped, mapped_column, sessionmaker
 from src.domain.events import BarEvent
@@ -25,6 +25,26 @@ if TYPE_CHECKING:
 LEASE_TABLE_NAME = "trader_account_leases"
 CONTROL_TABLE_NAME = "trader_controls"
 RUNTIME_STATUS_TABLE_NAME = "trader_runtime_status"
+CONTROL_PLANE_TABLE_NAMES = frozenset(
+    {
+        CONTROL_TABLE_NAME,
+        LEASE_TABLE_NAME,
+        RUNTIME_STATUS_TABLE_NAME,
+    }
+)
+
+
+class MissingControlPlaneSchemaError(RuntimeError):
+    """Raised when the migrated control-plane tables are unavailable."""
+
+    def __init__(self, missing_tables: set[str]) -> None:
+        message = (
+            "Control-plane schema is missing required tables: "
+            f"{', '.join(sorted(missing_tables))}. "
+            "Run `.venv/bin/alembic -c migrations/alembic.ini upgrade head` first."
+        )
+        super().__init__(message)
+        self.missing_tables = frozenset(missing_tables)
 
 
 class TraderControlRecord(Base):
@@ -220,15 +240,10 @@ class TraderControlPlaneStore:
         if self._schema_ready:
             return
 
-        bind = self._engine()
-        Base.metadata.create_all(
-            bind=bind,
-            tables=[
-                TraderControlRecord.__table__,
-                TraderAccountLeaseRecord.__table__,
-                TraderRuntimeStatusRecord.__table__,
-            ],
-        )
+        existing_tables = set(inspect(self._engine()).get_table_names())
+        missing_tables = set(CONTROL_PLANE_TABLE_NAMES - existing_tables)
+        if missing_tables:
+            raise MissingControlPlaneSchemaError(missing_tables)
         self._schema_ready = True
 
     def ping(self) -> bool:

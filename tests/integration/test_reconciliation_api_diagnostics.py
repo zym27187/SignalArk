@@ -11,12 +11,12 @@ from apps.trader.control_plane import TraderControlPlaneStore
 from fastapi.testclient import TestClient
 from src.config.settings import Settings
 from src.infra.db import (
-    Base,
     EventLogEntry,
     SqlAlchemyRepositories,
     create_database_engine,
     create_session_factory,
 )
+from tests.support.migrations import upgrade_database
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 NOW = datetime(2026, 4, 1, 14, 0, tzinfo=SHANGHAI)
@@ -32,8 +32,8 @@ def test_api_replay_events_supports_time_range_trader_run_account_and_symbol_fil
 ) -> None:
     database_url = _database_url(tmp_path)
     settings = Settings(postgres_dsn=database_url)
+    upgrade_database(database_url)
     engine = create_database_engine(database_url)
-    Base.metadata.create_all(bind=engine)
     session_factory = create_session_factory(engine)
     control_store = TraderControlPlaneStore(session_factory, clock=lambda: NOW)
 

@@ -7,8 +7,6 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from src.domain.execution import (
@@ -32,9 +30,8 @@ from src.infra.db import (
     session_scope,
 )
 from src.infra.db.models import OrderIntentRecord, SignalRecord
+from tests.support.migrations import sqlite_database_url, upgrade_database
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-ALEMBIC_INI_PATH = ROOT_DIR / "migrations" / "alembic.ini"
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 BASE_TIME = datetime(2026, 3, 31, 12, 0, tzinfo=SHANGHAI)
 TRADER_RUN_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -53,22 +50,10 @@ MARKET_STATE = MarketStateSnapshot(
     trading_phase=TradingPhase.CONTINUOUS_AUCTION,
     suspension_status=SuspensionStatus.ACTIVE,
 )
-
-
-def _upgrade_database(database_url: str) -> None:
-    config = Config(str(ALEMBIC_INI_PATH))
-    config.set_main_option("sqlalchemy.url", database_url)
-    command.upgrade(config, "head")
-
-
-def _sqlite_database_url(tmp_path: Path) -> str:
-    return f"sqlite+pysqlite:///{tmp_path / 'phase2.sqlite3'}"
-
-
 @pytest.fixture
 def migrated_engine(tmp_path: Path):
-    database_url = _sqlite_database_url(tmp_path)
-    _upgrade_database(database_url)
+    database_url = sqlite_database_url(tmp_path / "phase2.sqlite3")
+    upgrade_database(database_url)
     engine = create_database_engine(database_url)
     try:
         yield engine
@@ -222,6 +207,9 @@ def test_alembic_upgrade_creates_phase2_tables(migrated_engine) -> None:
         "positions",
         "balance_snapshots",
         "event_logs",
+        "trader_controls",
+        "trader_account_leases",
+        "trader_runtime_status",
         "alembic_version",
     }.issubset(set(inspector.get_table_names()))
 
@@ -234,6 +222,10 @@ def test_alembic_upgrade_creates_phase2_tables(migrated_engine) -> None:
     assert "market_context_json" in order_intent_columns
     position_columns = {column["name"] for column in inspector.get_columns("positions")}
     assert "sellable_qty" in position_columns
+    runtime_status_columns = {
+        column["name"] for column in inspector.get_columns("trader_runtime_status")
+    }
+    assert "fencing_token" in runtime_status_columns
 
 
 def test_order_intent_idempotency_key_is_enforced_by_database(session_factory) -> None:

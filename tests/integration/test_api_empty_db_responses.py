@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from apps.api.control_plane import ApiControlPlaneService
 from apps.trader.control_plane import TraderControlPlaneStore
 from fastapi.testclient import TestClient
+from sqlalchemy import inspect
 from src.config.settings import Settings
 from src.domain.market import NormalizedBar
 from src.infra.db import create_database_engine, create_session_factory
@@ -129,6 +130,7 @@ def test_api_read_endpoints_return_empty_payloads_before_core_tables_exist(
         assert replay_events.json()["filters"]["account_id"] == settings.account_id
         assert replay_events.json()["count"] == 0
         assert replay_events.json()["events"] == []
+        assert inspect(engine).get_table_names() == []
     finally:
         get_settings.cache_clear()
         engine.dispose()

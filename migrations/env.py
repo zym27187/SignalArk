@@ -20,6 +20,7 @@ if config.config_file_name is not None:
 
 
 def _get_target_metadata():
+    import apps.trader.control_plane  # noqa: F401
     import src.infra.db.models  # noqa: F401
     from src.infra.db.base import Base
 

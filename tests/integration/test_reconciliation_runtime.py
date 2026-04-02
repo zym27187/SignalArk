@@ -31,7 +31,6 @@ from src.domain.execution import (
 from src.domain.portfolio import BalanceSnapshot, Position, PositionStatus
 from src.domain.strategy import Signal, SignalType
 from src.infra.db import (
-    Base,
     EventLogRecord,
     SqlAlchemyRepositories,
     create_database_engine,
@@ -40,6 +39,7 @@ from src.infra.db import (
 )
 from src.infra.exchanges import PaperExecutionAdapter
 from src.infra.observability import AlertRouter, RecordingAlertSink, SignalArkObservability
+from tests.support.migrations import upgrade_database
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 NOW = datetime(2026, 4, 2, 10, 0, tzinfo=SHANGHAI)
@@ -163,8 +163,8 @@ def _reconciliation_runtime(
 async def test_reconciliation_startup_recovery_releases_sellable_qty(tmp_path: Path) -> None:
     database_url = _database_url(tmp_path)
     settings = _settings(database_url)
+    upgrade_database(database_url)
     engine = create_database_engine(database_url)
-    Base.metadata.create_all(bind=engine)
     session_factory = create_session_factory(engine)
     control_store = TraderControlPlaneStore(session_factory, clock=lambda: NOW)
     sink = RecordingAlertSink()
@@ -293,8 +293,8 @@ async def test_reconciliation_drift_enters_protection_mode_and_cancels_non_reduc
 ) -> None:
     database_url = _database_url(tmp_path)
     settings = _settings(database_url)
+    upgrade_database(database_url)
     engine = create_database_engine(database_url)
-    Base.metadata.create_all(bind=engine)
     session_factory = create_session_factory(engine)
     control_store = TraderControlPlaneStore(session_factory, clock=lambda: NOW)
     sink = RecordingAlertSink()

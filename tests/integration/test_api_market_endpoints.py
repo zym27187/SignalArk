@@ -25,11 +25,11 @@ from src.domain.market import MarketStateSnapshot, NormalizedBar, SuspensionStat
 from src.domain.portfolio import BalanceSnapshot
 from src.domain.strategy import Signal, SignalType
 from src.infra.db import (
-    Base,
     SqlAlchemyRepositories,
     create_database_engine,
     create_session_factory,
 )
+from tests.support.migrations import upgrade_database
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 BASE_TIME = datetime(2026, 4, 2, 9, 45, tzinfo=SHANGHAI)
@@ -207,8 +207,8 @@ def test_api_market_endpoints_return_live_bars_and_reconstructed_equity_curve(
     from apps.api.main import create_app
 
     settings = _settings(database_url)
+    upgrade_database(database_url)
     engine = create_database_engine(database_url)
-    Base.metadata.create_all(bind=engine)
     session_factory = create_session_factory(engine)
     control_store = TraderControlPlaneStore(session_factory)
 

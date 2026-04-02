@@ -41,7 +41,6 @@ from src.domain.portfolio import BalanceSnapshot, Position, PositionStatus
 from src.domain.risk import RiskControlState
 from src.domain.strategy import BaselineMomentumStrategy, Signal, SignalType
 from src.infra.db import (
-    Base,
     EventLogRecord,
     FillRecord,
     OrderRecord,
@@ -52,6 +51,7 @@ from src.infra.db import (
 )
 from src.infra.exchanges import PaperExecutionAdapter
 from src.infra.observability import AlertRouter, RecordingAlertSink, SignalArkObservability
+from tests.support.migrations import upgrade_database
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 BASE_TIME = datetime(2026, 4, 1, 14, 0, tzinfo=SHANGHAI)
@@ -243,11 +243,10 @@ def _build_harness(
     database_url = _database_url(tmp_path, database_name)
     settings = Settings(postgres_dsn=database_url)
     clock = MutableClock(BASE_TIME)
+    upgrade_database(database_url)
     engine = create_database_engine(database_url)
-    Base.metadata.create_all(bind=engine)
     session_factory = create_session_factory(engine)
     control_store = TraderControlPlaneStore(session_factory, clock=clock.now)
-    control_store.ensure_schema()
     alert_sink = RecordingAlertSink()
     observability = SignalArkObservability(
         service="tests",

@@ -83,7 +83,6 @@ class ApiControlPlaneService:
         self._market_gateway_factory = market_gateway_factory or (
             lambda: EastmoneyAshareBarGateway(symbol_rules=settings.symbol_rules)
         )
-        self._control_store.ensure_schema()
 
     def live_payload(self) -> dict[str, object]:
         database_connected = False

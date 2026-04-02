@@ -7,8 +7,6 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from apps.trader.oms import RepositoryBackedOmsPersistence, TraderOmsService
 from sqlalchemy import func, select
 from src.config.settings import AshareSymbolRule
@@ -28,9 +26,8 @@ from src.infra.db import (
     session_scope,
 )
 from src.infra.db.models import EventLogRecord, OrderIntentRecord, OrderRecord, SignalRecord
+from tests.support.migrations import sqlite_database_url, upgrade_database
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-ALEMBIC_INI_PATH = ROOT_DIR / "migrations" / "alembic.ini"
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 BASE_TIME = datetime(2026, 4, 1, 11, 0, tzinfo=SHANGHAI)
 TRADER_RUN_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -51,22 +48,10 @@ MARKET_STATE = MarketStateSnapshot(
     trading_phase=TradingPhase.CONTINUOUS_AUCTION,
     suspension_status=SuspensionStatus.ACTIVE,
 )
-
-
-def _upgrade_database(database_url: str) -> None:
-    config = Config(str(ALEMBIC_INI_PATH))
-    config.set_main_option("sqlalchemy.url", database_url)
-    command.upgrade(config, "head")
-
-
-def _sqlite_database_url(tmp_path: Path) -> str:
-    return f"sqlite+pysqlite:///{tmp_path / 'phase5a_oms.sqlite3'}"
-
-
 @pytest.fixture
 def session_factory(tmp_path: Path):
-    database_url = _sqlite_database_url(tmp_path)
-    _upgrade_database(database_url)
+    database_url = sqlite_database_url(tmp_path / "phase5a_oms.sqlite3")
+    upgrade_database(database_url)
     engine = create_database_engine(database_url)
     try:
         yield create_session_factory(engine)

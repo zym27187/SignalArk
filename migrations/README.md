@@ -1,6 +1,6 @@
 # Migrations
 
-`migrations/` 现在承载 Phase 2 的 Alembic 配置和首个核心持久化版本。
+`migrations/` 现在承载 SignalArk 当前统一的 Alembic schema，包括核心交易表和控制面表。
 
 常用命令：
 
@@ -12,6 +12,7 @@
 
 - 显式传入的 `sqlalchemy.url` 现在会优先于项目 settings，方便测试和临时库 smoke check。
 - 未显式传入 `sqlalchemy.url` 时，Alembic 会回退到项目运行时 settings / `SIGNALARK_POSTGRES_DSN`。
+- `trader_controls`、`trader_account_leases`、`trader_runtime_status` 现在也由迁移创建；运行时不会再自动建表。
 
 目录说明：
 

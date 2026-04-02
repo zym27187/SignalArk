@@ -28,12 +28,12 @@ from src.domain.portfolio import Position, PositionStatus
 from src.domain.risk import RiskControlState
 from src.domain.strategy import Signal, SignalType
 from src.infra.db import (
-    Base,
     SqlAlchemyRepositories,
     create_database_engine,
     create_session_factory,
 )
 from src.infra.observability import AlertRouter, RecordingAlertSink, SignalArkObservability
+from tests.support.migrations import upgrade_database
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 NOW = datetime(2026, 4, 1, 13, 0, tzinfo=SHANGHAI)
@@ -129,11 +129,10 @@ def test_api_exposes_status_controls_and_cancel_all_boundaries(tmp_path: Path) -
 
     database_url = _database_url(tmp_path)
     settings = _settings(database_url)
+    upgrade_database(database_url)
     engine = create_database_engine(database_url)
-    Base.metadata.create_all(bind=engine)
     session_factory = create_session_factory(engine)
     control_store = TraderControlPlaneStore(session_factory, clock=lambda: NOW)
-    control_store.ensure_schema()
     lease_result = control_store.acquire_lease(
         account_id=settings.account_id,
         instance_id="instance-A",

@@ -113,8 +113,8 @@ cp .env.example .env
 
 说明：
 
-- 迁移负责创建核心持久化表，如 `signals`、`orders`、`fills`、`positions`、`event_logs`
-- 控制面相关的 lease / controls / runtime status 表会在运行时自动补齐
+- 迁移负责创建核心持久化表和控制面表，如 `signals`、`orders`、`fills`、`positions`、`event_logs`、`trader_controls`、`trader_account_leases`、`trader_runtime_status`
+- `trader` / API 启动前应先完成迁移；运行时不会再静默补表
 
 ### 4. 启动服务
 
