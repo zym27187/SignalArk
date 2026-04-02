@@ -104,6 +104,9 @@ export interface EquityCurvePayload {
   timeframe: string;
   count: number;
   source: string;
+  scope?: string;
+  anchor_symbol?: string;
+  valuation_symbols?: string[];
   points: CurvePoint[];
 }
 

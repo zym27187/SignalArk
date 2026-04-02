@@ -10,12 +10,44 @@
 - 本地执行 `make web-test`：`5` 个前端测试文件、`9` 个测试通过。
 - 本地执行 `make web-build`：通过。
 - 补充阅读了 `README.md`、`apps/research/README.md`、`apps/web/README.md`、`apps/trader/control_plane.py`、`migrations/README.md`、`tests/integration/test_api_market_endpoints.py`、`tests/integration/test_research_cli.py`、`apps/web/package.json`。
+- 本轮补充评估未重复跑全量测试，重点改为核对当前实现链路：`apps/api/main.py`、`apps/api/control_plane.py`、`apps/research/main.py`、`apps/research/backtest.py`、`apps/web/src/App.tsx`、`apps/web/src/components/views/ResearchView.tsx`、`apps/web/src/components/views/MarketView.tsx`、`apps/web/src/lib/research-fixtures.ts`、`apps/web/src/lib/api.ts`、`apps/web/src/hooks/use-dashboard-data.ts`、`apps/web/src/types/research.ts`。
 
 ## 当前结论
 
 - 当前仓库已经不处于“修红灯”阶段；后端测试、lint 和前端构建都已是绿灯。
 - 旧 todo 里的大部分 P0 / P1 事项已经完成，不建议继续把“已完成项”放在主待办里。
-- 当前 P0 / P1 已完成；后续更适合继续做的是前端测试扩面和新的产品能力。
+- 交易主链路已经闭环，但“研究页真实数据接入、组合权益语义、操作审计可见性”这三块仍然没有真正闭环。
+- 当前更值得补的不是继续做脚手架，而是把已经存在的后端能力接成完整产品功能，减少 fixture、查库和语义漂移。
+
+## 当前主待办：功能实现缺口
+
+## P0：优先补齐闭环
+
+- [x] done：接通 research 真数据链路，让研究页不再停留在 fixture 页面。
+  已完成内容：新增 `/v1/research/snapshot`，后端会基于真实历史 K 线即时生成 backtest snapshot；前端新增 `useResearchData` 并改造 `ResearchView`，研究页现在优先消费真实 API 结果，不再直接读取本地 fixture。
+
+- [x] done：修正 `/v1/portfolio/equity-curve` 的语义，避免多标的账户下曲线失真。
+  已完成内容：接口现在按“全账户 `balance_snapshots` + 全账户 `fills` + 多标的历史价格”重建组合权益曲线，返回值显式补充了 `scope=account_portfolio`、`anchor_symbol`、`valuation_symbols`；前端市场页说明也已同步为“组合权益曲线”。
+
+## P1：把可用后端能力变成可见功能
+
+- [ ] 补齐 operator 侧的历史执行可见性：历史订单、成交、撤单结果。
+  已确认现状：API 只提供 `/v1/orders/active` 和事件回放；`orders / fills / order_intents` 虽然已持久化，但没有独立历史查询接口，前端也只能看活动订单。
+  目标：让操作员不用直查数据库，也能复核“signal -> order intent -> order -> fill”的完整执行结果。
+
+- [ ] 给 diagnostics/replay-events 前端补筛选和定位能力。
+  已确认现状：后端已经支持 `start_time`、`end_time`、`trader_run_id`、`account_id`、`symbol` 过滤，但前端 `fetchReplayEvents()` 仍固定只拉 `limit=12`，没有任何筛选 UI。
+  目标：至少支持按 `trader_run_id`、时间窗和 symbol 回放，方便排查 protection mode、cancel-all 和对账异常。
+
+- [ ] 清理 research snapshot 契约，把“真实导出仍标记为 fixture”的状态收口。
+  已确认现状：`apps/research/main.py` 导出的真实 snapshot 里 `sourceMode` 仍写成 `"fixture"`，而前端类型 `apps/web/src/types/research.ts` 也只接受 `"fixture"`。
+  目标：显式区分 `fixture`、`imported`、`live` 等来源语义，避免后续 research API 接入时继续兼容脏契约。
+
+## P2：增强审计一致性
+
+- [ ] 给市场页补“runtime 实际消费数据”的审计视图，而不只是临时拉 Eastmoney 历史 K 线。
+  已确认现状：`/v1/market/bars` 每次都会重新请求 Eastmoney 历史数据，控制台看到的不一定是 trader 当时实际消费的那组 bar。
+  目标：至少补一个 `runtime consumed bars / last seen bars` 只读接口，或给 collector / trader 已消费 bar 提供可回放落点，减少“页面看到的行情”和“策略当时看到的行情”不一致。
 
 ## P0：已完成
 

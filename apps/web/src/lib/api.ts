@@ -7,6 +7,7 @@ import type {
   ReplayEventsPayload,
   StatusPayload,
 } from "../types/api";
+import type { ResearchSnapshot } from "../types/research";
 import { localizeMessage } from "./format";
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
@@ -125,6 +126,22 @@ export async function fetchEquityCurve(params?: {
 
 export async function fetchReplayEvents(limit = 12): Promise<ReplayEventsPayload> {
   return requestJson<ReplayEventsPayload>(`/v1/diagnostics/replay-events?limit=${limit}`);
+}
+
+export async function fetchResearchSnapshot(params?: {
+  symbol?: string;
+  timeframe?: string;
+  limit?: number;
+}): Promise<ResearchSnapshot> {
+  const query = new URLSearchParams();
+  if (params?.symbol) {
+    query.set("symbol", params.symbol);
+  }
+  if (params?.timeframe) {
+    query.set("timeframe", params.timeframe);
+  }
+  query.set("limit", String(params?.limit ?? 96));
+  return requestJson<ResearchSnapshot>(`/v1/research/snapshot?${query.toString()}`);
 }
 
 export async function postControlAction(

@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import sessionmaker
 from src.config import Settings
+from src.domain.events import BarEvent
 from src.domain.execution import OrderSide, OrderStatus
 from src.domain.market import NormalizedBar
 from src.domain.reconciliation import ReplayEventFilters
@@ -26,11 +27,15 @@ from src.infra.exchanges import EastmoneyAshareBarGateway
 from src.infra.observability import SignalArkObservability, build_observability
 from src.shared.types import SHANGHAI_TIMEZONE, shanghai_now
 
+from apps.research import build_default_backtest_runner
+from apps.research.snapshot import build_web_snapshot_payload
 from apps.trader.control_plane import TraderControlPlaneStore
 from apps.trader.oms import build_default_trader_oms_service
 from apps.trader.reconciliation import SessionFactoryBackedReconciliationStore
 
 READ_ONLY_MARKET_TIMEFRAMES = frozenset({"15m", "1h"})
+DEFAULT_RESEARCH_INITIAL_CASH = Decimal("100000")
+DEFAULT_RESEARCH_SLIPPAGE_BPS = Decimal("5")
 
 
 def _is_missing_persistence_table_error(exc: Exception) -> bool:
@@ -227,11 +232,6 @@ class ApiControlPlaneService:
     ) -> dict[str, object]:
         resolved_symbol = self._resolve_symbol(symbol)
         resolved_timeframe = self._resolve_timeframe(timeframe)
-        bars = await self._fetch_historical_bars(
-            symbol=resolved_symbol,
-            timeframe=resolved_timeframe,
-            limit=limit,
-        )
 
         try:
             with session_scope(self._session_factory) as session:
@@ -250,7 +250,6 @@ class ApiControlPlaneService:
                     session.scalars(
                         select(FillRecord)
                         .where(FillRecord.account_id == self._settings.account_id)
-                        .where(FillRecord.symbol == resolved_symbol)
                         .order_by(FillRecord.fill_time.asc(), FillRecord.id.asc())
                     )
                 )
@@ -261,8 +260,18 @@ class ApiControlPlaneService:
             else:
                 raise
 
-        points = _build_equity_curve_points(
-            bars=bars,
+        valuation_symbols = _resolve_portfolio_valuation_symbols(
+            anchor_symbol=resolved_symbol,
+            configured_symbols=self._settings.symbols,
+            fill_rows=fill_rows,
+        )
+        bars_by_symbol = await self._fetch_historical_bars_by_symbol(
+            symbols=valuation_symbols,
+            timeframe=resolved_timeframe,
+            limit=limit,
+        )
+        points = _build_portfolio_equity_curve_points(
+            bars_by_symbol=bars_by_symbol,
             balance_rows=balance_rows,
             fill_rows=fill_rows,
         )
@@ -271,9 +280,48 @@ class ApiControlPlaneService:
             "symbol": resolved_symbol,
             "timeframe": resolved_timeframe,
             "count": len(points),
-            "source": "balance_snapshots_plus_market_bars",
+            "source": "balance_snapshots_plus_portfolio_market_bars",
+            "scope": "account_portfolio",
+            "anchor_symbol": resolved_symbol,
+            "valuation_symbols": list(valuation_symbols),
             "points": points,
         }
+
+    async def research_snapshot_payload(
+        self,
+        *,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        limit: int = 96,
+    ) -> dict[str, object]:
+        resolved_symbol = self._resolve_symbol(symbol)
+        resolved_timeframe = self._resolve_timeframe(timeframe)
+        bars = await self._fetch_historical_bars(
+            symbol=resolved_symbol,
+            timeframe=resolved_timeframe,
+            limit=limit,
+        )
+        backtest_bars = _build_research_backtest_bars(bars)
+        if not backtest_bars:
+            raise LookupError("No finalized bars are available to build a research snapshot yet.")
+
+        runner = build_default_backtest_runner(
+            self._settings,
+            initial_cash=DEFAULT_RESEARCH_INITIAL_CASH,
+            slippage_bps=DEFAULT_RESEARCH_SLIPPAGE_BPS,
+        )
+        result = await runner.run(backtest_bars)
+        return build_web_snapshot_payload(
+            result=result,
+            bars=backtest_bars,
+            source_label="由 research API 生成的真实回测结果",
+            source_mode="live",
+            notes=(
+                "该快照由 `/v1/research/snapshot` 基于真实历史 K 线即时生成。",
+                "当前 research 页已直接消费后端回测结果，不再固定停留在本地 fixture 页面。",
+                "当前 runtimePnlCurve 仍与 backtestEquityCurve 共用同一条回测权益曲线。",
+            ),
+        )
 
     async def pause_strategy(self) -> dict[str, object]:
         snapshot = self._control_store.set_strategy_enabled(
@@ -444,6 +492,28 @@ class ApiControlPlaneService:
         finally:
             await gateway.aclose()
 
+    async def _fetch_historical_bars_by_symbol(
+        self,
+        *,
+        symbols: tuple[str, ...],
+        timeframe: str,
+        limit: int,
+    ) -> dict[str, tuple[NormalizedBar, ...]]:
+        gateway = self._market_gateway_factory()
+        try:
+            bars_by_symbol: dict[str, tuple[NormalizedBar, ...]] = {}
+            for symbol in symbols:
+                bars_by_symbol[symbol] = tuple(
+                    await gateway.fetch_historical_bars(
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        max_bars=limit,
+                    )
+                )
+            return bars_by_symbol
+        finally:
+            await gateway.aclose()
+
     def _control_action_response(
         self,
         *,
@@ -509,22 +579,26 @@ def _as_shanghai_datetime(value: datetime) -> datetime:
     return value.astimezone(SHANGHAI_TIMEZONE)
 
 
-def _build_equity_curve_points(
+def _build_portfolio_equity_curve_points(
     *,
-    bars: tuple[NormalizedBar, ...] | list[NormalizedBar],
+    bars_by_symbol: dict[str, tuple[NormalizedBar, ...]] | dict[str, list[NormalizedBar]],
     balance_rows: tuple[BalanceSnapshotRecord, ...],
     fill_rows: tuple[FillRecord, ...],
 ) -> list[dict[str, float | str]]:
     if not balance_rows:
         return []
 
-    snapshots = [
-        (_as_shanghai_datetime(row.snapshot_time), row.total)
-        for row in balance_rows
-    ]
+    snapshots = [(_as_shanghai_datetime(row.snapshot_time), row.total) for row in balance_rows]
     baseline = float(snapshots[0][1])
 
-    if not bars:
+    timeline = sorted(
+        {
+            _as_shanghai_datetime(bar.bar_end_time)
+            for symbol_bars in bars_by_symbol.values()
+            for bar in symbol_bars
+        }
+    )
+    if not timeline:
         return [
             {
                 "time": snapshot_time.isoformat(),
@@ -537,36 +611,60 @@ def _build_equity_curve_points(
     points: list[dict[str, float | str]] = []
     snapshot_index = 0
     fill_index = 0
-    position_qty = Decimal("0")
+    position_qty_by_symbol: dict[str, Decimal] = {}
+    last_fill_price_by_symbol: dict[str, Decimal] = {}
+    latest_mark_price_by_symbol: dict[str, Decimal] = {}
     snapshot_count = len(snapshots)
+    bar_indices = {symbol: 0 for symbol in bars_by_symbol}
     normalized_fills = [
         (
             _as_shanghai_datetime(row.fill_time),
             OrderSide(row.side),
+            row.symbol,
             row.qty,
+            row.price,
         )
         for row in fill_rows
     ]
 
-    for bar in bars:
-        bar_time = bar.bar_end_time
+    for bar_time in timeline:
         while snapshot_index + 1 < snapshot_count and snapshots[snapshot_index + 1][0] <= bar_time:
             snapshot_index += 1
         if snapshots[snapshot_index][0] > bar_time:
             continue
 
         while fill_index < len(normalized_fills) and normalized_fills[fill_index][0] <= bar_time:
-            _, side, qty = normalized_fills[fill_index]
+            _, side, symbol, qty, price = normalized_fills[fill_index]
+            current_qty = position_qty_by_symbol.get(symbol, Decimal("0"))
             if side is OrderSide.BUY:
-                position_qty += qty
+                position_qty_by_symbol[symbol] = current_qty + qty
             else:
-                position_qty -= qty
-            if position_qty < 0:
-                position_qty = Decimal("0")
+                position_qty_by_symbol[symbol] = current_qty - qty
+            if position_qty_by_symbol[symbol] <= 0:
+                position_qty_by_symbol.pop(symbol, None)
+            last_fill_price_by_symbol[symbol] = price
             fill_index += 1
 
+        for symbol, symbol_bars in bars_by_symbol.items():
+            bar_index = bar_indices[symbol]
+            while (
+                bar_index < len(symbol_bars)
+                and _as_shanghai_datetime(symbol_bars[bar_index].bar_end_time) <= bar_time
+            ):
+                latest_mark_price_by_symbol[symbol] = symbol_bars[bar_index].close
+                bar_index += 1
+            bar_indices[symbol] = bar_index
+
         cash = snapshots[snapshot_index][1]
-        equity = cash + (position_qty * bar.close)
+        market_value = Decimal("0")
+        for symbol, qty in position_qty_by_symbol.items():
+            mark_price = latest_mark_price_by_symbol.get(symbol)
+            if mark_price is None:
+                mark_price = last_fill_price_by_symbol.get(symbol)
+            if mark_price is None:
+                continue
+            market_value += qty * mark_price
+        equity = cash + market_value
         points.append(
             {
                 "time": bar_time.isoformat(),
@@ -581,3 +679,46 @@ def _build_equity_curve_points(
             point["baseline"] = first_value
 
     return points
+
+
+def _resolve_portfolio_valuation_symbols(
+    *,
+    anchor_symbol: str,
+    configured_symbols: list[str] | tuple[str, ...],
+    fill_rows: tuple[FillRecord, ...],
+) -> tuple[str, ...]:
+    ordered_symbols: list[str] = []
+
+    def remember(symbol: str) -> None:
+        normalized = symbol.strip().upper()
+        if normalized and normalized not in ordered_symbols:
+            ordered_symbols.append(normalized)
+
+    remember(anchor_symbol)
+    for symbol in configured_symbols:
+        remember(symbol)
+    for row in fill_rows:
+        remember(row.symbol)
+    return tuple(ordered_symbols)
+
+
+def _build_research_backtest_bars(
+    bars: tuple[NormalizedBar, ...] | list[NormalizedBar],
+) -> tuple[BarEvent, ...]:
+    ordered_bars = sorted(
+        bars,
+        key=lambda item: (
+            item.bar_end_time,
+            item.bar_start_time,
+            item.ingest_time,
+            item.bar_key,
+        ),
+    )
+    seen_bar_keys: set[str] = set()
+    events: list[BarEvent] = []
+    for bar in ordered_bars:
+        if not bar.actionable or bar.bar_key in seen_bar_keys:
+            continue
+        seen_bar_keys.add(bar.bar_key)
+        events.append(bar.to_bar_event())
+    return tuple(events)

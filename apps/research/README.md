@@ -24,6 +24,7 @@
 
 - `apps/research/backtest.py`
 - `apps/research/main.py`
+- `apps/research/snapshot.py`
 - `src/services/backtest/service.py`
 
 ## 使用方式
@@ -59,6 +60,12 @@ CLI 支持这些常用参数：
 - `--slippage-bps`：可选，默认 `5`
 - `--config-profile` / `--config-file`：可选，允许显式切换配置层
 - `--postgres-dsn`：可选，仅用于满足共享 settings 校验；不传时 CLI 会回退到内存 SQLite
+
+如果你想直接从控制面读取一份前端可消费的真实 research 快照，而不是先手工导出文件，也可以通过 API：
+
+```text
+GET /v1/research/snapshot?symbol=600036.SH&timeframe=15m&limit=96
+```
 
 输入文件需要是以下两种形式之一：
 

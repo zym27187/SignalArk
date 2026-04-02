@@ -7,48 +7,69 @@ import { ResearchView } from "./components/views/ResearchView";
 import { useHashView } from "./hooks/use-hash-view";
 import { useDashboardData } from "./hooks/use-dashboard-data";
 import { useMarketData } from "./hooks/use-market-data";
+import { useResearchData } from "./hooks/use-research-data";
 import { formatDateTime } from "./lib/format";
-import {
-  listResearchFixtureSymbols,
-  listResearchFixtureTimeframes,
-} from "./lib/research-fixtures";
 
+const DEFAULT_SYMBOL_OPTIONS = ["600036.SH", "000001.SZ"];
 const MARKET_TIMEFRAME_OPTIONS = ["15m", "1h"];
+const RESEARCH_TIMEFRAME_OPTIONS = ["15m", "1h"];
 
 export default function App() {
   const dashboard = useDashboardData();
   const { view, navigate } = useHashView();
-  const fallbackSymbols = listResearchFixtureSymbols();
   const availableSymbols =
     dashboard.snapshot.status?.symbols && dashboard.snapshot.status.symbols.length > 0
       ? dashboard.snapshot.status.symbols
-      : fallbackSymbols;
-  const [selectedSymbol, setSelectedSymbol] = useState<string>(availableSymbols[0] ?? fallbackSymbols[0]);
+      : DEFAULT_SYMBOL_OPTIONS;
+  const [selectedSymbol, setSelectedSymbol] = useState<string>(
+    availableSymbols[0] ?? DEFAULT_SYMBOL_OPTIONS[0],
+  );
   const [selectedMarketTimeframe, setSelectedMarketTimeframe] = useState<string>(
     MARKET_TIMEFRAME_OPTIONS[0],
   );
-  const researchTimeframeOptions = listResearchFixtureTimeframes(selectedSymbol);
   const [selectedResearchTimeframe, setSelectedResearchTimeframe] = useState<string>(
-    researchTimeframeOptions[0] ?? "15m",
+    RESEARCH_TIMEFRAME_OPTIONS[0],
   );
 
   useEffect(() => {
     if (!availableSymbols.includes(selectedSymbol)) {
-      setSelectedSymbol(availableSymbols[0] ?? fallbackSymbols[0]);
+      setSelectedSymbol(availableSymbols[0] ?? DEFAULT_SYMBOL_OPTIONS[0]);
     }
-  }, [availableSymbols, fallbackSymbols, selectedSymbol]);
+  }, [availableSymbols, selectedSymbol]);
 
   useEffect(() => {
-    if (!researchTimeframeOptions.includes(selectedResearchTimeframe)) {
-      setSelectedResearchTimeframe(researchTimeframeOptions[0] ?? "15m");
+    if (!RESEARCH_TIMEFRAME_OPTIONS.includes(selectedResearchTimeframe)) {
+      setSelectedResearchTimeframe(RESEARCH_TIMEFRAME_OPTIONS[0] ?? "15m");
     }
-  }, [researchTimeframeOptions, selectedResearchTimeframe]);
+  }, [selectedResearchTimeframe]);
 
   const marketData = useMarketData({
     enabled: view === "market",
     symbol: selectedSymbol,
     timeframe: selectedMarketTimeframe,
   });
+  const researchData = useResearchData({
+    enabled: view === "research",
+    symbol: selectedSymbol,
+    timeframe: selectedResearchTimeframe,
+  });
+
+  const activeFetchedAt =
+    view === "research"
+      ? researchData.fetchedAt ?? dashboard.snapshot.fetchedAt
+      : view === "market"
+        ? marketData.snapshot.fetchedAt ?? dashboard.snapshot.fetchedAt
+        : dashboard.snapshot.fetchedAt;
+  const refreshDisabled =
+    dashboard.isRefreshing
+    || (view === "market" && marketData.isRefreshing)
+    || (view === "research" && researchData.isRefreshing);
+  const refreshLabel =
+    dashboard.isRefreshing
+    || (view === "market" && marketData.isRefreshing)
+    || (view === "research" && researchData.isRefreshing)
+      ? "刷新中..."
+      : "刷新快照";
 
   function renderView() {
     switch (view) {
@@ -68,8 +89,9 @@ export default function App() {
       case "research":
         return (
           <ResearchView
+            researchData={researchData}
             availableSymbols={availableSymbols}
-            availableTimeframes={researchTimeframeOptions}
+            availableTimeframes={RESEARCH_TIMEFRAME_OPTIONS}
             selectedSymbol={selectedSymbol}
             selectedTimeframe={selectedResearchTimeframe}
             onSymbolChange={setSelectedSymbol}
@@ -98,7 +120,7 @@ export default function App() {
         <div className="masthead__actions">
           <div className="masthead__meta">
             <span className="mini-label">最近刷新</span>
-            <strong>{formatDateTime(dashboard.snapshot.fetchedAt)}</strong>
+            <strong>{formatDateTime(activeFetchedAt)}</strong>
           </div>
           <button
             type="button"
@@ -108,12 +130,13 @@ export default function App() {
               if (view === "market") {
                 void marketData.refresh();
               }
+              if (view === "research") {
+                void researchData.refresh();
+              }
             }}
-            disabled={dashboard.isRefreshing || (view === "market" && marketData.isRefreshing)}
+            disabled={refreshDisabled}
           >
-            {dashboard.isRefreshing || (view === "market" && marketData.isRefreshing)
-              ? "刷新中..."
-              : "刷新快照"}
+            {refreshLabel}
           </button>
         </div>
       </header>

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { useDashboardData } from "./hooks/use-dashboard-data";
 import { useMarketData } from "./hooks/use-market-data";
+import { useResearchData } from "./hooks/use-research-data";
 
 vi.mock("./hooks/use-dashboard-data", () => ({
   useDashboardData: vi.fn(),
@@ -13,8 +14,13 @@ vi.mock("./hooks/use-market-data", () => ({
   useMarketData: vi.fn(),
 }));
 
+vi.mock("./hooks/use-research-data", () => ({
+  useResearchData: vi.fn(),
+}));
+
 const mockedUseDashboardData = vi.mocked(useDashboardData);
 const mockedUseMarketData = vi.mocked(useMarketData);
+const mockedUseResearchData = vi.mocked(useResearchData);
 
 describe("App", () => {
   beforeEach(() => {
@@ -69,6 +75,74 @@ describe("App", () => {
       isRefreshing: false,
       refresh: vi.fn(),
     }));
+    mockedUseResearchData.mockImplementation(() => ({
+      snapshot: {
+        datasetName: "cn_equity / 000001.SZ / 15m",
+        sourceLabel: "由 research API 生成的真实回测结果",
+        sourceMode: "live",
+        klineBars: [],
+        runtimePnlCurve: [
+          {
+            time: "2026-04-02T10:00:00+08:00",
+            value: 100000,
+            baseline: 100000,
+          },
+        ],
+        backtestEquityCurve: [
+          {
+            time: "2026-04-02T10:00:00+08:00",
+            value: 100000,
+            baseline: 100000,
+          },
+        ],
+        manifest: {
+          runId: "run-001",
+          accountId: "paper_account_001",
+          strategyId: "baseline_momentum_v1",
+          handlerName: "BaselineMomentumStrategy",
+          description: "research snapshot",
+          symbols: ["000001.SZ"],
+          timeframe: "15m",
+          barCount: 1,
+          startTime: "2026-04-02T10:00:00+08:00",
+          endTime: "2026-04-02T10:00:00+08:00",
+          initialCash: 100000,
+          slippageBps: 5,
+          feeModel: "ashare_paper_cost_model",
+          slippageModel: "bar_close_bps",
+          dataFingerprint: "bars:000001.SZ:15m",
+          manifestFingerprint: "manifest:run-001",
+        },
+        performance: {
+          barCount: 1,
+          signalCount: 1,
+          orderCount: 1,
+          tradeCount: 1,
+          fillCount: 1,
+          winningTradeCount: 1,
+          losingTradeCount: 0,
+          startingCash: 100000,
+          endingCash: 99999,
+          endingMarketValue: 100,
+          startingEquity: 100000,
+          endingEquity: 100099,
+          netPnl: 99,
+          totalReturnPct: 0.099,
+          maxDrawdownPct: 0,
+          realizedPnl: 0,
+          unrealizedPnl: 99,
+          turnover: 3950,
+          winRatePct: 100,
+        },
+        decisions: [],
+        notes: ["research API note"],
+      },
+      error: null,
+      fetchedAt: "2026-04-02T10:00:00+08:00",
+      isLoading: false,
+      isRefreshing: false,
+      refresh: vi.fn(),
+    }));
   });
 
   afterEach(() => {
@@ -119,6 +193,11 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(window.location.hash).toBe("#research");
+    });
+    expect(mockedUseResearchData).toHaveBeenLastCalledWith({
+      enabled: true,
+      symbol: "000001.SZ",
+      timeframe: "15m",
     });
     expect(screen.getByText(/paper_account_001 \/ 000001\.SZ/)).toBeInTheDocument();
   });

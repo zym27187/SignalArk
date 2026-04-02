@@ -122,7 +122,11 @@ export function MarketView({
         <MetricCard
           label="区间权益带"
           value={`${formatDecimal(minEquity, 0)} - ${formatDecimal(maxEquity, 0)}`}
-          hint={usingLiveCurve ? "基于余额快照与成交记录重建" : "基于本地曲线示例数据推导"}
+          hint={
+            usingLiveCurve
+              ? "基于余额快照、全账户成交与多标的价格重建"
+              : "基于本地曲线示例数据推导"
+          }
           tone="default"
         />
       </section>
@@ -144,11 +148,11 @@ export function MarketView({
           <SectionCard
             eyebrow="盈亏"
             title="盘中权益曲线"
-            description="随当前 symbol/timeframe 切换的账户权益时间线。"
+            description="按选中周期重建的整账户组合权益时间线。"
           >
             <AreaChart
               title="区间权益"
-              subtitle={usingLiveCurve ? "账户权益重建曲线" : "以 100,000 模拟本金为基线"}
+              subtitle={usingLiveCurve ? "组合权益重建曲线" : "以 100,000 模拟本金为基线"}
               points={runtimePnlCurve}
               accent="amber"
               formatAsMoney
@@ -180,7 +184,7 @@ export function MarketView({
                   value: "/v1/portfolio/equity-curve",
                   hint:
                     marketData.snapshot.sectionErrors.equityCurve ??
-                    "使用余额快照与成交记录重建账户权益曲线。",
+                    "使用余额快照、全账户成交与多标的历史价格重建组合权益曲线。",
                 },
                 {
                   label: "交易器状态",

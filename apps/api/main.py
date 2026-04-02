@@ -129,6 +129,28 @@ def create_app(
                 detail="Market data is temporarily unavailable.",
             ) from exc
 
+    @app.get("/v1/research/snapshot")
+    async def research_snapshot(
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        limit: int = Query(default=96, ge=1, le=500),
+    ) -> dict[str, object]:
+        try:
+            return await service.research_snapshot_payload(
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Market data is temporarily unavailable.",
+            ) from exc
+
     @app.get("/v1/diagnostics/replay-events")
     async def replay_events(
         start_time: datetime | None = None,

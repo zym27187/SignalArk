@@ -193,7 +193,10 @@ make research ARGS="--input ./bars.json --output ./artifacts/backtest-result.jso
 | `GET` | `/v1/status` | trader 状态、控制态、运行实例信息 |
 | `GET` | `/v1/positions` | 当前持仓 |
 | `GET` | `/v1/orders/active` | 当前活动订单 |
+| `GET` | `/v1/market/bars` | 选中 symbol/timeframe 的历史 K 线快照 |
+| `GET` | `/v1/portfolio/equity-curve` | 按选中周期重建的账户组合权益曲线 |
 | `GET` | `/v1/diagnostics/replay-events` | 按时间、`trader_run_id`、账户、symbol 回放审计事件 |
+| `GET` | `/v1/research/snapshot` | 基于真实历史 K 线即时生成 research 回测快照 |
 | `POST` | `/v1/controls/strategy/pause` | 暂停策略触发 |
 | `POST` | `/v1/controls/strategy/resume` | 恢复策略触发 |
 | `POST` | `/v1/controls/kill-switch/enable` | 打开 kill switch，只允许减仓/平仓方向动作 |
@@ -237,14 +240,17 @@ curl "http://127.0.0.1:8000/v1/diagnostics/replay-events?limit=50"
 
 ## 回测与研究
 
-当前回测能力同时提供 Python API 和 research CLI。典型入口是：
+当前回测能力同时提供 Python API、research CLI 和控制面 research snapshot API。典型入口是：
 
 - `apps.research.build_default_backtest_runner(...)`
 - `apps.research.ResearchBacktestRunner.run(...)`
 - `python -m apps.research --input ...`
 - `make research ARGS="--input ... --output ..."`
+- `GET /v1/research/snapshot?symbol=...&timeframe=...&limit=...`
 
-CLI 支持读取 `BarEvent` JSON、导出 `BacktestRunResult`，并可选导出前端研究页可直接消费的 web snapshot JSON。
+CLI 支持读取 `BarEvent` JSON、导出 `BacktestRunResult`，并可选导出前端研究页可直接消费的 web snapshot JSON。控制面 research API 则会直接拉取真实历史 K 线，现场生成一份与前端研究页契约对齐的 snapshot。
+
+控制面市场视图中的 `/v1/portfolio/equity-curve` 现在固定表示“账户组合权益曲线”，而不是单一 symbol 的贡献曲线。它会基于 `balance_snapshots`、全账户 `fills` 和多标的历史价格共同重建整账户权益。
 
 它复用了生产链路中的策略、order plan、paper execution 与持仓账本语义，适合做最小一致性验证。完整用法可以参考：
 

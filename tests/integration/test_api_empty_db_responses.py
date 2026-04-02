@@ -122,7 +122,10 @@ def test_api_read_endpoints_return_empty_payloads_before_core_tables_exist(
             "symbol": "600036.SH",
             "timeframe": "15m",
             "count": 0,
-            "source": "balance_snapshots_plus_market_bars",
+            "source": "balance_snapshots_plus_portfolio_market_bars",
+            "scope": "account_portfolio",
+            "anchor_symbol": "600036.SH",
+            "valuation_symbols": ["600036.SH"],
             "points": [],
         }
 

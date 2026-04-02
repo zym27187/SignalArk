@@ -17,6 +17,7 @@
 - `/v1/market/bars`
 - `/v1/portfolio/equity-curve`
 - `/v1/diagnostics/replay-events`
+- `/v1/research/snapshot`
 - `/v1/controls/*`
 
 ## 快速开始
@@ -61,12 +62,14 @@ make web-test
 - 活动订单表
 - 最近事件时间线
 - 基础轮询刷新与分区错误处理
-- 市场页与研究页的 symbol/timeframe 切换骨架
+- 市场页与研究页的 symbol/timeframe 切换
 
 特别说明：
 
 - 前端仍保留分区级容错；后端在空数据库上会为核心只读接口返回空结果
 - 市场页优先读取真实 K 线与权益接口，若当前环境暂无足够数据则自动回退到本地 fixture
+- `/v1/portfolio/equity-curve` 当前固定表示“账户组合权益曲线”；会基于余额快照、全账户成交与多标的历史价格共同重建
+- 研究页现在优先读取 `/v1/research/snapshot` 返回的真实 backtest snapshot，不再固定停留在本地 fixture 页面
 - 市场页与研究页会共享当前选中的 symbol，上下文在两种视图间切换时会保留
 - 当前已补最小前端测试基线：覆盖 API 请求适配、dashboard / market hook 容错回退、主视图切换与关键组件渲染
 - 第一版控制台固定采用 `REST 轮询 + 手动刷新`，默认轮询间隔为 `15s`

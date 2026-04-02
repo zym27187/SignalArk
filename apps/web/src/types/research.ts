@@ -68,10 +68,12 @@ export interface BacktestDecisionSnapshot {
   orderPlanSide: string | null;
 }
 
+export type ResearchSnapshotSourceMode = "fixture" | "live";
+
 export interface ResearchSnapshot {
   datasetName: string;
   sourceLabel: string;
-  sourceMode: "fixture";
+  sourceMode: ResearchSnapshotSourceMode;
   klineBars: CandleBar[];
   runtimePnlCurve: CurvePoint[];
   backtestEquityCurve: CurvePoint[];

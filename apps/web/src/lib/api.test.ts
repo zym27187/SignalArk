@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fetchMarketBars, fetchStatus, postControlAction } from "./api";
+import {
+  fetchMarketBars,
+  fetchResearchSnapshot,
+  fetchStatus,
+  postControlAction,
+} from "./api";
 
 describe("api helpers", () => {
   const fetchMock = vi.fn<typeof fetch>();
@@ -71,6 +76,44 @@ describe("api helpers", () => {
       "http://127.0.0.1:8000/v1/controls/strategy/pause",
       expect.objectContaining({
         method: "POST",
+      }),
+    );
+  });
+
+  it("builds research snapshot queries from symbol, timeframe, and limit", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          datasetName: "cn_equity / 600036.SH / 15m",
+          sourceLabel: "由 research API 生成的真实回测结果",
+          sourceMode: "live",
+          klineBars: [],
+          runtimePnlCurve: [],
+          backtestEquityCurve: [],
+          manifest: {},
+          performance: {},
+          decisions: [],
+          notes: [],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await fetchResearchSnapshot({
+      symbol: "600036.SH",
+      timeframe: "15m",
+      limit: 48,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/research/snapshot?symbol=600036.SH&timeframe=15m&limit=48",
+      expect.objectContaining({
+        headers: {
+          Accept: "application/json",
+        },
       }),
     );
   });
