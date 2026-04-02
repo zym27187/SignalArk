@@ -241,6 +241,7 @@ class Settings(BaseSettings):
         env_prefix="SIGNALARK_",
         env_file=str(ROOT_DIR / ".env"),
         env_ignore_empty=True,
+        enable_decoding=False,
         extra="ignore",
         case_sensitive=False,
     )

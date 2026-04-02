@@ -89,6 +89,31 @@ def test_load_settings_applies_yaml_dotenv_and_process_env_precedence(
     assert settings.paper_cost_model.stamp_duty_sell == Decimal("0.0005")
 
 
+def test_load_settings_does_not_reparse_env_file_via_basesettings(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_signalark_env(monkeypatch)
+
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text(
+        "\n".join(
+            [
+                "SIGNALARK_POSTGRES_DSN=postgresql+psycopg://postgres:secret@db.example:5432/postgres",
+                "SIGNALARK_SYMBOLS=600036.SH,000001.SZ",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings_module, "DOTENV_PATH", dotenv_path)
+    monkeypatch.setitem(settings_module.Settings.model_config, "env_file", str(dotenv_path))
+
+    settings = load_settings()
+
+    assert settings.postgres_dsn == "postgresql+psycopg://postgres:secret@db.example:5432/postgres"
+    assert settings.symbols == ["600036.SH", "000001.SZ"]
+
+
 def test_get_settings_returns_cached_settings_until_cache_is_cleared(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

@@ -29,9 +29,19 @@ def _get_target_metadata():
 target_metadata = _get_target_metadata()
 
 
+def _resolve_database_url() -> str:
+    """Prefer the project runtime DSN so Alembic follows the same .env/config path."""
+    try:
+        from src.config import load_settings
+
+        return load_settings().postgres_dsn
+    except Exception:
+        return config.get_main_option("sqlalchemy.url")
+
+
 def run_migrations_offline() -> None:
     """Run migrations in offline mode."""
-    url = config.get_main_option("sqlalchemy.url")
+    url = _resolve_database_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -46,6 +56,7 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in online mode."""
+    config.set_main_option("sqlalchemy.url", _resolve_database_url())
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
