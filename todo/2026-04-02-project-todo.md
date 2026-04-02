@@ -31,9 +31,8 @@
 
 ## P1：把可用后端能力变成可见功能
 
-- [ ] 补齐 operator 侧的历史执行可见性：历史订单、成交、撤单结果。
-  已确认现状：API 只提供 `/v1/orders/active` 和事件回放；`orders / fills / order_intents` 虽然已持久化，但没有独立历史查询接口，前端也只能看活动订单。
-  目标：让操作员不用直查数据库，也能复核“signal -> order intent -> order -> fill”的完整执行结果。
+- [x] done：补齐 operator 侧的历史执行可见性：历史订单、成交、撤单结果。
+  已完成内容：控制面已新增 `/v1/orders/history`、`/v1/fills/history`；前端运维页也已接入共享筛选器、历史订单表和历史成交表，支持按 `symbol`、`trader_run_id`、时间窗和条数查看执行结果，不再只能看活动订单或直查数据库。
 
 - [ ] 给 diagnostics/replay-events 前端补筛选和定位能力。
   已确认现状：后端已经支持 `start_time`、`end_time`、`trader_run_id`、`account_id`、`symbol` 过滤，但前端 `fetchReplayEvents()` 仍固定只拉 `limit=12`，没有任何筛选 UI。

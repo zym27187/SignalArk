@@ -14,6 +14,8 @@
 - `/v1/status`
 - `/v1/positions`
 - `/v1/orders/active`
+- `/v1/orders/history`
+- `/v1/fills/history`
 - `/v1/market/bars`
 - `/v1/portfolio/equity-curve`
 - `/v1/diagnostics/replay-events`
@@ -60,6 +62,9 @@ make web-test
 - 控制按钮区
 - 持仓表
 - 活动订单表
+- 历史订单表
+- 历史成交表
+- 执行 / 诊断共享筛选器
 - 最近事件时间线
 - 基础轮询刷新与分区错误处理
 - 市场页与研究页的 symbol/timeframe 切换
@@ -67,6 +72,7 @@ make web-test
 特别说明：
 
 - 前端仍保留分区级容错；后端在空数据库上会为核心只读接口返回空结果
+- 运维页现在可以直接查看历史订单和历史成交，并通过同一组筛选条件联动事件回放
 - 市场页优先读取真实 K 线与权益接口，若当前环境暂无足够数据则自动回退到本地 fixture
 - `/v1/portfolio/equity-curve` 当前固定表示“账户组合权益曲线”；会基于余额快照、全账户成交与多标的历史价格共同重建
 - 研究页现在优先读取 `/v1/research/snapshot` 返回的真实 backtest snapshot，不再固定停留在本地 fixture 页面
