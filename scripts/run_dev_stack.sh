@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-API_CMD=("$ROOT_DIR/.venv/bin/uvicorn" "apps.api.main:app" "--host" "0.0.0.0" "--port" "8000" "--reload")
+API_CMD=("$ROOT_DIR/.venv/bin/uvicorn" "apps.api.main:app" "--factory" "--host" "0.0.0.0" "--port" "8000" "--reload")
 WEB_CMD=("npm" "--prefix" "$ROOT_DIR/apps/web" "run" "dev" "--" "--host" "127.0.0.1" "--port" "5173")
 PIDS=()
 

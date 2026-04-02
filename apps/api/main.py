@@ -232,4 +232,6 @@ def create_app(
     return app
 
 
-app = create_app()
+def app() -> FastAPI:
+    """Uvicorn factory entrypoint for the API runtime."""
+    return create_app()
