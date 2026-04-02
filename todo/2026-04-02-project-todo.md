@@ -34,9 +34,8 @@
 - [x] done：补齐 operator 侧的历史执行可见性：历史订单、成交、撤单结果。
   已完成内容：控制面已新增 `/v1/orders/history`、`/v1/fills/history`；前端运维页也已接入共享筛选器、历史订单表和历史成交表，支持按 `symbol`、`trader_run_id`、时间窗和条数查看执行结果，不再只能看活动订单或直查数据库。
 
-- [ ] 给 diagnostics/replay-events 前端补筛选和定位能力。
-  已确认现状：后端已经支持 `start_time`、`end_time`、`trader_run_id`、`account_id`、`symbol` 过滤，但前端 `fetchReplayEvents()` 仍固定只拉 `limit=12`，没有任何筛选 UI。
-  目标：至少支持按 `trader_run_id`、时间窗和 symbol 回放，方便排查 protection mode、cancel-all 和对账异常。
+- [x] done：给 diagnostics/replay-events 前端补筛选和定位能力。
+  已完成内容：运维页已经接入共享活动筛选器，前端会把 `symbol`、`trader_run_id`、时间窗和 `limit` 同步传给 `fetchReplayEvents(...)`；事件回放现在和历史订单、历史成交共用同一组筛选上下文，可直接定位 protection mode、cancel-all 和对账相关事件。
 
 - [ ] 清理 research snapshot 契约，把“真实导出仍标记为 fixture”的状态收口。
   已确认现状：`apps/research/main.py` 导出的真实 snapshot 里 `sourceMode` 仍写成 `"fixture"`，而前端类型 `apps/web/src/types/research.ts` 也只接受 `"fixture"`。
