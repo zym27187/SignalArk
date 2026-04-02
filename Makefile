@@ -1,4 +1,4 @@
-.PHONY: install format lint test test-unit test-migrations test-integration test-e2e api trader collector research web-install web web-test web-build web-preview dev
+.PHONY: install format lint test test-unit test-migrations test-integration test-e2e api trader collector research mcp web-install web web-test web-build web-preview dev
 
 VENV ?= .venv
 WEB_DIR := apps/web
@@ -46,6 +46,9 @@ collector:
 
 research:
 	$(PYTHON) -m apps.research $(ARGS)
+
+mcp:
+	$(PYTHON) -m apps.mcp $(ARGS)
 
 web-install:
 	$(NPM) install

@@ -177,6 +177,8 @@ make trader
 make collector
 .venv/bin/python -m apps.research --input ./bars.json --output ./artifacts/backtest-result.json
 make research ARGS="--input ./bars.json --output ./artifacts/backtest-result.json"
+.venv/bin/python -m apps.mcp
+make mcp
 .venv/bin/alembic -c migrations/alembic.ini upgrade head
 .venv/bin/python scripts/replay_events.py --limit 50
 ```
@@ -211,6 +213,61 @@ curl http://127.0.0.1:8000/v1/orders/active
 curl -X POST http://127.0.0.1:8000/v1/controls/strategy/pause
 curl -X POST http://127.0.0.1:8000/v1/controls/kill-switch/enable
 curl "http://127.0.0.1:8000/v1/diagnostics/replay-events?limit=50"
+```
+
+## MCP Server
+
+仓库现在提供一个本地只读 MCP server，方便让 AI agent 直接查询当前 SignalArk 状态、历史执行结果和 research 快照，而不是手工查表或拼 curl。
+
+启动方式：
+
+```bash
+.venv/bin/python -m apps.mcp
+make mcp
+```
+
+如果你希望显式指定配置层或数据库连接，可以额外传：
+
+```bash
+make mcp ARGS="--config-profile dev --postgres-dsn postgresql+psycopg://signalark:signalark@localhost:5432/signalark"
+```
+
+当前暴露的工具：
+
+- `get_status`
+- `list_positions`
+- `list_active_orders`
+- `list_order_history`
+- `list_fill_history`
+- `replay_events`
+- `get_market_bars`
+- `run_research_snapshot`
+
+设计约束：
+
+- 当前只开放只读工具，不包含 pause / kill switch / cancel-all 之类控制动作。
+- `get_market_bars` 和 `run_research_snapshot` 会走现有 Eastmoney 历史行情链路，因此依赖外部市场数据可用。
+- 历史订单、成交和事件回放直接复用当前持久化表与控制面 service；若数据库尚未迁移或为空，会返回空结果而不是崩溃。
+
+如果你要在支持 MCP 的客户端里注册它，可以把命令指向项目本地虚拟环境的 Python，例如：
+
+```json
+{
+  "mcpServers": {
+    "signalark": {
+      "command": "/absolute/path/to/SignalArk/.venv/bin/python",
+      "args": [
+        "-m",
+        "apps.mcp",
+        "--config-profile",
+        "dev",
+        "--postgres-dsn",
+        "postgresql+psycopg://signalark:signalark@localhost:5432/signalark"
+      ],
+      "cwd": "/absolute/path/to/SignalArk"
+    }
+  }
+}
 ```
 
 ## 配置加载顺序
