@@ -29,7 +29,7 @@
 
 ## P2：工程化与交付质量
 
-- [ ] 增加 CI：仓库根目录下暂时没有 `.github` 工作流。建议至少自动跑 `ruff`、`pytest` 和 `npm --prefix apps/web run build`，避免当前这种“本地能一眼看出的红灯”在提交后继续漂着。
+- [x] done：增加 CI：已新增 `.github/workflows/ci.yml`，在 `push / pull_request / workflow_dispatch` 下并行执行后端检查与前端构建，自动跑 `ruff`、`pytest` 和 `npm --prefix apps/web run build`。
 
 - [ ] 给前端补自动化测试：`apps/web/` 下目前没有 `*.test.*` 或 `*.spec.*` 文件。建议先补最小的 API 适配、视图切换和关键组件渲染测试，避免页面结构和数据契约漂移。
 
