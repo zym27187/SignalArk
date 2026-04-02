@@ -7,15 +7,15 @@
 - 本地执行 `.venv/bin/python -m pytest -q`：`127 passed in 2.48s`。
 - 本地执行 `.venv/bin/python -m pytest --collect-only -q`：当前共收集 `127` 个测试。
 - 本地执行 `.venv/bin/ruff check .`：通过。
+- 本地执行 `make web-test`：`5` 个前端测试文件、`9` 个测试通过。
 - 本地执行 `make web-build`：通过。
-- 本地检索 `apps/web` 自动化测试文件：当前没有 `*.test.*` / `*.spec.*`。
 - 补充阅读了 `README.md`、`apps/research/README.md`、`apps/web/README.md`、`apps/trader/control_plane.py`、`migrations/README.md`、`tests/integration/test_api_market_endpoints.py`、`tests/integration/test_research_cli.py`、`apps/web/package.json`。
 
 ## 当前结论
 
 - 当前仓库已经不处于“修红灯”阶段；后端测试、lint 和前端构建都已是绿灯。
 - 旧 todo 里的大部分 P0 / P1 事项已经完成，不建议继续把“已完成项”放在主待办里。
-- 当前 P0 已完成；接下来最值得做的是补前端测试基线，并继续修正文档漂移。
+- 当前 P0 / P1 已完成；后续更适合继续做的是前端测试扩面和新的产品能力。
 
 ## P0：已完成
 
@@ -25,15 +25,13 @@
 - [x] done：让集成 / E2E 初始化默认走真实 Alembic 迁移。
   已完成内容：新增共享 migration helper，集成 / smoke / E2E 相关测试默认通过 `alembic upgrade head` 初始化测试库；空库只读 API 测试也额外锁定了“不会因 service 初始化自动创建 control-plane 表”的行为。
 
-## P1：下一步最值得补齐
+## P1：已完成
 
-- [ ] 给 `apps/web` 建立最小自动化测试基线，并接入 CI。
-  现状：`apps/web/package.json` 只有 `dev`、`build`、`preview`、`check-types`，仓库里也没有前端测试文件。
-  建议最小范围：先补 `src/lib/api.ts` 的数据适配、`use-market-data` / `use-dashboard-data` 的回退逻辑、symbol/timeframe 切换，以及 1 到 2 个关键视图渲染测试。
+- [x] done：给 `apps/web` 建立最小自动化测试基线，并接入 CI。
+  已完成内容：补了 `Vitest + Testing Library` 测试栈，新增 API 请求适配测试、`use-market-data` / `use-dashboard-data` 容错回退测试、主视图切换测试，以及关键组件渲染测试；`make web-test` 与 CI `web` job 也已接入。
 
-- [ ] 修正文档漂移，优先同步根 README 的 research 说明。
-  现状：`README.md` 仍写“当前回测能力以 Python API 形式提供，而不是独立 CLI”，但 `apps/research/README.md`、`Makefile` 和 `tests/integration/test_research_cli.py` 已明确支持 `python -m apps.research` / `make research ARGS="..."`。
-  建议结果：把根 README 的 research 章节、常用命令和输出说明更新到与现状一致；后续若控制面表迁入 Alembic，也一并改掉“运行时自动补齐控制面表”的描述。
+- [x] done：修正文档漂移，优先同步根 README 的 research 说明。
+  已完成内容：根 README 已同步 research CLI、`make research`、`web-test`、前端测试覆盖范围，以及迁移后控制面表不再由运行时静默补齐的现状；`apps/web/README.md` 也补充了前端测试说明。
 
 ## 已完成且不再列为当前主待办
 

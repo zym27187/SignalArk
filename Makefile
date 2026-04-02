@@ -1,4 +1,4 @@
-.PHONY: install format lint test test-unit test-migrations test-integration test-e2e api trader collector research web-install web web-build web-preview dev
+.PHONY: install format lint test test-unit test-migrations test-integration test-e2e api trader collector research web-install web web-test web-build web-preview dev
 
 VENV ?= .venv
 WEB_DIR := apps/web
@@ -52,6 +52,9 @@ web-install:
 
 web:
 	$(NPM) run dev -- --host 127.0.0.1 --port 5173
+
+web-test:
+	$(NPM) run test
 
 web-build:
 	$(NPM) run build

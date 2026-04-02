@@ -51,5 +51,8 @@ jobs:
       - name: Install Web Dependencies
         run: make web-install
 
+      - name: Run Web Tests
+        run: make web-test
+
       - name: Build Web App
         run: make web-build
