@@ -25,7 +25,7 @@
 
 - [x] done：支持前端的多标的/多视图切换：市场页与研究页现在共享当前选中的 `symbol` 上下文，研究页补齐了多标的 / 多周期 fixture 目录，市场页也支持 `15m / 1h` 切换并随之请求真实只读 API 或回退对应示例数据。
 
-- [ ] 评估是否引入推送式刷新：`apps/web/README.md` 目前明确是 REST 轮询。对控制面来说这已经够用，但如果后续要做盘中监控、事件流和更细粒度的运行态反馈，可以规划 WebSocket 或 SSE。
+- [x] done：评估是否引入推送式刷新：结论是 V1 继续保持 `REST 轮询 + 手动刷新`，当前不引入 WebSocket / SSE；若后续出现低延迟盘中监控、追加式事件流或更细粒度 runtime 反馈需求，再优先评估 `SSE`。相关决策已写入 `apps/web/README.md` 和 `v1-ai-execution-phases/implementation-decisions.md`。
 
 ## P2：工程化与交付质量
 
