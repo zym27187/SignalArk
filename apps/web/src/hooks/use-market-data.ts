@@ -110,6 +110,12 @@ export function useMarketData({ enabled, symbol, timeframe }: UseMarketDataOptio
 
   useEffect(() => {
     mountedRef.current = true;
+    hasLoadedRef.current = false;
+    setSnapshot({
+      ...EMPTY_MARKET_SNAPSHOT,
+      symbol: symbol ?? null,
+      timeframe: timeframe ?? null,
+    });
 
     if (!enabled) {
       setIsLoading(false);

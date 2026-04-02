@@ -23,7 +23,7 @@
 
 - [x] done：给研究页提供正式入口：本次选择补 `research CLI`。已新增 `python -m apps.research` / `make research ARGS="..."` 入口，支持读取 `BarEvent` JSON、执行回测、导出 `BacktestRunResult`，并可选导出前端友好的 research snapshot JSON。
 
-- [ ] 支持前端的多标的/多视图切换：当前市场页只取 `status?.symbols?.[0]`，研究页和市场页的数据源也都是固定单标的示例。考虑到 V1 仍允许 1 到 2 个标的子集运行，建议把 symbol/timeframe 切换能力补到前端交互里。
+- [x] done：支持前端的多标的/多视图切换：市场页与研究页现在共享当前选中的 `symbol` 上下文，研究页补齐了多标的 / 多周期 fixture 目录，市场页也支持 `15m / 1h` 切换并随之请求真实只读 API 或回退对应示例数据。
 
 - [ ] 评估是否引入推送式刷新：`apps/web/README.md` 目前明确是 REST 轮询。对控制面来说这已经够用，但如果后续要做盘中监控、事件流和更细粒度的运行态反馈，可以规划 WebSocket 或 SSE。
 

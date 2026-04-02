@@ -576,6 +576,57 @@ select {
   max-width: 50rem;
 }
 
+.dataset-switcher {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.dataset-switcher__group {
+  display: grid;
+  gap: 8px;
+}
+
+.dataset-switcher__label {
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.dataset-switcher__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dataset-switcher__button {
+  border: 1px solid rgba(18, 40, 61, 0.12);
+  cursor: pointer;
+  padding: 10px 14px;
+  border-radius: 999px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.54);
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.dataset-switcher__button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(18, 40, 61, 0.08);
+}
+
+.dataset-switcher__button--active {
+  color: #fff8f0;
+  background: linear-gradient(135deg, #173b59, #0d7c69);
+  border-color: transparent;
+  box-shadow: 0 12px 28px rgba(18, 40, 61, 0.16);
+}
+
 .page-hero__chips {
   display: flex;
   flex-wrap: wrap;
@@ -787,6 +838,7 @@ select {
     display: grid;
   }
 
+  .dataset-switcher__options,
   .page-hero__chips,
   .chart-shell__summary {
     justify-content: start;

@@ -30,6 +30,8 @@ from apps.trader.control_plane import TraderControlPlaneStore
 from apps.trader.oms import build_default_trader_oms_service
 from apps.trader.reconciliation import SessionFactoryBackedReconciliationStore
 
+READ_ONLY_MARKET_TIMEFRAMES = frozenset({"15m", "1h"})
+
 
 def _is_missing_persistence_table_error(exc: Exception) -> bool:
     """Treat uninitialized persistence tables as an empty-state API response."""
@@ -419,10 +421,10 @@ class ApiControlPlaneService:
 
     def _resolve_timeframe(self, timeframe: str | None) -> str:
         resolved = (timeframe or self._settings.primary_timeframe).strip().lower()
-        if resolved != self._settings.primary_timeframe:
+        if resolved not in READ_ONLY_MARKET_TIMEFRAMES:
             raise ValueError(
-                "Unsupported timeframe: "
-                f"{resolved}; only {self._settings.primary_timeframe} is available."
+                f"Unsupported timeframe: {resolved}; "
+                f"supported values are {', '.join(sorted(READ_ONLY_MARKET_TIMEFRAMES))}."
             )
         return resolved
 

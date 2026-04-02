@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 import { ViewSwitcher } from "./components/ViewSwitcher";
 import { MarketView } from "./components/views/MarketView";
 import { OperationsView } from "./components/views/OperationsView";
@@ -6,13 +8,46 @@ import { useHashView } from "./hooks/use-hash-view";
 import { useDashboardData } from "./hooks/use-dashboard-data";
 import { useMarketData } from "./hooks/use-market-data";
 import { formatDateTime } from "./lib/format";
+import {
+  listResearchFixtureSymbols,
+  listResearchFixtureTimeframes,
+} from "./lib/research-fixtures";
+
+const MARKET_TIMEFRAME_OPTIONS = ["15m", "1h"];
 
 export default function App() {
   const dashboard = useDashboardData();
   const { view, navigate } = useHashView();
+  const fallbackSymbols = listResearchFixtureSymbols();
+  const availableSymbols =
+    dashboard.snapshot.status?.symbols && dashboard.snapshot.status.symbols.length > 0
+      ? dashboard.snapshot.status.symbols
+      : fallbackSymbols;
+  const [selectedSymbol, setSelectedSymbol] = useState<string>(availableSymbols[0] ?? fallbackSymbols[0]);
+  const [selectedMarketTimeframe, setSelectedMarketTimeframe] = useState<string>(
+    MARKET_TIMEFRAME_OPTIONS[0],
+  );
+  const researchTimeframeOptions = listResearchFixtureTimeframes(selectedSymbol);
+  const [selectedResearchTimeframe, setSelectedResearchTimeframe] = useState<string>(
+    researchTimeframeOptions[0] ?? "15m",
+  );
+
+  useEffect(() => {
+    if (!availableSymbols.includes(selectedSymbol)) {
+      setSelectedSymbol(availableSymbols[0] ?? fallbackSymbols[0]);
+    }
+  }, [availableSymbols, fallbackSymbols, selectedSymbol]);
+
+  useEffect(() => {
+    if (!researchTimeframeOptions.includes(selectedResearchTimeframe)) {
+      setSelectedResearchTimeframe(researchTimeframeOptions[0] ?? "15m");
+    }
+  }, [researchTimeframeOptions, selectedResearchTimeframe]);
+
   const marketData = useMarketData({
     enabled: view === "market",
-    symbol: dashboard.snapshot.status?.symbols?.[0] ?? null,
+    symbol: selectedSymbol,
+    timeframe: selectedMarketTimeframe,
   });
 
   function renderView() {
@@ -22,10 +57,25 @@ export default function App() {
           <MarketView
             status={dashboard.snapshot.status}
             marketData={marketData}
+            availableSymbols={availableSymbols}
+            availableTimeframes={MARKET_TIMEFRAME_OPTIONS}
+            selectedSymbol={selectedSymbol}
+            selectedTimeframe={selectedMarketTimeframe}
+            onSymbolChange={setSelectedSymbol}
+            onTimeframeChange={setSelectedMarketTimeframe}
           />
         );
       case "research":
-        return <ResearchView />;
+        return (
+          <ResearchView
+            availableSymbols={availableSymbols}
+            availableTimeframes={researchTimeframeOptions}
+            selectedSymbol={selectedSymbol}
+            selectedTimeframe={selectedResearchTimeframe}
+            onSymbolChange={setSelectedSymbol}
+            onTimeframeChange={setSelectedResearchTimeframe}
+          />
+        );
       case "operations":
       default:
         return <OperationsView dashboard={dashboard} />;

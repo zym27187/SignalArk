@@ -45,8 +45,11 @@ MARKET_STATE = MarketStateSnapshot(
 
 
 class FakeHistoricalBarGateway:
-    def __init__(self, bars: list[NormalizedBar]) -> None:
-        self._bars = list(bars)
+    def __init__(self, bars_by_timeframe: dict[str, list[NormalizedBar]]) -> None:
+        self._bars_by_timeframe = {
+            timeframe: list(bars)
+            for timeframe, bars in bars_by_timeframe.items()
+        }
 
     async def fetch_historical_bars(
         self,
@@ -58,9 +61,8 @@ class FakeHistoricalBarGateway:
         max_bars: int | None = None,
     ) -> list[NormalizedBar]:
         assert symbol == "600036.SH"
-        assert timeframe == "15m"
         del start_time, end_time
-        bars = list(self._bars)
+        bars = list(self._bars_by_timeframe[timeframe])
         if max_bars is not None:
             bars = bars[-max_bars:]
         return bars
@@ -77,13 +79,14 @@ def _settings(database_url: str) -> Settings:
     return Settings(postgres_dsn=database_url)
 
 
-def _bar(*, index: int, close: str) -> NormalizedBar:
-    bar_end_time = BASE_TIME + timedelta(minutes=15 * index)
+def _bar(*, index: int, close: str, timeframe: str = "15m") -> NormalizedBar:
+    step = timedelta(minutes=15 if timeframe == "15m" else 60)
+    bar_end_time = BASE_TIME + step * index
     return NormalizedBar(
         exchange="cn_equity",
         symbol="600036.SH",
-        timeframe="15m",
-        bar_start_time=bar_end_time - timedelta(minutes=15),
+        timeframe=timeframe,
+        bar_start_time=bar_end_time - step,
         bar_end_time=bar_end_time,
         ingest_time=bar_end_time + timedelta(minutes=1),
         open="39.45",
@@ -222,16 +225,25 @@ def test_api_market_endpoints_return_live_bars_and_reconstructed_equity_curve(
             _balance_snapshot(snapshot_time=BUY_TIME, total="96039")
         )
 
-    bars = [
+    bars_15m = [
         _bar(index=0, close="39.50"),
         _bar(index=1, close="39.60"),
         _bar(index=2, close="39.80"),
+    ]
+    bars_1h = [
+        _bar(index=0, close="39.52", timeframe="1h"),
+        _bar(index=1, close="39.88", timeframe="1h"),
     ]
     service = ApiControlPlaneService(
         settings=settings,
         session_factory=session_factory,
         control_store=control_store,
-        market_gateway_factory=lambda: FakeHistoricalBarGateway(bars),
+        market_gateway_factory=lambda: FakeHistoricalBarGateway(
+            {
+                "15m": bars_15m,
+                "1h": bars_1h,
+            }
+        ),
     )
     app = create_app(settings=settings, control_plane_service=service)
 
@@ -239,6 +251,10 @@ def test_api_market_endpoints_return_live_bars_and_reconstructed_equity_curve(
         with TestClient(app) as client:
             bars_response = client.get("/v1/market/bars", params={"limit": 3})
             curve_response = client.get("/v1/portfolio/equity-curve", params={"limit": 3})
+            hourly_bars_response = client.get(
+                "/v1/market/bars",
+                params={"timeframe": "1h", "limit": 2},
+            )
 
         assert bars_response.status_code == 200
         assert bars_response.json() == {
@@ -299,6 +315,11 @@ def test_api_market_endpoints_return_live_bars_and_reconstructed_equity_curve(
                 },
             ],
         }
+
+        assert hourly_bars_response.status_code == 200
+        assert hourly_bars_response.json()["timeframe"] == "1h"
+        assert hourly_bars_response.json()["count"] == 2
+        assert hourly_bars_response.json()["bars"][1]["time"] == "2026-04-02T10:45:00+08:00"
     finally:
         get_settings.cache_clear()
         os.environ.pop("SIGNALARK_POSTGRES_DSN", None)

@@ -1,13 +1,31 @@
 import { AreaChart } from "../AreaChart";
 import { BacktestDecisionTable } from "../BacktestDecisionTable";
+import { DatasetSwitcher } from "../DatasetSwitcher";
 import { DefinitionGrid } from "../DefinitionGrid";
 import { MetricCard } from "../MetricCard";
 import { SectionCard } from "../SectionCard";
 import { formatDateTime, formatDecimal, formatSignedMoney } from "../../lib/format";
-import { researchSnapshotFixture } from "../../lib/research-fixtures";
+import { getResearchSnapshot } from "../../lib/research-fixtures";
 
-export function ResearchView() {
-  const { manifest, performance, backtestEquityCurve, decisions, notes } = researchSnapshotFixture;
+interface ResearchViewProps {
+  availableSymbols: string[];
+  availableTimeframes: string[];
+  selectedSymbol: string;
+  selectedTimeframe: string;
+  onSymbolChange: (symbol: string) => void;
+  onTimeframeChange: (timeframe: string) => void;
+}
+
+export function ResearchView({
+  availableSymbols,
+  availableTimeframes,
+  selectedSymbol,
+  selectedTimeframe,
+  onSymbolChange,
+  onTimeframeChange,
+}: ResearchViewProps) {
+  const snapshot = getResearchSnapshot(selectedSymbol, selectedTimeframe);
+  const { manifest, performance, backtestEquityCurve, decisions, notes } = snapshot;
 
   return (
     <main className="page-stack">
@@ -19,9 +37,17 @@ export function ResearchView() {
             本页对应 `BacktestRunResult` 的结构：运行清单、绩效摘要、权益曲线，以及
             逐根 K 线驱动的决策审计。
           </p>
+          <DatasetSwitcher
+            symbolOptions={availableSymbols.map((value) => ({ value }))}
+            timeframeOptions={availableTimeframes.map((value) => ({ value }))}
+            symbol={selectedSymbol}
+            timeframe={selectedTimeframe}
+            onSymbolChange={onSymbolChange}
+            onTimeframeChange={onTimeframeChange}
+          />
         </div>
         <div className="page-hero__chips">
-          <span className="tag tag--fixture">{researchSnapshotFixture.sourceLabel}</span>
+          <span className="tag tag--fixture">{snapshot.sourceLabel}</span>
           <span className="tag">{manifest.strategyId}</span>
           <span className="tag">{manifest.timeframe}</span>
         </div>
@@ -59,7 +85,7 @@ export function ResearchView() {
           <SectionCard
             eyebrow="绩效"
             title="权益曲线"
-            description="为未来研究 API 返回逐 Bar 期末权益点预留的面积图。"
+            description="当前按 symbol/timeframe 选择展示的研究回测权益曲线。"
           >
             <AreaChart
               title="回测权益"
@@ -121,7 +147,7 @@ export function ResearchView() {
           <SectionCard
             eyebrow="说明"
             title="前端集成说明"
-            description="当前已真实可用的部分，以及本页后续等待接入的能力。"
+            description="当前切换能力、CLI 入口，以及后续待接入的研究数据源。"
           >
             <ul className="note-list">
               {notes.map((note) => (

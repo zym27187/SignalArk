@@ -1,19 +1,30 @@
 import { AreaChart } from "../AreaChart";
 import { CandlestickChart } from "../CandlestickChart";
+import { DatasetSwitcher } from "../DatasetSwitcher";
 import { DefinitionGrid } from "../DefinitionGrid";
 import { MetricCard } from "../MetricCard";
 import { SectionCard } from "../SectionCard";
 import type { MarketDataState } from "../../hooks/use-market-data";
 import { formatDecimal, titleCase } from "../../lib/format";
-import { researchSnapshotFixture } from "../../lib/research-fixtures";
+import { getResearchSnapshot } from "../../lib/research-fixtures";
 import type { StatusPayload } from "../../types/api";
 
 interface MarketViewProps {
   status: StatusPayload | null;
   marketData: MarketDataState;
+  availableSymbols: string[];
+  availableTimeframes: string[];
+  selectedSymbol: string;
+  selectedTimeframe: string;
+  onSymbolChange: (symbol: string) => void;
+  onTimeframeChange: (timeframe: string) => void;
 }
 
-function resolveSourceLabel(usingLiveBars: boolean, usingLiveCurve: boolean) {
+function resolveSourceLabel(
+  usingLiveBars: boolean,
+  usingLiveCurve: boolean,
+  fallbackLabel: string,
+) {
   if (usingLiveBars && usingLiveCurve) {
     return "真实 API 数据";
   }
@@ -26,22 +37,36 @@ function resolveSourceLabel(usingLiveBars: boolean, usingLiveCurve: boolean) {
     return "权益真实 / K 线示例";
   }
 
-  return researchSnapshotFixture.sourceLabel;
+  return fallbackLabel;
 }
 
-export function MarketView({ status, marketData }: MarketViewProps) {
+export function MarketView({
+  status,
+  marketData,
+  availableSymbols,
+  availableTimeframes,
+  selectedSymbol,
+  selectedTimeframe,
+  onSymbolChange,
+  onTimeframeChange,
+}: MarketViewProps) {
+  const fallbackSnapshot = getResearchSnapshot(selectedSymbol, selectedTimeframe);
   const usingLiveBars = marketData.snapshot.bars.length > 0;
   const usingLiveCurve = marketData.snapshot.equityCurve.length > 0;
-  const bars = usingLiveBars ? marketData.snapshot.bars : researchSnapshotFixture.klineBars;
+  const bars = usingLiveBars ? marketData.snapshot.bars : fallbackSnapshot.klineBars;
   const runtimePnlCurve = usingLiveCurve
     ? marketData.snapshot.equityCurve
-    : researchSnapshotFixture.runtimePnlCurve;
+    : fallbackSnapshot.runtimePnlCurve;
   const firstBar = bars[0];
   const lastBar = bars[bars.length - 1];
   const activeSymbol =
-    marketData.snapshot.symbol ?? status?.symbols?.[0] ?? researchSnapshotFixture.manifest.symbols[0];
-  const timeframe = marketData.snapshot.timeframe ?? researchSnapshotFixture.manifest.timeframe;
-  const sourceLabel = resolveSourceLabel(usingLiveBars, usingLiveCurve);
+    marketData.snapshot.symbol ?? selectedSymbol ?? status?.symbols?.[0] ?? fallbackSnapshot.manifest.symbols[0];
+  const timeframe = marketData.snapshot.timeframe ?? selectedTimeframe ?? fallbackSnapshot.manifest.timeframe;
+  const sourceLabel = resolveSourceLabel(
+    usingLiveBars,
+    usingLiveCurve,
+    fallbackSnapshot.sourceLabel,
+  );
   const sessionMove = lastBar.close - firstBar.open;
   const sessionMovePct = (sessionMove / firstBar.open) * 100;
   const maxEquity = Math.max(...runtimePnlCurve.map((point) => point.value));
@@ -63,6 +88,14 @@ export function MarketView({ status, marketData }: MarketViewProps) {
             市场视图现在优先读取真实 K 线与账户权益接口；如果本地环境还没有累计足够
             的快照或只读接口暂时不可用，会自动回退到示例数据保持页面可用。
           </p>
+          <DatasetSwitcher
+            symbolOptions={availableSymbols.map((value) => ({ value }))}
+            timeframeOptions={availableTimeframes.map((value) => ({ value }))}
+            symbol={selectedSymbol}
+            timeframe={selectedTimeframe}
+            onSymbolChange={onSymbolChange}
+            onTimeframeChange={onTimeframeChange}
+          />
         </div>
         <div className="page-hero__chips">
           <span className={`tag${usingLiveBars && usingLiveCurve ? "" : " tag--fixture"}`}>
@@ -99,7 +132,7 @@ export function MarketView({ status, marketData }: MarketViewProps) {
           <SectionCard
             eyebrow="价格走势"
             title="K 线区域"
-            description="针对单个跟踪标的和单条活跃周期的真实蜡烛图视图。"
+            description="针对选中标的和周期的真实蜡烛图视图。"
           >
             <CandlestickChart
               title={activeSymbol}
@@ -111,7 +144,7 @@ export function MarketView({ status, marketData }: MarketViewProps) {
           <SectionCard
             eyebrow="盈亏"
             title="盘中权益曲线"
-            description="优先使用真实只读接口重建账户权益时间线。"
+            description="随当前 symbol/timeframe 切换的账户权益时间线。"
           >
             <AreaChart
               title="区间权益"

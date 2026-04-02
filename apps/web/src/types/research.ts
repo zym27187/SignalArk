@@ -81,5 +81,6 @@ export interface ResearchSnapshot {
   notes: string[];
 }
 
-export type AppView = "operations" | "market" | "research";
+export type ResearchSnapshotCatalog = Record<string, Record<string, ResearchSnapshot>>;
 
+export type AppView = "operations" | "market" | "research";
