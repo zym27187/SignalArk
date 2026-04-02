@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDashboardData } from "./use-dashboard-data";
 import {
   fetchActiveOrders,
+  fetchFillHistory,
+  fetchOrderHistory,
   fetchPositions,
   fetchReplayEvents,
   fetchStatus,
@@ -14,6 +16,8 @@ vi.mock("../lib/api", () => ({
   fetchStatus: vi.fn(),
   fetchPositions: vi.fn(),
   fetchActiveOrders: vi.fn(),
+  fetchOrderHistory: vi.fn(),
+  fetchFillHistory: vi.fn(),
   fetchReplayEvents: vi.fn(),
   postControlAction: vi.fn(),
 }));
@@ -21,6 +25,8 @@ vi.mock("../lib/api", () => ({
 const mockedFetchStatus = vi.mocked(fetchStatus);
 const mockedFetchPositions = vi.mocked(fetchPositions);
 const mockedFetchActiveOrders = vi.mocked(fetchActiveOrders);
+const mockedFetchOrderHistory = vi.mocked(fetchOrderHistory);
+const mockedFetchFillHistory = vi.mocked(fetchFillHistory);
 const mockedFetchReplayEvents = vi.mocked(fetchReplayEvents);
 const mockedPostControlAction = vi.mocked(postControlAction);
 
@@ -100,6 +106,68 @@ describe("useDashboardData", () => {
           },
         ],
       });
+    mockedFetchOrderHistory
+      .mockResolvedValueOnce({
+        filters: {},
+        count: 0,
+        orders: [],
+      })
+      .mockResolvedValueOnce({
+        filters: {},
+        count: 1,
+        orders: [
+          {
+            order_id: "order-001",
+            order_intent_id: "intent-001",
+            signal_id: "signal-001",
+            trader_run_id: "run-001",
+            account_id: "paper_account_001",
+            exchange_order_id: "paper-order-001",
+            symbol: "600036.SH",
+            side: "BUY",
+            order_type: "MARKET",
+            time_in_force: "DAY",
+            qty: "100",
+            price: null,
+            filled_qty: "100",
+            avg_fill_price: "39.50",
+            status: "FILLED",
+            reduce_only: false,
+            risk_decision: "ALLOW",
+            risk_reason: null,
+            submitted_at: "2026-04-02T10:01:00+08:00",
+            updated_at: "2026-04-02T10:02:00+08:00",
+            last_error_code: null,
+            last_error_message: null,
+          },
+        ],
+      });
+    mockedFetchFillHistory
+      .mockResolvedValueOnce({
+        filters: {},
+        count: 1,
+        fills: [
+          {
+            fill_id: "fill-001",
+            order_id: "order-001",
+            order_intent_id: "intent-001",
+            trader_run_id: "run-001",
+            account_id: "paper_account_001",
+            exchange_fill_id: "paper-fill-001",
+            symbol: "600036.SH",
+            side: "BUY",
+            qty: "100",
+            price: "39.50",
+            fee: "1.00",
+            fee_asset: "CNY",
+            liquidity_type: "TAKER",
+            fill_time: "2026-04-02T10:02:00+08:00",
+            created_at: "2026-04-02T10:02:00+08:00",
+            reduce_only: false,
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error("fills feed unavailable"));
     mockedFetchReplayEvents
       .mockResolvedValueOnce({
         filters: {},
@@ -132,6 +200,8 @@ describe("useDashboardData", () => {
     expect(result.current.snapshot.status?.trader_run_id).toBe("run-001");
     expect(result.current.snapshot.positions).toHaveLength(1);
     expect(result.current.snapshot.orders).toHaveLength(0);
+    expect(result.current.snapshot.orderHistory).toHaveLength(0);
+    expect(result.current.snapshot.fills).toHaveLength(1);
     expect(result.current.snapshot.events).toHaveLength(1);
 
     await act(async () => {
@@ -145,9 +215,12 @@ describe("useDashboardData", () => {
     expect(result.current.snapshot.status?.trader_run_id).toBe("run-001");
     expect(result.current.snapshot.positions).toHaveLength(1);
     expect(result.current.snapshot.orders).toHaveLength(1);
+    expect(result.current.snapshot.orderHistory).toHaveLength(1);
+    expect(result.current.snapshot.fills).toHaveLength(1);
     expect(result.current.snapshot.events).toHaveLength(1);
     expect(result.current.snapshot.sectionErrors.status).toBe("status feed unavailable");
     expect(result.current.snapshot.sectionErrors.positions).toBe("positions feed unavailable");
+    expect(result.current.snapshot.sectionErrors.fillHistory).toBe("fills feed unavailable");
     expect(result.current.snapshot.sectionErrors.events).toBe("events feed unavailable");
   });
 
@@ -181,6 +254,16 @@ describe("useDashboardData", () => {
       account_id: "paper_account_001",
       orders: [],
     });
+    mockedFetchOrderHistory.mockResolvedValue({
+      filters: {},
+      count: 0,
+      orders: [],
+    });
+    mockedFetchFillHistory.mockResolvedValue({
+      filters: {},
+      count: 0,
+      fills: [],
+    });
     mockedFetchReplayEvents.mockResolvedValue({
       filters: {},
       count: 0,
@@ -208,5 +291,91 @@ describe("useDashboardData", () => {
     expect(mockedPostControlAction).toHaveBeenCalledWith("pauseStrategy");
     expect(result.current.actionMessage).toBe("策略已暂停。");
     expect(mockedFetchStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("applies shared activity filters to history and replay requests", async () => {
+    mockedFetchStatus.mockResolvedValue({
+      trader_run_id: "run-001",
+      instance_id: "instance-A",
+      account_id: "paper_account_001",
+      control_state: "normal",
+      strategy_enabled: true,
+      kill_switch_active: false,
+      protection_mode_active: false,
+      ready: true,
+      status: "ready",
+      health_status: "alive",
+      lifecycle_status: "running",
+      market_data_fresh: true,
+      market_state_available: true,
+      latest_final_bar_time: "2026-04-02T10:00:00+08:00",
+      current_trading_phase: "CONTINUOUS_AUCTION",
+      lease_owner_instance_id: "instance-A",
+      lease_expires_at: "2026-04-02T10:00:15+08:00",
+      last_heartbeat_at: "2026-04-02T10:00:05+08:00",
+      fencing_token: 3,
+      symbols: ["600036.SH", "000001.SZ"],
+    });
+    mockedFetchPositions.mockResolvedValue({
+      account_id: "paper_account_001",
+      positions: [],
+    });
+    mockedFetchActiveOrders.mockResolvedValue({
+      account_id: "paper_account_001",
+      orders: [],
+    });
+    mockedFetchOrderHistory.mockResolvedValue({
+      filters: {},
+      count: 0,
+      orders: [],
+    });
+    mockedFetchFillHistory.mockResolvedValue({
+      filters: {},
+      count: 0,
+      fills: [],
+    });
+    mockedFetchReplayEvents.mockResolvedValue({
+      filters: {},
+      count: 0,
+      events: [],
+    });
+
+    const { result } = renderHook(() => useDashboardData());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.applyActivityFilters({
+        symbol: "600036.SH",
+        traderRunId: "11111111-1111-4111-8111-111111111111",
+        startTime: "2026-04-02T10:00",
+        endTime: "2026-04-02T11:00",
+        limit: 25,
+      });
+    });
+
+    expect(mockedFetchOrderHistory).toHaveBeenLastCalledWith({
+      symbol: "600036.SH",
+      traderRunId: "11111111-1111-4111-8111-111111111111",
+      startTime: new Date("2026-04-02T10:00").toISOString(),
+      endTime: new Date("2026-04-02T11:00").toISOString(),
+      limit: 25,
+    });
+    expect(mockedFetchFillHistory).toHaveBeenLastCalledWith({
+      symbol: "600036.SH",
+      traderRunId: "11111111-1111-4111-8111-111111111111",
+      startTime: new Date("2026-04-02T10:00").toISOString(),
+      endTime: new Date("2026-04-02T11:00").toISOString(),
+      limit: 25,
+    });
+    expect(mockedFetchReplayEvents).toHaveBeenLastCalledWith({
+      symbol: "600036.SH",
+      traderRunId: "11111111-1111-4111-8111-111111111111",
+      startTime: new Date("2026-04-02T10:00").toISOString(),
+      endTime: new Date("2026-04-02T11:00").toISOString(),
+      limit: 25,
+    });
   });
 });

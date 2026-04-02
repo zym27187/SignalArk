@@ -82,6 +82,8 @@ def test_api_read_endpoints_return_empty_payloads_before_core_tables_exist(
         with TestClient(app) as client:
             positions = client.get("/v1/positions")
             active_orders = client.get("/v1/orders/active")
+            order_history = client.get("/v1/orders/history", params={"limit": 20})
+            fill_history = client.get("/v1/fills/history", params={"limit": 20})
             market_bars = client.get("/v1/market/bars", params={"limit": 1})
             equity_curve = client.get("/v1/portfolio/equity-curve", params={"limit": 20})
             replay_events = client.get("/v1/diagnostics/replay-events", params={"limit": 20})
@@ -96,6 +98,36 @@ def test_api_read_endpoints_return_empty_payloads_before_core_tables_exist(
         assert active_orders.json() == {
             "account_id": settings.account_id,
             "orders": [],
+        }
+
+        assert order_history.status_code == 200
+        assert order_history.json() == {
+            "filters": {
+                "start_time": None,
+                "end_time": None,
+                "trader_run_id": None,
+                "account_id": settings.account_id,
+                "symbol": None,
+                "status": None,
+                "limit": 20,
+            },
+            "count": 0,
+            "orders": [],
+        }
+
+        assert fill_history.status_code == 200
+        assert fill_history.json() == {
+            "filters": {
+                "start_time": None,
+                "end_time": None,
+                "trader_run_id": None,
+                "account_id": settings.account_id,
+                "symbol": None,
+                "order_id": None,
+                "limit": 20,
+            },
+            "count": 0,
+            "fills": [],
         }
 
         assert market_bars.status_code == 200

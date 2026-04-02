@@ -51,6 +51,8 @@ describe("App", () => {
         },
         positions: [],
         orders: [],
+        orderHistory: [],
+        fills: [],
         events: [],
         sectionErrors: {},
         fetchedAt: "2026-04-02T10:00:00+08:00",
@@ -59,7 +61,16 @@ describe("App", () => {
       isRefreshing: false,
       pendingAction: null,
       actionMessage: null,
+      activityFilters: {
+        symbol: "",
+        traderRunId: "",
+        startTime: "",
+        endTime: "",
+        limit: 12,
+      },
       refresh: vi.fn(),
+      applyActivityFilters: vi.fn(),
+      resetActivityFilters: vi.fn(),
       performAction: vi.fn(),
     });
     mockedUseMarketData.mockImplementation(() => ({

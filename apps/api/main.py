@@ -89,6 +89,46 @@ def create_app(
     async def active_orders() -> dict[str, object]:
         return service.active_orders_payload()
 
+    @app.get("/v1/orders/history")
+    async def order_history(
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        trader_run_id: UUID | None = None,
+        account_id: str | None = None,
+        symbol: str | None = None,
+        status: str | None = None,
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> dict[str, object]:
+        return service.order_history_payload(
+            start_time=start_time,
+            end_time=end_time,
+            trader_run_id=trader_run_id,
+            account_id=account_id,
+            symbol=symbol,
+            status=status,
+            limit=limit,
+        )
+
+    @app.get("/v1/fills/history")
+    async def fill_history(
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        trader_run_id: UUID | None = None,
+        account_id: str | None = None,
+        symbol: str | None = None,
+        order_id: UUID | None = None,
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> dict[str, object]:
+        return service.fill_history_payload(
+            start_time=start_time,
+            end_time=end_time,
+            trader_run_id=trader_run_id,
+            account_id=account_id,
+            symbol=symbol,
+            order_id=order_id,
+            limit=limit,
+        )
+
     @app.get("/v1/market/bars")
     async def market_bars(
         symbol: str | None = None,

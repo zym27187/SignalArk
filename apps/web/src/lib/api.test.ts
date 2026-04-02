@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  fetchFillHistory,
   fetchMarketBars,
+  fetchOrderHistory,
+  fetchReplayEvents,
   fetchResearchSnapshot,
   fetchStatus,
   postControlAction,
@@ -76,6 +79,101 @@ describe("api helpers", () => {
       "http://127.0.0.1:8000/v1/controls/strategy/pause",
       expect.objectContaining({
         method: "POST",
+      }),
+    );
+  });
+
+  it("builds execution-history queries from shared filters", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          filters: {},
+          count: 0,
+          orders: [],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await fetchOrderHistory({
+      symbol: "600036.SH",
+      traderRunId: "run-001",
+      startTime: "2026-04-02T02:00:00.000Z",
+      endTime: "2026-04-02T03:00:00.000Z",
+      status: "FILLED",
+      limit: 25,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/orders/history?symbol=600036.SH&trader_run_id=run-001&start_time=2026-04-02T02%3A00%3A00.000Z&end_time=2026-04-02T03%3A00%3A00.000Z&status=FILLED&limit=25",
+      expect.objectContaining({
+        headers: {
+          Accept: "application/json",
+        },
+      }),
+    );
+  });
+
+  it("builds fill-history and replay queries from shared filters", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            filters: {},
+            count: 0,
+            fills: [],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            filters: {},
+            count: 0,
+            events: [],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+
+    await fetchFillHistory({
+      symbol: "600036.SH",
+      traderRunId: "run-001",
+      orderId: "order-001",
+      limit: 20,
+    });
+    await fetchReplayEvents({
+      symbol: "600036.SH",
+      traderRunId: "run-001",
+      limit: 20,
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8000/v1/fills/history?symbol=600036.SH&trader_run_id=run-001&order_id=order-001&limit=20",
+      expect.objectContaining({
+        headers: {
+          Accept: "application/json",
+        },
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8000/v1/diagnostics/replay-events?symbol=600036.SH&trader_run_id=run-001&limit=20",
+      expect.objectContaining({
+        headers: {
+          Accept: "application/json",
+        },
       }),
     );
   });

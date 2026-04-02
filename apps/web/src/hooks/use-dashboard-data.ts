@@ -2,6 +2,8 @@ import { startTransition, useEffect, useRef, useState } from "react";
 
 import {
   fetchActiveOrders,
+  fetchFillHistory,
+  fetchOrderHistory,
   fetchPositions,
   fetchReplayEvents,
   fetchStatus,
@@ -11,18 +13,30 @@ import {
 import { localizeMessage } from "../lib/format";
 import type {
   ActiveOrder,
+  DashboardActivityFilters,
   DashboardSectionKey,
+  FillHistoryEntry,
+  HistoryOrder,
   Position,
   ReplayEvent,
   StatusPayload,
 } from "../types/api";
 
 const POLL_INTERVAL_MS = 15000;
+const DEFAULT_ACTIVITY_FILTERS: DashboardActivityFilters = {
+  symbol: "",
+  traderRunId: "",
+  startTime: "",
+  endTime: "",
+  limit: 12,
+};
 
 interface DashboardSnapshot {
   status: StatusPayload | null;
   positions: Position[];
   orders: ActiveOrder[];
+  orderHistory: HistoryOrder[];
+  fills: FillHistoryEntry[];
   events: ReplayEvent[];
   sectionErrors: Partial<Record<DashboardSectionKey, string>>;
   fetchedAt: string | null;
@@ -32,6 +46,8 @@ const EMPTY_SNAPSHOT: DashboardSnapshot = {
   status: null,
   positions: [],
   orders: [],
+  orderHistory: [],
+  fills: [],
   events: [],
   sectionErrors: {},
   fetchedAt: null,
@@ -45,8 +61,44 @@ function toErrorMessage(error: unknown): string {
   return localizeMessage("Request failed.");
 }
 
+function normalizeLimit(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_ACTIVITY_FILTERS.limit;
+  }
+
+  return Math.max(1, Math.min(200, Math.trunc(value)));
+}
+
+function toIsoDateTime(value: string): string | undefined {
+  const normalized = value.trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+
+  return parsed.toISOString();
+}
+
+function buildActivityQuery(filters: DashboardActivityFilters) {
+  const symbol = filters.symbol.trim().toUpperCase();
+  const traderRunId = filters.traderRunId.trim();
+  return {
+    symbol: symbol || undefined,
+    traderRunId: traderRunId || undefined,
+    startTime: toIsoDateTime(filters.startTime),
+    endTime: toIsoDateTime(filters.endTime),
+    limit: normalizeLimit(filters.limit),
+  };
+}
+
 export function useDashboardData() {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(EMPTY_SNAPSHOT);
+  const [activityFilters, setActivityFilters] =
+    useState<DashboardActivityFilters>(DEFAULT_ACTIVITY_FILTERS);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pendingAction, setPendingAction] = useState<ControlActionKey | null>(null);
@@ -54,8 +106,15 @@ export function useDashboardData() {
 
   const hasLoadedRef = useRef(false);
   const mountedRef = useRef(false);
+  const activityFiltersRef = useRef(activityFilters);
 
-  async function refresh() {
+  useEffect(() => {
+    activityFiltersRef.current = activityFilters;
+  }, [activityFilters]);
+
+  async function refresh(nextFilters?: DashboardActivityFilters) {
+    const activeFilters = nextFilters ?? activityFiltersRef.current;
+    const activityQuery = buildActivityQuery(activeFilters);
     const isInitialLoad = !hasLoadedRef.current;
 
     if (isInitialLoad) {
@@ -64,12 +123,21 @@ export function useDashboardData() {
       setIsRefreshing(true);
     }
 
-    const [statusResult, positionsResult, ordersResult, eventsResult] =
+    const [
+      statusResult,
+      positionsResult,
+      ordersResult,
+      orderHistoryResult,
+      fillHistoryResult,
+      eventsResult,
+    ] =
       await Promise.allSettled([
         fetchStatus(),
         fetchPositions(),
         fetchActiveOrders(),
-        fetchReplayEvents(),
+        fetchOrderHistory(activityQuery),
+        fetchFillHistory(activityQuery),
+        fetchReplayEvents(activityQuery),
       ]);
 
     if (!mountedRef.current) {
@@ -88,6 +156,12 @@ export function useDashboardData() {
             : previous.positions,
         orders:
           ordersResult.status === "fulfilled" ? ordersResult.value.orders : previous.orders,
+        orderHistory:
+          orderHistoryResult.status === "fulfilled"
+            ? orderHistoryResult.value.orders
+            : previous.orderHistory,
+        fills:
+          fillHistoryResult.status === "fulfilled" ? fillHistoryResult.value.fills : previous.fills,
         events:
           eventsResult.status === "fulfilled" ? eventsResult.value.events : previous.events,
         sectionErrors: {
@@ -102,6 +176,14 @@ export function useDashboardData() {
           orders:
             ordersResult.status === "rejected"
               ? toErrorMessage(ordersResult.reason)
+              : undefined,
+          orderHistory:
+            orderHistoryResult.status === "rejected"
+              ? toErrorMessage(orderHistoryResult.reason)
+              : undefined,
+          fillHistory:
+            fillHistoryResult.status === "rejected"
+              ? toErrorMessage(fillHistoryResult.reason)
               : undefined,
           events:
             eventsResult.status === "rejected"
@@ -141,6 +223,24 @@ export function useDashboardData() {
     }
   }
 
+  async function applyActivityFilters(nextFilters: DashboardActivityFilters) {
+    const normalizedFilters = {
+      ...nextFilters,
+      symbol: nextFilters.symbol.trim().toUpperCase(),
+      traderRunId: nextFilters.traderRunId.trim(),
+      limit: normalizeLimit(nextFilters.limit),
+    };
+    activityFiltersRef.current = normalizedFilters;
+    setActivityFilters(normalizedFilters);
+    await refresh(normalizedFilters);
+  }
+
+  async function resetActivityFilters() {
+    activityFiltersRef.current = DEFAULT_ACTIVITY_FILTERS;
+    setActivityFilters(DEFAULT_ACTIVITY_FILTERS);
+    await refresh(DEFAULT_ACTIVITY_FILTERS);
+  }
+
   useEffect(() => {
     mountedRef.current = true;
     void refresh();
@@ -161,7 +261,10 @@ export function useDashboardData() {
     isRefreshing,
     pendingAction,
     actionMessage,
+    activityFilters,
     refresh,
+    applyActivityFilters,
+    resetActivityFilters,
     performAction,
   };
 }

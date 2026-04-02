@@ -191,6 +191,164 @@ class ApiControlPlaneService:
             ],
         }
 
+    def order_history_payload(
+        self,
+        *,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        trader_run_id: UUID | None = None,
+        account_id: str | None = None,
+        symbol: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, object]:
+        resolved_account_id = account_id or self._settings.account_id
+        normalized_symbol = symbol.strip().upper() if symbol is not None else None
+        normalized_status = status.strip().upper() if status is not None else None
+
+        query = (
+            select(OrderRecord, OrderIntentRecord)
+            .join(OrderIntentRecord, OrderIntentRecord.id == OrderRecord.order_intent_id)
+            .where(OrderRecord.account_id == resolved_account_id)
+            .order_by(OrderRecord.updated_at.desc(), OrderRecord.id.desc())
+        )
+        if start_time is not None:
+            query = query.where(OrderRecord.updated_at >= start_time)
+        if end_time is not None:
+            query = query.where(OrderRecord.updated_at <= end_time)
+        if trader_run_id is not None:
+            query = query.where(OrderRecord.trader_run_id == trader_run_id)
+        if normalized_symbol is not None:
+            query = query.where(OrderRecord.symbol == normalized_symbol)
+        if normalized_status is not None:
+            query = query.where(OrderRecord.status == normalized_status)
+        query = query.limit(limit)
+
+        try:
+            with session_scope(self._session_factory) as session:
+                rows = session.execute(query).all()
+        except Exception as exc:
+            if _is_missing_persistence_table_error(exc):
+                rows = ()
+            else:
+                raise
+
+        return {
+            "filters": {
+                "start_time": start_time.isoformat() if start_time is not None else None,
+                "end_time": end_time.isoformat() if end_time is not None else None,
+                "trader_run_id": str(trader_run_id) if trader_run_id is not None else None,
+                "account_id": resolved_account_id,
+                "symbol": normalized_symbol,
+                "status": normalized_status,
+                "limit": limit,
+            },
+            "count": len(rows),
+            "orders": [
+                {
+                    "order_id": order_record.id,
+                    "order_intent_id": order_record.order_intent_id,
+                    "signal_id": order_intent_record.signal_id,
+                    "trader_run_id": order_record.trader_run_id,
+                    "account_id": order_record.account_id,
+                    "exchange_order_id": order_record.exchange_order_id,
+                    "symbol": order_record.symbol,
+                    "side": order_record.side,
+                    "order_type": order_record.order_type,
+                    "time_in_force": order_record.time_in_force,
+                    "qty": order_record.qty,
+                    "price": order_record.price,
+                    "filled_qty": order_record.filled_qty,
+                    "avg_fill_price": order_record.avg_fill_price,
+                    "status": order_record.status,
+                    "reduce_only": order_intent_record.reduce_only,
+                    "risk_decision": order_intent_record.risk_decision,
+                    "risk_reason": order_intent_record.risk_reason,
+                    "submitted_at": order_record.submitted_at.isoformat(),
+                    "updated_at": order_record.updated_at.isoformat(),
+                    "last_error_code": order_record.last_error_code,
+                    "last_error_message": order_record.last_error_message,
+                }
+                for order_record, order_intent_record in rows
+            ],
+        }
+
+    def fill_history_payload(
+        self,
+        *,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        trader_run_id: UUID | None = None,
+        account_id: str | None = None,
+        symbol: str | None = None,
+        order_id: UUID | None = None,
+        limit: int = 50,
+    ) -> dict[str, object]:
+        resolved_account_id = account_id or self._settings.account_id
+        normalized_symbol = symbol.strip().upper() if symbol is not None else None
+
+        query = (
+            select(FillRecord, OrderRecord, OrderIntentRecord)
+            .join(OrderRecord, OrderRecord.id == FillRecord.order_id)
+            .join(OrderIntentRecord, OrderIntentRecord.id == OrderRecord.order_intent_id)
+            .where(FillRecord.account_id == resolved_account_id)
+            .order_by(FillRecord.fill_time.desc(), FillRecord.id.desc())
+        )
+        if start_time is not None:
+            query = query.where(FillRecord.fill_time >= start_time)
+        if end_time is not None:
+            query = query.where(FillRecord.fill_time <= end_time)
+        if trader_run_id is not None:
+            query = query.where(FillRecord.trader_run_id == trader_run_id)
+        if normalized_symbol is not None:
+            query = query.where(FillRecord.symbol == normalized_symbol)
+        if order_id is not None:
+            query = query.where(FillRecord.order_id == order_id)
+        query = query.limit(limit)
+
+        try:
+            with session_scope(self._session_factory) as session:
+                rows = session.execute(query).all()
+        except Exception as exc:
+            if _is_missing_persistence_table_error(exc):
+                rows = ()
+            else:
+                raise
+
+        return {
+            "filters": {
+                "start_time": start_time.isoformat() if start_time is not None else None,
+                "end_time": end_time.isoformat() if end_time is not None else None,
+                "trader_run_id": str(trader_run_id) if trader_run_id is not None else None,
+                "account_id": resolved_account_id,
+                "symbol": normalized_symbol,
+                "order_id": str(order_id) if order_id is not None else None,
+                "limit": limit,
+            },
+            "count": len(rows),
+            "fills": [
+                {
+                    "fill_id": fill_record.id,
+                    "order_id": fill_record.order_id,
+                    "order_intent_id": order_record.order_intent_id,
+                    "trader_run_id": fill_record.trader_run_id,
+                    "account_id": fill_record.account_id,
+                    "exchange_fill_id": fill_record.exchange_fill_id,
+                    "symbol": fill_record.symbol,
+                    "side": fill_record.side,
+                    "qty": fill_record.qty,
+                    "price": fill_record.price,
+                    "fee": fill_record.fee,
+                    "fee_asset": fill_record.fee_asset,
+                    "liquidity_type": fill_record.liquidity_type,
+                    "fill_time": fill_record.fill_time.isoformat(),
+                    "created_at": fill_record.created_at.isoformat(),
+                    "reduce_only": order_intent_record.reduce_only,
+                }
+                for fill_record, order_record, order_intent_record in rows
+            ],
+        }
+
     async def market_bars_payload(
         self,
         *,

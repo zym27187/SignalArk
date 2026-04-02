@@ -2,7 +2,9 @@ import type {
   ActiveOrdersPayload,
   ControlActionResponse,
   EquityCurvePayload,
+  FillHistoryPayload,
   MarketBarsPayload,
+  OrderHistoryPayload,
   PositionsPayload,
   ReplayEventsPayload,
   StatusPayload,
@@ -92,6 +94,55 @@ export async function fetchActiveOrders(): Promise<ActiveOrdersPayload> {
   return requestJson<ActiveOrdersPayload>("/v1/orders/active");
 }
 
+interface ActivityQueryParams {
+  accountId?: string;
+  symbol?: string;
+  traderRunId?: string;
+  startTime?: string;
+  endTime?: string;
+  limit?: number;
+}
+
+function appendOptionalQuery(query: URLSearchParams, key: string, value: string | undefined) {
+  if (value && value.trim()) {
+    query.set(key, value);
+  }
+}
+
+function buildActivityQuery(
+  params?: ActivityQueryParams & {
+    status?: string;
+    orderId?: string;
+  },
+): string {
+  const query = new URLSearchParams();
+  appendOptionalQuery(query, "account_id", params?.accountId);
+  appendOptionalQuery(query, "symbol", params?.symbol);
+  appendOptionalQuery(query, "trader_run_id", params?.traderRunId);
+  appendOptionalQuery(query, "start_time", params?.startTime);
+  appendOptionalQuery(query, "end_time", params?.endTime);
+  appendOptionalQuery(query, "status", params?.status);
+  appendOptionalQuery(query, "order_id", params?.orderId);
+  query.set("limit", String(params?.limit ?? 12));
+  return query.toString();
+}
+
+export async function fetchOrderHistory(
+  params?: ActivityQueryParams & {
+    status?: string;
+  },
+): Promise<OrderHistoryPayload> {
+  return requestJson<OrderHistoryPayload>(`/v1/orders/history?${buildActivityQuery(params)}`);
+}
+
+export async function fetchFillHistory(
+  params?: ActivityQueryParams & {
+    orderId?: string;
+  },
+): Promise<FillHistoryPayload> {
+  return requestJson<FillHistoryPayload>(`/v1/fills/history?${buildActivityQuery(params)}`);
+}
+
 export async function fetchMarketBars(params?: {
   symbol?: string;
   timeframe?: string;
@@ -124,8 +175,12 @@ export async function fetchEquityCurve(params?: {
   return requestJson<EquityCurvePayload>(`/v1/portfolio/equity-curve?${query.toString()}`);
 }
 
-export async function fetchReplayEvents(limit = 12): Promise<ReplayEventsPayload> {
-  return requestJson<ReplayEventsPayload>(`/v1/diagnostics/replay-events?limit=${limit}`);
+export async function fetchReplayEvents(
+  params?: ActivityQueryParams,
+): Promise<ReplayEventsPayload> {
+  return requestJson<ReplayEventsPayload>(
+    `/v1/diagnostics/replay-events?${buildActivityQuery(params)}`,
+  );
 }
 
 export async function fetchResearchSnapshot(params?: {

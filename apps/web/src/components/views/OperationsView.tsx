@@ -1,8 +1,11 @@
 import { useDeferredValue } from "react";
 
+import { ActivityFiltersPanel } from "../ActivityFiltersPanel";
 import { ControlPanel } from "../ControlPanel";
 import { EventTimeline } from "../EventTimeline";
+import { FillHistoryTable } from "../FillHistoryTable";
 import { MetricCard } from "../MetricCard";
+import { OrderHistoryTable } from "../OrderHistoryTable";
 import { OrdersTable } from "../OrdersTable";
 import { PositionsTable } from "../PositionsTable";
 import { SectionCard } from "../SectionCard";
@@ -31,6 +34,7 @@ interface OperationsViewProps {
 export function OperationsView({ dashboard }: OperationsViewProps) {
   const deferredEvents = useDeferredValue(dashboard.snapshot.events);
   const status = dashboard.snapshot.status;
+  const availableSymbols = status?.symbols ?? [];
 
   return (
     <main className="dashboard-grid">
@@ -89,6 +93,28 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
             error={dashboard.snapshot.sectionErrors.orders}
           />
         </SectionCard>
+
+        <SectionCard
+          eyebrow="执行复核"
+          title="历史订单"
+          description="按当前筛选回看订单状态流转、风控裁决和最终结果。"
+        >
+          <OrderHistoryTable
+            orders={dashboard.snapshot.orderHistory}
+            error={dashboard.snapshot.sectionErrors.orderHistory}
+          />
+        </SectionCard>
+
+        <SectionCard
+          eyebrow="执行复核"
+          title="历史成交"
+          description="按当前筛选查看已持久化 fills，减少人工直查数据库。"
+        >
+          <FillHistoryTable
+            fills={dashboard.snapshot.fills}
+            error={dashboard.snapshot.sectionErrors.fillHistory}
+          />
+        </SectionCard>
       </div>
 
       <aside className="dashboard-grid__rail">
@@ -106,9 +132,23 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         </SectionCard>
 
         <SectionCard
+          eyebrow="筛选"
+          title="执行与诊断筛选"
+          description="同一组筛选会同步作用于历史订单、历史成交和事件回放。"
+        >
+          <ActivityFiltersPanel
+            filters={dashboard.activityFilters}
+            availableSymbols={availableSymbols}
+            isRefreshing={dashboard.isRefreshing}
+            onApply={dashboard.applyActivityFilters}
+            onReset={dashboard.resetActivityFilters}
+          />
+        </SectionCard>
+
+        <SectionCard
           eyebrow="诊断"
           title="近期事件回放"
-          description="来自对账回放接口的精简审计时间线。"
+          description="基于当前筛选上下文返回的审计时间线。"
         >
           <EventTimeline
             events={deferredEvents}

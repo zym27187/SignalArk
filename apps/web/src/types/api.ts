@@ -69,6 +69,62 @@ export interface ActiveOrdersPayload {
   orders: ActiveOrder[];
 }
 
+export interface HistoryOrder {
+  order_id: string;
+  order_intent_id: string;
+  signal_id: string;
+  trader_run_id: string;
+  account_id: string;
+  exchange_order_id: string | null;
+  symbol: string;
+  side: string;
+  order_type: string;
+  time_in_force: string;
+  qty: string;
+  price: string | null;
+  filled_qty: string;
+  avg_fill_price: string | null;
+  status: string;
+  reduce_only: boolean;
+  risk_decision: string;
+  risk_reason: string | null;
+  submitted_at: string;
+  updated_at: string;
+  last_error_code: string | null;
+  last_error_message: string | null;
+}
+
+export interface OrderHistoryPayload {
+  filters: Record<string, unknown>;
+  count: number;
+  orders: HistoryOrder[];
+}
+
+export interface FillHistoryEntry {
+  fill_id: string;
+  order_id: string;
+  order_intent_id: string;
+  trader_run_id: string;
+  account_id: string;
+  exchange_fill_id: string | null;
+  symbol: string;
+  side: string;
+  qty: string;
+  price: string;
+  fee: string;
+  fee_asset: string | null;
+  liquidity_type: string;
+  fill_time: string;
+  created_at: string;
+  reduce_only: boolean;
+}
+
+export interface FillHistoryPayload {
+  filters: Record<string, unknown>;
+  count: number;
+  fills: FillHistoryEntry[];
+}
+
 export interface ReplayEvent {
   event_id: string;
   event_type: string;
@@ -122,4 +178,18 @@ export interface ControlActionResponse {
   skipped_order_count?: number;
 }
 
-export type DashboardSectionKey = "status" | "positions" | "orders" | "events";
+export interface DashboardActivityFilters {
+  symbol: string;
+  traderRunId: string;
+  startTime: string;
+  endTime: string;
+  limit: number;
+}
+
+export type DashboardSectionKey =
+  | "status"
+  | "positions"
+  | "orders"
+  | "orderHistory"
+  | "fillHistory"
+  | "events";
