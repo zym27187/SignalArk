@@ -6,6 +6,7 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from src.config import get_settings
 from src.infra.db import create_database_engine, create_session_factory
 from src.infra.observability import build_observability
@@ -48,6 +49,14 @@ def create_app(
         version="0.1.0",
         summary="Minimal control-plane scaffold for SignalArk V1.",
     )
+    if settings.api_cors_allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.api_cors_allowed_origins,
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["*"],
+        )
 
     @app.get("/")
     async def root() -> dict[str, object]:

@@ -45,6 +45,12 @@ DEFAULT_PAPER_COST_MODEL = {
     "transfer_fee": "0.00001",
     "stamp_duty_sell": "0.0005",
 }
+DEFAULT_API_CORS_ALLOWED_ORIGINS = (
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "http://127.0.0.1:4173",
+    "http://localhost:4173",
+)
 YAML_PATH_TO_FIELD = {
     ("runtime", "config_profile"): "config_profile",
     ("runtime", "shared_config_entrypoint"): "shared_config_entrypoint",
@@ -71,6 +77,7 @@ YAML_PATH_TO_FIELD = {
     ("paper", "recovery_source"): "paper_recovery_source",
     ("api", "host"): "api_host",
     ("api", "port"): "api_port",
+    ("api", "cors_allowed_origins"): "api_cors_allowed_origins",
     ("logging", "level"): "log_level",
     ("logging", "format"): "log_format",
     ("logging", "include_trader_run_id"): "log_include_trader_run_id",
@@ -277,6 +284,9 @@ class Settings(BaseSettings):
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    api_cors_allowed_origins: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_API_CORS_ALLOWED_ORIGINS)
+    )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_format: Literal["json"] = "json"
     log_include_trader_run_id: bool = True
@@ -315,6 +325,35 @@ class Settings(BaseSettings):
         if not isinstance(value, Mapping):
             raise TypeError("symbol_rules must be a mapping keyed by symbol.")
         return {str(symbol).strip().upper(): rule for symbol, rule in value.items()}
+
+    @field_validator("api_cors_allowed_origins", mode="before")
+    @classmethod
+    def normalize_api_cors_allowed_origins(cls, value: object) -> list[str]:
+        """Support YAML lists and comma-separated env values for API CORS origins."""
+        if value is None:
+            return list(DEFAULT_API_CORS_ALLOWED_ORIGINS)
+
+        if isinstance(value, str):
+            candidates = [item.strip() for item in value.split(",") if item.strip()]
+        elif isinstance(value, list):
+            candidates = [str(item).strip() for item in value if str(item).strip()]
+        else:
+            raise TypeError("api_cors_allowed_origins must be a list or a comma-separated string")
+
+        normalized_origins: list[str] = []
+        seen_origins: set[str] = set()
+        for candidate in candidates:
+            normalized = candidate.rstrip("/")
+            if not normalized.startswith(("http://", "https://")):
+                raise ValueError(
+                    "api_cors_allowed_origins entries must include http:// or https:// scheme."
+                )
+            if normalized in seen_origins:
+                continue
+            seen_origins.add(normalized)
+            normalized_origins.append(normalized)
+
+        return normalized_origins
 
     @field_validator("config_file", "telegram_bot_token", "telegram_chat_id", mode="before")
     @classmethod

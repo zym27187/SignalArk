@@ -80,6 +80,7 @@ Eastmoney bars
 
 ```bash
 make install
+make web-install
 ```
 
 ### 2. 准备运行配置
@@ -123,6 +124,24 @@ cp .env.example .env
 make api
 ```
 
+启动前端控制台：
+
+```bash
+make web
+```
+
+一条命令同时启动 API 和前端：
+
+```bash
+make dev
+```
+
+说明：
+
+- `make dev` 会同时拉起 `http://127.0.0.1:8000` 和 `http://127.0.0.1:5173`
+- 如果 `.env` 或进程环境里没有 `SIGNALARK_POSTGRES_DSN`，`make dev` 会先 fail-fast
+- 如果前端依赖还没安装，`make dev` 会提示先执行 `make web-install`
+
 启动 trader 主运行时：
 
 ```bash
@@ -148,6 +167,11 @@ make test-unit
 make test-integration
 make test-e2e
 make api
+make web
+make web-build
+make web-preview
+make web-install
+make dev
 make trader
 make collector
 .venv/bin/alembic -c migrations/alembic.ini upgrade head

@@ -1,11 +1,13 @@
-.PHONY: install format lint test test-unit test-integration test-e2e api trader collector
+.PHONY: install format lint test test-unit test-integration test-e2e api trader collector web-install web web-build web-preview dev
 
 VENV ?= .venv
+WEB_DIR := apps/web
 PYTHON := $(VENV)/bin/python
 PIP := $(PYTHON) -m pip
 PYTEST := $(PYTHON) -m pytest
 RUFF := $(VENV)/bin/ruff
 UVICORN := $(VENV)/bin/uvicorn
+NPM := npm --prefix $(WEB_DIR)
 
 install:
 	python3 -m venv $(VENV)
@@ -38,3 +40,18 @@ trader:
 
 collector:
 	$(PYTHON) -m apps.collector.main
+
+web-install:
+	$(NPM) install
+
+web:
+	$(NPM) run dev -- --host 127.0.0.1 --port 5173
+
+web-build:
+	$(NPM) run build
+
+web-preview:
+	$(NPM) run preview -- --host 127.0.0.1 --port 4173
+
+dev:
+	bash ./scripts/run_dev_stack.sh

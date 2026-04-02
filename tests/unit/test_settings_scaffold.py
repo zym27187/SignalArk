@@ -28,6 +28,17 @@ def test_settings_parse_symbols_from_csv() -> None:
     assert settings.symbols == ["600036.SH", "000001.SZ"]
 
 
+def test_settings_parse_api_cors_origins_from_csv() -> None:
+    settings = Settings(
+        api_cors_allowed_origins="http://127.0.0.1:5173, http://localhost:4173/"
+    )
+
+    assert settings.api_cors_allowed_origins == [
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+    ]
+
+
 def test_execution_mode_is_paper_only() -> None:
     with pytest.raises(ValueError, match="paper"):
         Settings(execution_mode="live")
@@ -67,6 +78,12 @@ def test_load_settings_applies_yaml_dotenv_and_process_env_precedence(
     assert settings.market_data_source == "eastmoney"
     assert settings.log_level == "WARNING"
     assert settings.api_port == 9100
+    assert settings.api_cors_allowed_origins == [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:4173",
+        "http://localhost:4173",
+    ]
     assert settings.postgres_dsn == "postgresql+psycopg://dotenv:dotenv@localhost:5432/signalark"
     assert settings.symbol_rules["600036.SH"].lot_size == 100
     assert settings.paper_cost_model.stamp_duty_sell == Decimal("0.0005")

@@ -19,10 +19,8 @@
 ## 快速开始
 
 ```bash
-cd apps/web
-cp .env.example .env.local
-npm install
-npm run dev
+make web-install
+make web
 ```
 
 默认会请求：
@@ -35,6 +33,12 @@ http://127.0.0.1:8000
 
 ```bash
 VITE_SIGNALARK_API_BASE_URL=http://127.0.0.1:8000
+```
+
+如果你想从仓库根目录同时启动 API 和前端：
+
+```bash
+make dev
 ```
 
 ## 当前定位
@@ -52,4 +56,3 @@ VITE_SIGNALARK_API_BASE_URL=http://127.0.0.1:8000
 
 - 当前后端某些读接口在空数据库上可能返回错误，因此前端做了分区级容错
 - 第一版采用 REST 轮询，不依赖 WebSocket 或 SSE
-

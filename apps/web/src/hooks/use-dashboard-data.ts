@@ -165,3 +165,4 @@ export function useDashboardData() {
   };
 }
 
+export type DashboardDataState = ReturnType<typeof useDashboardData>;
