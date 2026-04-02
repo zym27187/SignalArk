@@ -29,14 +29,24 @@ def _get_target_metadata():
 target_metadata = _get_target_metadata()
 
 
-def _resolve_database_url() -> str:
-    """Prefer the project runtime DSN so Alembic follows the same .env/config path."""
-    try:
-        from src.config import load_settings
+def _configured_database_url() -> str | None:
+    """Return an explicitly configured Alembic URL when one was provided."""
+    configured_url = config.get_main_option("sqlalchemy.url")
+    if configured_url is None:
+        return None
+    normalized_url = configured_url.strip()
+    return normalized_url or None
 
-        return load_settings().postgres_dsn
-    except Exception:
-        return config.get_main_option("sqlalchemy.url")
+
+def _resolve_database_url() -> str:
+    """Use an explicit Alembic URL first, then fall back to the project runtime DSN."""
+    configured_url = _configured_database_url()
+    if configured_url is not None:
+        return configured_url
+
+    from src.config import load_settings
+
+    return load_settings().postgres_dsn
 
 
 def run_migrations_offline() -> None:

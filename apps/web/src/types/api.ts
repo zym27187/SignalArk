@@ -1,3 +1,5 @@
+import type { CandleBar, CurvePoint } from "./research";
+
 export interface StatusPayload {
   trader_run_id: string | null;
   instance_id: string | null;
@@ -88,6 +90,23 @@ export interface ReplayEventsPayload {
   events: ReplayEvent[];
 }
 
+export interface MarketBarsPayload {
+  symbol: string;
+  timeframe: string;
+  count: number;
+  source: string;
+  bars: CandleBar[];
+}
+
+export interface EquityCurvePayload {
+  account_id: string;
+  symbol: string;
+  timeframe: string;
+  count: number;
+  source: string;
+  points: CurvePoint[];
+}
+
 export interface ControlActionResponse {
   accepted: boolean;
   control_state: string;
@@ -101,4 +120,3 @@ export interface ControlActionResponse {
 }
 
 export type DashboardSectionKey = "status" | "positions" | "orders" | "events";
-

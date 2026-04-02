@@ -2,22 +2,59 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
+from decimal import Decimal
+from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import sessionmaker
 from src.config import Settings
-from src.domain.execution import OrderStatus
+from src.domain.execution import OrderSide, OrderStatus
+from src.domain.market import NormalizedBar
 from src.domain.reconciliation import ReplayEventFilters
 from src.infra.db import SqlAlchemyRepositories, session_scope
-from src.infra.db.models import OrderIntentRecord, OrderRecord
+from src.infra.db.models import (
+    BalanceSnapshotRecord,
+    FillRecord,
+    OrderIntentRecord,
+    OrderRecord,
+)
+from src.infra.exchanges import EastmoneyAshareBarGateway
 from src.infra.observability import SignalArkObservability, build_observability
-from src.shared.types import shanghai_now
+from src.shared.types import SHANGHAI_TIMEZONE, shanghai_now
 
 from apps.trader.control_plane import TraderControlPlaneStore
 from apps.trader.oms import build_default_trader_oms_service
 from apps.trader.reconciliation import SessionFactoryBackedReconciliationStore
+
+
+def _is_missing_persistence_table_error(exc: Exception) -> bool:
+    """Treat uninitialized persistence tables as an empty-state API response."""
+    if not isinstance(exc, (OperationalError, ProgrammingError)):
+        return False
+
+    original_error = getattr(exc, "orig", None)
+    message = " ".join(
+        part
+        for part in (
+            str(exc),
+            str(original_error) if original_error is not None else "",
+            type(original_error).__name__ if original_error is not None else "",
+        )
+        if part
+    ).lower()
+    return any(
+        marker in message
+        for marker in (
+            "no such table",
+            "does not exist",
+            "undefinedtable",
+            "undefined table",
+        )
+    )
 
 
 class ApiControlPlaneService:
@@ -30,6 +67,7 @@ class ApiControlPlaneService:
         session_factory: sessionmaker,
         control_store: TraderControlPlaneStore,
         observability: SignalArkObservability | None = None,
+        market_gateway_factory: Callable[[], HistoricalBarGateway] | None = None,
     ) -> None:
         self._settings = settings
         self._session_factory = session_factory
@@ -40,6 +78,9 @@ class ApiControlPlaneService:
             logger_name="signalark.api.control_plane",
         )
         self._reconciliation_store = SessionFactoryBackedReconciliationStore(session_factory)
+        self._market_gateway_factory = market_gateway_factory or (
+            lambda: EastmoneyAshareBarGateway(symbol_rules=settings.symbol_rules)
+        )
         self._control_store.ensure_schema()
 
     def live_payload(self) -> dict[str, object]:
@@ -83,35 +124,47 @@ class ApiControlPlaneService:
         return payload
 
     def positions_payload(self) -> dict[str, object]:
-        with session_scope(self._session_factory) as session:
-            repositories = SqlAlchemyRepositories.from_session(session)
-            positions = repositories.recovery.load_runtime_state(
-                account_id=self._settings.account_id,
-                event_limit=0,
-            ).open_positions
+        try:
+            with session_scope(self._session_factory) as session:
+                repositories = SqlAlchemyRepositories.from_session(session)
+                positions = repositories.recovery.load_runtime_state(
+                    account_id=self._settings.account_id,
+                    event_limit=0,
+                ).open_positions
+        except Exception as exc:
+            if _is_missing_persistence_table_error(exc):
+                positions = ()
+            else:
+                raise
         return {
             "account_id": self._settings.account_id,
             "positions": [position.model_dump(mode="json") for position in positions],
         }
 
     def active_orders_payload(self) -> dict[str, object]:
-        with session_scope(self._session_factory) as session:
-            query = (
-                select(OrderRecord, OrderIntentRecord.reduce_only)
-                .join(OrderIntentRecord, OrderIntentRecord.id == OrderRecord.order_intent_id)
-                .where(OrderRecord.account_id == self._settings.account_id)
-                .where(
-                    OrderRecord.status.in_(
-                        (
-                            OrderStatus.NEW.value,
-                            OrderStatus.ACK.value,
-                            OrderStatus.PARTIALLY_FILLED.value,
+        try:
+            with session_scope(self._session_factory) as session:
+                query = (
+                    select(OrderRecord, OrderIntentRecord.reduce_only)
+                    .join(OrderIntentRecord, OrderIntentRecord.id == OrderRecord.order_intent_id)
+                    .where(OrderRecord.account_id == self._settings.account_id)
+                    .where(
+                        OrderRecord.status.in_(
+                            (
+                                OrderStatus.NEW.value,
+                                OrderStatus.ACK.value,
+                                OrderStatus.PARTIALLY_FILLED.value,
+                            )
                         )
                     )
+                    .order_by(OrderRecord.updated_at.asc(), OrderRecord.id.asc())
                 )
-                .order_by(OrderRecord.updated_at.asc(), OrderRecord.id.asc())
-            )
-            rows = session.execute(query).all()
+                rows = session.execute(query).all()
+        except Exception as exc:
+            if _is_missing_persistence_table_error(exc):
+                rows = ()
+            else:
+                raise
         return {
             "account_id": self._settings.account_id,
             "orders": [
@@ -130,6 +183,95 @@ class ApiControlPlaneService:
                 }
                 for order_record, reduce_only in rows
             ],
+        }
+
+    async def market_bars_payload(
+        self,
+        *,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        limit: int = 96,
+    ) -> dict[str, object]:
+        resolved_symbol = self._resolve_symbol(symbol)
+        resolved_timeframe = self._resolve_timeframe(timeframe)
+        bars = await self._fetch_historical_bars(
+            symbol=resolved_symbol,
+            timeframe=resolved_timeframe,
+            limit=limit,
+        )
+        return {
+            "symbol": resolved_symbol,
+            "timeframe": resolved_timeframe,
+            "count": len(bars),
+            "source": "eastmoney_historical",
+            "bars": [
+                {
+                    "time": bar.bar_end_time.isoformat(),
+                    "open": float(bar.open),
+                    "high": float(bar.high),
+                    "low": float(bar.low),
+                    "close": float(bar.close),
+                    "volume": float(bar.volume),
+                }
+                for bar in bars
+            ],
+        }
+
+    async def equity_curve_payload(
+        self,
+        *,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        limit: int = 96,
+    ) -> dict[str, object]:
+        resolved_symbol = self._resolve_symbol(symbol)
+        resolved_timeframe = self._resolve_timeframe(timeframe)
+        bars = await self._fetch_historical_bars(
+            symbol=resolved_symbol,
+            timeframe=resolved_timeframe,
+            limit=limit,
+        )
+
+        try:
+            with session_scope(self._session_factory) as session:
+                balance_rows = tuple(
+                    session.scalars(
+                        select(BalanceSnapshotRecord)
+                        .where(BalanceSnapshotRecord.account_id == self._settings.account_id)
+                        .where(BalanceSnapshotRecord.asset == "CNY")
+                        .order_by(
+                            BalanceSnapshotRecord.snapshot_time.asc(),
+                            BalanceSnapshotRecord.id.asc(),
+                        )
+                    )
+                )
+                fill_rows = tuple(
+                    session.scalars(
+                        select(FillRecord)
+                        .where(FillRecord.account_id == self._settings.account_id)
+                        .where(FillRecord.symbol == resolved_symbol)
+                        .order_by(FillRecord.fill_time.asc(), FillRecord.id.asc())
+                    )
+                )
+        except Exception as exc:
+            if _is_missing_persistence_table_error(exc):
+                balance_rows = ()
+                fill_rows = ()
+            else:
+                raise
+
+        points = _build_equity_curve_points(
+            bars=bars,
+            balance_rows=balance_rows,
+            fill_rows=fill_rows,
+        )
+        return {
+            "account_id": self._settings.account_id,
+            "symbol": resolved_symbol,
+            "timeframe": resolved_timeframe,
+            "count": len(points),
+            "source": "balance_snapshots_plus_market_bars",
+            "points": points,
         }
 
     async def pause_strategy(self) -> dict[str, object]:
@@ -256,12 +398,50 @@ class ApiControlPlaneService:
             symbol=symbol,
             limit=limit,
         )
-        events = self._reconciliation_store.replay_events(filters)
+        try:
+            events = self._reconciliation_store.replay_events(filters)
+        except Exception as exc:
+            if _is_missing_persistence_table_error(exc):
+                events = ()
+            else:
+                raise
         return {
             "filters": filters.model_dump(mode="json"),
             "count": len(events),
             "events": [event.model_dump(mode="json") for event in events],
         }
+
+    def _resolve_symbol(self, symbol: str | None) -> str:
+        resolved = (symbol or self._settings.symbols[0]).strip().upper()
+        if resolved not in self._settings.supported_symbols:
+            raise ValueError(f"Unsupported symbol: {resolved}")
+        return resolved
+
+    def _resolve_timeframe(self, timeframe: str | None) -> str:
+        resolved = (timeframe or self._settings.primary_timeframe).strip().lower()
+        if resolved != self._settings.primary_timeframe:
+            raise ValueError(
+                "Unsupported timeframe: "
+                f"{resolved}; only {self._settings.primary_timeframe} is available."
+            )
+        return resolved
+
+    async def _fetch_historical_bars(
+        self,
+        *,
+        symbol: str,
+        timeframe: str,
+        limit: int,
+    ) -> list[NormalizedBar]:
+        gateway = self._market_gateway_factory()
+        try:
+            return await gateway.fetch_historical_bars(
+                symbol=symbol,
+                timeframe=timeframe,
+                max_bars=limit,
+            )
+        finally:
+            await gateway.aclose()
 
     def _control_action_response(
         self,
@@ -303,3 +483,100 @@ class ApiControlPlaneService:
                 details=details,
             )
         return response
+
+
+class HistoricalBarGateway(Protocol):
+    """Async market-data contract used by the API read endpoints."""
+
+    async def fetch_historical_bars(
+        self,
+        symbol: str,
+        timeframe: str,
+        *,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        max_bars: int | None = None,
+    ) -> list[NormalizedBar]: ...
+
+    async def aclose(self) -> None: ...
+
+
+def _as_shanghai_datetime(value: datetime) -> datetime:
+    """Normalize ORM-loaded timestamps back to timezone-aware Shanghai datetimes."""
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=SHANGHAI_TIMEZONE)
+    return value.astimezone(SHANGHAI_TIMEZONE)
+
+
+def _build_equity_curve_points(
+    *,
+    bars: tuple[NormalizedBar, ...] | list[NormalizedBar],
+    balance_rows: tuple[BalanceSnapshotRecord, ...],
+    fill_rows: tuple[FillRecord, ...],
+) -> list[dict[str, float | str]]:
+    if not balance_rows:
+        return []
+
+    snapshots = [
+        (_as_shanghai_datetime(row.snapshot_time), row.total)
+        for row in balance_rows
+    ]
+    baseline = float(snapshots[0][1])
+
+    if not bars:
+        return [
+            {
+                "time": snapshot_time.isoformat(),
+                "value": float(total),
+                "baseline": baseline,
+            }
+            for snapshot_time, total in snapshots
+        ]
+
+    points: list[dict[str, float | str]] = []
+    snapshot_index = 0
+    fill_index = 0
+    position_qty = Decimal("0")
+    snapshot_count = len(snapshots)
+    normalized_fills = [
+        (
+            _as_shanghai_datetime(row.fill_time),
+            OrderSide(row.side),
+            row.qty,
+        )
+        for row in fill_rows
+    ]
+
+    for bar in bars:
+        bar_time = bar.bar_end_time
+        while snapshot_index + 1 < snapshot_count and snapshots[snapshot_index + 1][0] <= bar_time:
+            snapshot_index += 1
+        if snapshots[snapshot_index][0] > bar_time:
+            continue
+
+        while fill_index < len(normalized_fills) and normalized_fills[fill_index][0] <= bar_time:
+            _, side, qty = normalized_fills[fill_index]
+            if side is OrderSide.BUY:
+                position_qty += qty
+            else:
+                position_qty -= qty
+            if position_qty < 0:
+                position_qty = Decimal("0")
+            fill_index += 1
+
+        cash = snapshots[snapshot_index][1]
+        equity = cash + (position_qty * bar.close)
+        points.append(
+            {
+                "time": bar_time.isoformat(),
+                "value": float(equity),
+                "baseline": baseline,
+            }
+        )
+
+    if points:
+        first_value = points[0]["value"]
+        for point in points:
+            point["baseline"] = first_value
+
+    return points

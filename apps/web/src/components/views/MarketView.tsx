@@ -3,24 +3,55 @@ import { CandlestickChart } from "../CandlestickChart";
 import { DefinitionGrid } from "../DefinitionGrid";
 import { MetricCard } from "../MetricCard";
 import { SectionCard } from "../SectionCard";
+import type { MarketDataState } from "../../hooks/use-market-data";
 import { formatDecimal, titleCase } from "../../lib/format";
 import { researchSnapshotFixture } from "../../lib/research-fixtures";
 import type { StatusPayload } from "../../types/api";
 
 interface MarketViewProps {
   status: StatusPayload | null;
+  marketData: MarketDataState;
 }
 
-export function MarketView({ status }: MarketViewProps) {
-  const bars = researchSnapshotFixture.klineBars;
-  const runtimePnlCurve = researchSnapshotFixture.runtimePnlCurve;
+function resolveSourceLabel(usingLiveBars: boolean, usingLiveCurve: boolean) {
+  if (usingLiveBars && usingLiveCurve) {
+    return "真实 API 数据";
+  }
+
+  if (usingLiveBars) {
+    return "K 线真实 / 权益示例";
+  }
+
+  if (usingLiveCurve) {
+    return "权益真实 / K 线示例";
+  }
+
+  return researchSnapshotFixture.sourceLabel;
+}
+
+export function MarketView({ status, marketData }: MarketViewProps) {
+  const usingLiveBars = marketData.snapshot.bars.length > 0;
+  const usingLiveCurve = marketData.snapshot.equityCurve.length > 0;
+  const bars = usingLiveBars ? marketData.snapshot.bars : researchSnapshotFixture.klineBars;
+  const runtimePnlCurve = usingLiveCurve
+    ? marketData.snapshot.equityCurve
+    : researchSnapshotFixture.runtimePnlCurve;
   const firstBar = bars[0];
   const lastBar = bars[bars.length - 1];
-  const activeSymbol = status?.symbols?.[0] ?? researchSnapshotFixture.manifest.symbols[0];
+  const activeSymbol =
+    marketData.snapshot.symbol ?? status?.symbols?.[0] ?? researchSnapshotFixture.manifest.symbols[0];
+  const timeframe = marketData.snapshot.timeframe ?? researchSnapshotFixture.manifest.timeframe;
+  const sourceLabel = resolveSourceLabel(usingLiveBars, usingLiveCurve);
   const sessionMove = lastBar.close - firstBar.open;
   const sessionMovePct = (sessionMove / firstBar.open) * 100;
   const maxEquity = Math.max(...runtimePnlCurve.map((point) => point.value));
   const minEquity = Math.min(...runtimePnlCurve.map((point) => point.value));
+  const marketDataHint =
+    marketData.snapshot.sectionErrors.bars ??
+    marketData.snapshot.sectionErrors.equityCurve ??
+    (usingLiveBars && usingLiveCurve
+      ? "K 线和权益曲线都来自真实只读接口。"
+      : "当只读接口返回空载荷或暂时不可用时，页面会自动回退到本地示例数据。");
 
   return (
     <main className="page-stack">
@@ -29,14 +60,16 @@ export function MarketView({ status }: MarketViewProps) {
           <p className="page-hero__eyebrow">市场监控</p>
           <h2 className="page-hero__title">K 线区域与盘中盈亏骨架</h2>
           <p className="page-hero__summary">
-            这个视图按未来实时市场监控页的结构搭建。在 K 线 API 就绪前，先使用本地
-            示例数据模拟相同的标的与周期语义。
+            市场视图现在优先读取真实 K 线与账户权益接口；如果本地环境还没有累计足够
+            的快照或只读接口暂时不可用，会自动回退到示例数据保持页面可用。
           </p>
         </div>
         <div className="page-hero__chips">
-          <span className="tag tag--fixture">{researchSnapshotFixture.sourceLabel}</span>
+          <span className={`tag${usingLiveBars && usingLiveCurve ? "" : " tag--fixture"}`}>
+            {sourceLabel}
+          </span>
           <span className="tag">{activeSymbol}</span>
-          <span className="tag">{researchSnapshotFixture.manifest.timeframe}</span>
+          <span className="tag">{timeframe}</span>
         </div>
       </section>
 
@@ -44,7 +77,7 @@ export function MarketView({ status }: MarketViewProps) {
         <MetricCard
           label="最新价"
           value={formatDecimal(lastBar.close, 2)}
-          hint={`收盘来源：${status?.market_data_fresh ? "实时" : "示例数据"}`}
+          hint={`收盘来源：${usingLiveBars ? "真实 K 线接口" : "示例数据"}`}
           tone="positive"
         />
         <MetricCard
@@ -56,7 +89,7 @@ export function MarketView({ status }: MarketViewProps) {
         <MetricCard
           label="区间权益带"
           value={`${formatDecimal(minEquity, 0)} - ${formatDecimal(maxEquity, 0)}`}
-          hint="基于本地曲线示例数据推导"
+          hint={usingLiveCurve ? "基于余额快照与成交记录重建" : "基于本地曲线示例数据推导"}
           tone="default"
         />
       </section>
@@ -66,11 +99,11 @@ export function MarketView({ status }: MarketViewProps) {
           <SectionCard
             eyebrow="价格走势"
             title="K 线区域"
-            description="针对单个跟踪标的和单条活跃周期的蜡烛图骨架。"
+            description="针对单个跟踪标的和单条活跃周期的真实蜡烛图视图。"
           >
             <CandlestickChart
               title={activeSymbol}
-              subtitle="15m K 线，预留后续实时叠加层"
+              subtitle={`${timeframe} K 线${usingLiveBars ? "" : "（示例兜底）"}`}
               bars={bars}
             />
           </SectionCard>
@@ -78,11 +111,11 @@ export function MarketView({ status }: MarketViewProps) {
           <SectionCard
             eyebrow="盈亏"
             title="盘中权益曲线"
-            description="为未来实时持仓时间线预留的运行时盈亏面积图占位。"
+            description="优先使用真实只读接口重建账户权益时间线。"
           >
             <AreaChart
               title="区间权益"
-              subtitle="以 100,000 模拟本金为基线"
+              subtitle={usingLiveCurve ? "账户权益重建曲线" : "以 100,000 模拟本金为基线"}
               points={runtimePnlCurve}
               accent="amber"
               formatAsMoney
@@ -94,24 +127,27 @@ export function MarketView({ status }: MarketViewProps) {
           <SectionCard
             eyebrow="就绪度"
             title="数据面规划"
-            description="在行情历史 API 落地前，视觉结构已经可以先行验证。"
+            description="市场页已切到真实 API，并保留开发态兜底。"
           >
             <DefinitionGrid
               items={[
                 {
                   label: "当前来源",
-                  value: "本地示例数据",
-                  hint: "来自前端强类型示例数据，而非 HTTP K 线接口。",
+                  value: sourceLabel,
+                  hint: marketDataHint,
                 },
                 {
-                  label: "未来 K 线 API",
+                  label: "K 线 API",
                   value: "/v1/market/bars",
-                  hint: "可能的查询参数：symbol + timeframe + limit。",
+                  hint:
+                    marketData.snapshot.sectionErrors.bars ?? "查询参数：symbol + timeframe + limit。",
                 },
                 {
-                  label: "未来权益 API",
+                  label: "权益 API",
                   value: "/v1/portfolio/equity-curve",
-                  hint: "可支持实时盯市权益历史。",
+                  hint:
+                    marketData.snapshot.sectionErrors.equityCurve ??
+                    "使用余额快照与成交记录重建账户权益曲线。",
                 },
                 {
                   label: "交易器状态",

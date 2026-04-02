@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import FastAPI, Query
+import httpx
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from src.config import get_settings
 from src.infra.db import create_database_engine, create_session_factory
@@ -87,6 +88,46 @@ def create_app(
     @app.get("/v1/orders/active")
     async def active_orders() -> dict[str, object]:
         return service.active_orders_payload()
+
+    @app.get("/v1/market/bars")
+    async def market_bars(
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        limit: int = Query(default=96, ge=1, le=500),
+    ) -> dict[str, object]:
+        try:
+            return await service.market_bars_payload(
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Market data is temporarily unavailable.",
+            ) from exc
+
+    @app.get("/v1/portfolio/equity-curve")
+    async def equity_curve(
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        limit: int = Query(default=96, ge=1, le=500),
+    ) -> dict[str, object]:
+        try:
+            return await service.equity_curve_payload(
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Market data is temporarily unavailable.",
+            ) from exc
 
     @app.get("/v1/diagnostics/replay-events")
     async def replay_events(

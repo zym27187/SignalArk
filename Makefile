@@ -1,4 +1,4 @@
-.PHONY: install format lint test test-unit test-integration test-e2e api trader collector web-install web web-build web-preview dev
+.PHONY: install format lint test test-unit test-migrations test-integration test-e2e api trader collector web-install web web-build web-preview dev
 
 VENV ?= .venv
 WEB_DIR := apps/web
@@ -26,8 +26,11 @@ test:
 test-unit:
 	$(PYTEST) tests/unit -q
 
+test-migrations:
+	$(PYTEST) tests/integration/test_db_persistence.py tests/integration/test_oms_persistence_flow.py tests/integration/test_paper_execution_flow.py tests/smoke/test_alembic_upgrade_smoke.py -q
+
 test-integration:
-	$(PYTEST) tests/integration -q
+	$(PYTEST) tests/integration tests/smoke -q
 
 test-e2e:
 	$(PYTEST) tests/e2e -q

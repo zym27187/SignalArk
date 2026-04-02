@@ -1,6 +1,8 @@
 import type {
   ActiveOrdersPayload,
   ControlActionResponse,
+  EquityCurvePayload,
+  MarketBarsPayload,
   PositionsPayload,
   ReplayEventsPayload,
   StatusPayload,
@@ -87,6 +89,38 @@ export async function fetchPositions(): Promise<PositionsPayload> {
 
 export async function fetchActiveOrders(): Promise<ActiveOrdersPayload> {
   return requestJson<ActiveOrdersPayload>("/v1/orders/active");
+}
+
+export async function fetchMarketBars(params?: {
+  symbol?: string;
+  timeframe?: string;
+  limit?: number;
+}): Promise<MarketBarsPayload> {
+  const query = new URLSearchParams();
+  if (params?.symbol) {
+    query.set("symbol", params.symbol);
+  }
+  if (params?.timeframe) {
+    query.set("timeframe", params.timeframe);
+  }
+  query.set("limit", String(params?.limit ?? 96));
+  return requestJson<MarketBarsPayload>(`/v1/market/bars?${query.toString()}`);
+}
+
+export async function fetchEquityCurve(params?: {
+  symbol?: string;
+  timeframe?: string;
+  limit?: number;
+}): Promise<EquityCurvePayload> {
+  const query = new URLSearchParams();
+  if (params?.symbol) {
+    query.set("symbol", params.symbol);
+  }
+  if (params?.timeframe) {
+    query.set("timeframe", params.timeframe);
+  }
+  query.set("limit", String(params?.limit ?? 96));
+  return requestJson<EquityCurvePayload>(`/v1/portfolio/equity-curve?${query.toString()}`);
 }
 
 export async function fetchReplayEvents(limit = 12): Promise<ReplayEventsPayload> {

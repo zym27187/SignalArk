@@ -4,16 +4,26 @@ import { OperationsView } from "./components/views/OperationsView";
 import { ResearchView } from "./components/views/ResearchView";
 import { useHashView } from "./hooks/use-hash-view";
 import { useDashboardData } from "./hooks/use-dashboard-data";
+import { useMarketData } from "./hooks/use-market-data";
 import { formatDateTime } from "./lib/format";
 
 export default function App() {
   const dashboard = useDashboardData();
   const { view, navigate } = useHashView();
+  const marketData = useMarketData({
+    enabled: view === "market",
+    symbol: dashboard.snapshot.status?.symbols?.[0] ?? null,
+  });
 
   function renderView() {
     switch (view) {
       case "market":
-        return <MarketView status={dashboard.snapshot.status} />;
+        return (
+          <MarketView
+            status={dashboard.snapshot.status}
+            marketData={marketData}
+          />
+        );
       case "research":
         return <ResearchView />;
       case "operations":
@@ -43,12 +53,17 @@ export default function App() {
           <button
             type="button"
             className="refresh-button"
-            onClick={() => {
+            onClick={async () => {
               void dashboard.refresh();
+              if (view === "market") {
+                void marketData.refresh();
+              }
             }}
-            disabled={dashboard.isRefreshing}
+            disabled={dashboard.isRefreshing || (view === "market" && marketData.isRefreshing)}
           >
-            {dashboard.isRefreshing ? "刷新中..." : "刷新快照"}
+            {dashboard.isRefreshing || (view === "market" && marketData.isRefreshing)
+              ? "刷新中..."
+              : "刷新快照"}
           </button>
         </div>
       </header>

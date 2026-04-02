@@ -13,6 +13,8 @@
 - `/v1/status`
 - `/v1/positions`
 - `/v1/orders/active`
+- `/v1/market/bars`
+- `/v1/portfolio/equity-curve`
 - `/v1/diagnostics/replay-events`
 - `/v1/controls/*`
 
@@ -54,5 +56,6 @@ make dev
 
 特别说明：
 
-- 当前后端某些读接口在空数据库上可能返回错误，因此前端做了分区级容错
+- 前端仍保留分区级容错；后端在空数据库上会为核心只读接口返回空结果
+- 市场页优先读取真实 K 线与权益接口，若当前环境暂无足够数据则自动回退到本地 fixture
 - 第一版采用 REST 轮询，不依赖 WebSocket 或 SSE
