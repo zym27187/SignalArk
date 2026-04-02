@@ -119,7 +119,8 @@ export const researchSnapshotFixture: ResearchSnapshot = {
     },
   ],
   notes: [
-    "当前市场页和研究页仍使用本地示例数据，因为后端尚未暴露 K 线或回测 HTTP 接口。",
+    "市场页已经优先接入真实 K 线与权益 API；研究页当前仍使用本地示例数据，因为尚未接入 research HTTP 接口。",
+    "仓库现在已经提供 `python -m apps.research` CLI，可直接从 BarEvent JSON 批量跑回测并导出结果。",
     "这些示例字段与 Python 服务层中的 BacktestRunResult、BacktestPerformanceSummary 和 BacktestEquityPoint 语义保持一致。",
     "等 K 线与 research 接口就绪后，前端可以直接替换这层示例适配，而无需重做页面结构。",
   ],

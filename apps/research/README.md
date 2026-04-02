@@ -17,15 +17,61 @@
 
 - `apps.research.build_default_backtest_runner(...)`
 - `apps.research.ResearchBacktestRunner.run(...)`
+- `python -m apps.research --input ...`
+- `make research ARGS="--input ..."`
 
 对应实现位于：
 
 - `apps/research/backtest.py`
+- `apps/research/main.py`
 - `src/services/backtest/service.py`
 
 ## 使用方式
 
-当前没有单独的 CLI，建议直接通过 Python API 调用。
+### 方式一：使用 research CLI
+
+最小示例：
+
+```bash
+.venv/bin/python -m apps.research \
+  --input ./bars.json \
+  --output ./artifacts/backtest-result.json
+```
+
+或者通过仓库根目录的 `make` 目标：
+
+```bash
+make research ARGS="--input ./bars.json --output ./artifacts/backtest-result.json"
+```
+
+如果你还想顺手导出一个更贴近前端研究页契约的快照文件，可以额外传：
+
+```bash
+--web-snapshot-output ./artifacts/research-snapshot.json
+```
+
+CLI 支持这些常用参数：
+
+- `--input`：必填，输入 JSON 文件路径
+- `--output`：可选，导出 `BacktestRunResult` JSON；不传时打印到 stdout
+- `--web-snapshot-output`：可选，导出与 `apps/web/src/lib/research-fixtures.ts` 语义对齐的快照 JSON
+- `--initial-cash`：可选，默认 `100000`
+- `--slippage-bps`：可选，默认 `5`
+- `--config-profile` / `--config-file`：可选，允许显式切换配置层
+- `--postgres-dsn`：可选，仅用于满足共享 settings 校验；不传时 CLI 会回退到内存 SQLite
+
+输入文件需要是以下两种形式之一：
+
+1. 一个 `BarEvent` JSON 数组
+2. 一个包含 `bars` 或 `events` 数组字段的 JSON 对象
+
+其中每个 bar 都应满足：
+
+- 至少包含 `BarEvent` 所需字段
+- 按 `event_time` 升序排列
+- 使用 final/closed bar
+
+### 方式二：直接通过 Python API 调用
 
 示例：
 
@@ -81,5 +127,6 @@ result = await runner.run(bars)
 一个完整可运行示例可以直接看：
 
 - `tests/integration/test_research_backtest_runner.py`
+- `tests/integration/test_research_cli.py`
 
 如果你想了解完整系统上下文，回到仓库根目录的 `README.md`；如果你只关心最小回测入口，从这里开始就够了。

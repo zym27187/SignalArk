@@ -21,9 +21,7 @@
 
 - [x] done：给市场页接真实后端数据：已补 `/v1/market/bars` 和 `/v1/portfolio/equity-curve` 两个只读接口，市场页优先读取真实 API，并在空数据或接口暂时不可用时自动回退到 `researchSnapshotFixture`。
 
-- [ ] 给研究页提供正式入口：`apps/research/README.md` 明确写着“当前没有单独的 CLI”，`apps/web/src/components/views/ResearchView.tsx` 也仍然依赖本地示例数据。建议二选一补齐：
-  1. 增加 research CLI，方便本地批量跑回测并导出结果。
-  2. 增加 research HTTP 接口，方便前端直接展示真实回测结果。
+- [x] done：给研究页提供正式入口：本次选择补 `research CLI`。已新增 `python -m apps.research` / `make research ARGS="..."` 入口，支持读取 `BarEvent` JSON、执行回测、导出 `BacktestRunResult`，并可选导出前端友好的 research snapshot JSON。
 
 - [ ] 支持前端的多标的/多视图切换：当前市场页只取 `status?.symbols?.[0]`，研究页和市场页的数据源也都是固定单标的示例。考虑到 V1 仍允许 1 到 2 个标的子集运行，建议把 symbol/timeframe 切换能力补到前端交互里。
 

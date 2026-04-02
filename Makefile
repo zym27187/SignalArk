@@ -1,4 +1,4 @@
-.PHONY: install format lint test test-unit test-migrations test-integration test-e2e api trader collector web-install web web-build web-preview dev
+.PHONY: install format lint test test-unit test-migrations test-integration test-e2e api trader collector research web-install web web-build web-preview dev
 
 VENV ?= .venv
 WEB_DIR := apps/web
@@ -43,6 +43,9 @@ trader:
 
 collector:
 	$(PYTHON) -m apps.collector.main
+
+research:
+	$(PYTHON) -m apps.research $(ARGS)
 
 web-install:
 	$(NPM) install
