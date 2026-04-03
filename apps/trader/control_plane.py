@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -163,11 +163,11 @@ class TraderRuntimeStatusSnapshot:
     market_data_fresh: bool
     latest_final_bar_time: datetime | None
     current_trading_phase: str | None
-    last_seen_bars: dict[str, dict[str, object]]
-    last_strategy_bars: dict[str, dict[str, object]]
     fencing_token: int | None
     last_status_message: str | None
     updated_at: datetime
+    last_seen_bars: dict[str, dict[str, object]] = field(default_factory=dict)
+    last_strategy_bars: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
