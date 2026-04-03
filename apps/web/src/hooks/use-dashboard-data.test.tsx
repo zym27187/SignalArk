@@ -289,7 +289,17 @@ describe("useDashboardData", () => {
     });
 
     expect(mockedPostControlAction).toHaveBeenCalledWith("pauseStrategy");
-    expect(result.current.actionMessage).toBe("策略已暂停。");
+    expect(result.current.lastActionResult).toMatchObject({
+      actionKey: "pauseStrategy",
+      actionLabel: "暂停策略",
+      accepted: true,
+      controlState: "strategy_paused",
+      effectiveAt: "2026-04-02T10:02:00+08:00",
+      message: "策略已暂停。",
+      requestedOrderCount: null,
+      cancelledOrderCount: null,
+      skippedOrderCount: null,
+    });
     expect(mockedFetchStatus).toHaveBeenCalledTimes(2);
   });
 

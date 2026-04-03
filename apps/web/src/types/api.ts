@@ -229,6 +229,19 @@ export interface ControlActionResponse {
   skipped_order_count?: number;
 }
 
+export interface DashboardControlActionResult {
+  actionKey: string;
+  actionLabel: string;
+  accepted: boolean;
+  controlState: string | null;
+  requestedAt: string;
+  effectiveAt: string | null;
+  message: string;
+  requestedOrderCount: number | null;
+  cancelledOrderCount: number | null;
+  skippedOrderCount: number | null;
+}
+
 export interface DashboardActivityFilters {
   symbol: string;
   status: string;

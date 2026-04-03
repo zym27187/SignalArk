@@ -60,7 +60,7 @@ describe("App", () => {
       isLoading: false,
       isRefreshing: false,
       pendingAction: null,
-      actionMessage: null,
+      lastActionResult: null,
       activityFilters: {
         symbol: "",
         status: "",

@@ -10,9 +10,11 @@ import {
   postControlAction,
   type ControlActionKey,
 } from "../lib/api";
+import { getControlActionDefinition } from "../lib/control-actions";
 import { localizeMessage } from "../lib/format";
 import type {
   ActiveOrder,
+  DashboardControlActionResult,
   DashboardActivityFilters,
   DashboardSectionKey,
   FillHistoryEntry,
@@ -122,15 +124,21 @@ export function useDashboardData() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pendingAction, setPendingAction] = useState<ControlActionKey | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [lastActionResult, setLastActionResult] =
+    useState<DashboardControlActionResult | null>(null);
 
   const hasLoadedRef = useRef(false);
   const mountedRef = useRef(false);
   const activityFiltersRef = useRef(activityFilters);
+  const snapshotRef = useRef(snapshot);
 
   useEffect(() => {
     activityFiltersRef.current = activityFilters;
   }, [activityFilters]);
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
 
   async function refresh(nextFilters?: DashboardActivityFilters) {
     const activeFilters = nextFilters ?? activityFiltersRef.current;
@@ -221,8 +229,9 @@ export function useDashboardData() {
   }
 
   async function performAction(actionKey: ControlActionKey) {
+    const actionDefinition = getControlActionDefinition(actionKey);
+    const requestedAt = new Date().toISOString();
     setPendingAction(actionKey);
-    setActionMessage(null);
 
     try {
       const response = await postControlAction(actionKey);
@@ -230,14 +239,36 @@ export function useDashboardData() {
         return;
       }
 
-      setActionMessage(localizeMessage(response.message));
+      setLastActionResult({
+        actionKey,
+        actionLabel: actionDefinition.title,
+        accepted: response.accepted,
+        controlState: response.control_state,
+        requestedAt,
+        effectiveAt: response.effective_at,
+        message: localizeMessage(response.message),
+        requestedOrderCount: response.requested_order_count ?? null,
+        cancelledOrderCount: response.cancelled_order_count ?? null,
+        skippedOrderCount: response.skipped_order_count ?? null,
+      });
       await refresh();
     } catch (error) {
       if (!mountedRef.current) {
         return;
       }
 
-      setActionMessage(toErrorMessage(error));
+      setLastActionResult({
+        actionKey,
+        actionLabel: actionDefinition.title,
+        accepted: false,
+        controlState: snapshotRef.current.status?.control_state ?? null,
+        requestedAt,
+        effectiveAt: null,
+        message: toErrorMessage(error),
+        requestedOrderCount: null,
+        cancelledOrderCount: null,
+        skippedOrderCount: null,
+      });
     } finally {
       if (mountedRef.current) {
         setPendingAction(null);
@@ -284,7 +315,7 @@ export function useDashboardData() {
     isLoading,
     isRefreshing,
     pendingAction,
-    actionMessage,
+    lastActionResult,
     activityFilters,
     refresh,
     applyActivityFilters,

@@ -126,7 +126,7 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
           <ControlPanel
             status={status}
             pendingAction={dashboard.pendingAction}
-            actionMessage={dashboard.actionMessage}
+            lastActionResult={dashboard.lastActionResult}
             onAction={dashboard.performAction}
           />
         </SectionCard>
