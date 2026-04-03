@@ -198,6 +198,7 @@ make mcp
 | `GET` | `/v1/orders/history` | 按 symbol / trader_run_id / 时间窗筛选历史订单 |
 | `GET` | `/v1/fills/history` | 按 symbol / order_id / trader_run_id / 时间窗筛选历史成交 |
 | `GET` | `/v1/market/bars` | 选中 symbol/timeframe 的历史 K 线快照 |
+| `GET` | `/v1/market/runtime-bars` | trader runtime 实际看到 / 实际送入策略的 bar 审计快照 |
 | `GET` | `/v1/portfolio/equity-curve` | 按选中周期重建的账户组合权益曲线 |
 | `GET` | `/v1/diagnostics/replay-events` | 按时间、`trader_run_id`、账户、symbol 回放审计事件 |
 | `GET` | `/v1/research/snapshot` | 基于真实历史 K 线即时生成 research 回测快照 |
@@ -214,6 +215,7 @@ curl http://127.0.0.1:8000/v1/status
 curl http://127.0.0.1:8000/v1/orders/active
 curl "http://127.0.0.1:8000/v1/orders/history?symbol=600036.SH&limit=20"
 curl "http://127.0.0.1:8000/v1/fills/history?trader_run_id=<run-id>&limit=20"
+curl "http://127.0.0.1:8000/v1/market/runtime-bars?symbol=600036.SH&timeframe=15m"
 curl -X POST http://127.0.0.1:8000/v1/controls/strategy/pause
 curl -X POST http://127.0.0.1:8000/v1/controls/kill-switch/enable
 curl "http://127.0.0.1:8000/v1/diagnostics/replay-events?limit=50"

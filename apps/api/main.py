@@ -149,6 +149,19 @@ def create_app(
                 detail="Market data is temporarily unavailable.",
             ) from exc
 
+    @app.get("/v1/market/runtime-bars")
+    async def market_runtime_bars(
+        symbol: str | None = None,
+        timeframe: str | None = None,
+    ) -> dict[str, object]:
+        try:
+            return service.market_runtime_bars_payload(
+                symbol=symbol,
+                timeframe=timeframe,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/v1/portfolio/equity-curve")
     async def equity_curve(
         symbol: str | None = None,

@@ -154,6 +154,57 @@ export interface MarketBarsPayload {
   bars: CandleBar[];
 }
 
+export interface RuntimeBarSnapshot {
+  stream_key: string;
+  bar_key: string;
+  exchange: string;
+  symbol: string;
+  timeframe: string;
+  bar_start_time: string;
+  bar_end_time: string;
+  event_time: string;
+  ingest_time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  quote_volume: number | null;
+  trade_count: number | null;
+  closed: boolean;
+  final: boolean;
+  source_kind: string | null;
+  trade_date: string | null;
+  trading_phase: string | null;
+}
+
+export interface RuntimeBarStreamSummary {
+  stream_key: string;
+  symbol: string | null;
+  timeframe: string | null;
+  exchange: string | null;
+  last_seen_event_time: string | null;
+  last_strategy_event_time: string | null;
+}
+
+export interface RuntimeBarsPayload {
+  filters: Record<string, unknown>;
+  source: string;
+  trader_run_id: string | null;
+  instance_id: string | null;
+  lifecycle_status: string | null;
+  health_status: string | null;
+  readiness_status: string | null;
+  updated_at: string | null;
+  count: {
+    last_seen: number;
+    last_strategy: number;
+  };
+  available_streams: RuntimeBarStreamSummary[];
+  last_seen_bars: RuntimeBarSnapshot[];
+  last_strategy_bars: RuntimeBarSnapshot[];
+}
+
 export interface EquityCurvePayload {
   account_id: string;
   symbol: string;

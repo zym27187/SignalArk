@@ -48,9 +48,10 @@ async def _run(args: argparse.Namespace) -> None:
             result=result,
             bars=bars,
             source_label="由 research CLI 导出的真实回测结果",
-            source_mode="fixture",
+            source_mode="imported",
             notes=(
                 "该文件由 `python -m apps.research` 生成，可作为真实回测导出结果留档。",
+                "该导出来源会显式标记为 imported，而不是继续混用 fixture 语义。",
                 "如需前端直接展示真实研究结果，后续可在 HTTP 接口中复用这份导出契约。",
                 "当前 runtimePnlCurve 使用与 backtestEquityCurve 相同的导出曲线作为占位。",
             ),

@@ -6,6 +6,7 @@ import {
   fetchOrderHistory,
   fetchReplayEvents,
   fetchResearchSnapshot,
+  fetchRuntimeBars,
   fetchStatus,
   postControlAction,
 } from "./api";
@@ -47,6 +48,45 @@ describe("api helpers", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:8000/v1/market/bars?symbol=600036.SH&timeframe=1h&limit=12",
+      expect.objectContaining({
+        headers: {
+          Accept: "application/json",
+        },
+      }),
+    );
+  });
+
+  it("builds runtime-bar audit queries from symbol and timeframe", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          filters: {},
+          source: "trader_runtime_status",
+          trader_run_id: "run-001",
+          instance_id: "instance-A",
+          lifecycle_status: "running",
+          health_status: "alive",
+          readiness_status: "ready",
+          updated_at: "2026-04-03T09:45:00+08:00",
+          count: { last_seen: 1, last_strategy: 1 },
+          available_streams: [],
+          last_seen_bars: [],
+          last_strategy_bars: [],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await fetchRuntimeBars({
+      symbol: "600036.SH",
+      timeframe: "15m",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/market/runtime-bars?symbol=600036.SH&timeframe=15m",
       expect.objectContaining({
         headers: {
           Accept: "application/json",

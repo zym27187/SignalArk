@@ -1,8 +1,9 @@
 import { startTransition, useEffect, useRef, useState } from "react";
 
-import { fetchEquityCurve, fetchMarketBars } from "../lib/api";
+import { fetchEquityCurve, fetchMarketBars, fetchRuntimeBars } from "../lib/api";
 import { localizeMessage } from "../lib/format";
 import type { CandleBar, CurvePoint } from "../types/research";
+import type { RuntimeBarsPayload } from "../types/api";
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -11,18 +12,39 @@ interface MarketSnapshot {
   timeframe: string | null;
   bars: CandleBar[];
   equityCurve: CurvePoint[];
+  runtimeBars: RuntimeBarsPayload;
   sectionErrors: {
     bars?: string;
     equityCurve?: string;
+    runtimeBars?: string;
   };
   fetchedAt: string | null;
 }
+
+const EMPTY_RUNTIME_BARS: RuntimeBarsPayload = {
+  filters: {},
+  source: "trader_runtime_status",
+  trader_run_id: null,
+  instance_id: null,
+  lifecycle_status: null,
+  health_status: null,
+  readiness_status: null,
+  updated_at: null,
+  count: {
+    last_seen: 0,
+    last_strategy: 0,
+  },
+  available_streams: [],
+  last_seen_bars: [],
+  last_strategy_bars: [],
+};
 
 const EMPTY_MARKET_SNAPSHOT: MarketSnapshot = {
   symbol: null,
   timeframe: null,
   bars: [],
   equityCurve: [],
+  runtimeBars: EMPTY_RUNTIME_BARS,
   sectionErrors: {},
   fetchedAt: null,
 };
@@ -63,9 +85,13 @@ export function useMarketData({ enabled, symbol, timeframe }: UseMarketDataOptio
       timeframe: timeframe ?? undefined,
       limit: 96,
     };
-    const [barsResult, equityCurveResult] = await Promise.allSettled([
+    const [barsResult, equityCurveResult, runtimeBarsResult] = await Promise.allSettled([
       fetchMarketBars(request),
       fetchEquityCurve(request),
+      fetchRuntimeBars({
+        symbol: symbol ?? undefined,
+        timeframe: timeframe ?? undefined,
+      }),
     ]);
 
     if (!mountedRef.current) {
@@ -93,11 +119,19 @@ export function useMarketData({ enabled, symbol, timeframe }: UseMarketDataOptio
           equityCurveResult.status === "fulfilled"
             ? equityCurveResult.value.points
             : previous.equityCurve,
+        runtimeBars:
+          runtimeBarsResult.status === "fulfilled"
+            ? runtimeBarsResult.value
+            : previous.runtimeBars,
         sectionErrors: {
           bars: barsResult.status === "rejected" ? toErrorMessage(barsResult.reason) : undefined,
           equityCurve:
             equityCurveResult.status === "rejected"
               ? toErrorMessage(equityCurveResult.reason)
+              : undefined,
+          runtimeBars:
+            runtimeBarsResult.status === "rejected"
+              ? toErrorMessage(runtimeBarsResult.reason)
               : undefined,
         },
         fetchedAt: new Date().toISOString(),

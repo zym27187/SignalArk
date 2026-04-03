@@ -8,7 +8,8 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from apps.api.control_plane import ApiControlPlaneService
-from apps.trader.control_plane import TraderControlPlaneStore
+from apps.trader.control_plane import TraderControlPlaneStore, TraderRuntimeStatusSnapshot
+from apps.trader.runtime import TraderRuntimeState
 from fastapi.testclient import TestClient
 from src.config.settings import Settings
 from src.domain.execution import (
@@ -23,6 +24,7 @@ from src.domain.execution import (
 )
 from src.domain.market import MarketStateSnapshot, NormalizedBar, SuspensionStatus, TradingPhase
 from src.domain.portfolio import BalanceSnapshot
+from src.domain.risk import RiskControlState
 from src.domain.strategy import Signal, SignalType
 from src.infra.db import (
     SqlAlchemyRepositories,
@@ -288,6 +290,42 @@ def test_api_market_endpoints_return_live_bars_and_reconstructed_equity_curve(
         _bar(index=0, close="39.52", timeframe="1h"),
         _bar(index=1, close="39.88", timeframe="1h"),
     ]
+    runtime_state = TraderRuntimeState(
+        trader_run_id=str(DEFAULT_TRADER_RUN_ID),
+        instance_id="instance-A",
+        account_id=settings.account_id,
+    )
+    runtime_event = bars_15m[-1].to_bar_event()
+    runtime_state.record_seen_bar(runtime_event)
+    runtime_state.record_strategy_bar(runtime_event)
+    control_store.save_runtime_status(
+        TraderRuntimeStatusSnapshot(
+            account_id=settings.account_id,
+            trader_run_id=runtime_state.trader_run_id,
+            instance_id=runtime_state.instance_id,
+            lifecycle_status="running",
+            health_status="alive",
+            readiness_status="ready",
+            control_state=RiskControlState.NORMAL,
+            strategy_enabled=True,
+            kill_switch_active=False,
+            protection_mode_active=False,
+            market_data_fresh=True,
+            latest_final_bar_time=runtime_event.event_time,
+            current_trading_phase="continuous_auction",
+            last_seen_bars={
+                stream_key: dict(snapshot)
+                for stream_key, snapshot in runtime_state.last_seen_bars_by_stream.items()
+            },
+            last_strategy_bars={
+                stream_key: dict(snapshot)
+                for stream_key, snapshot in runtime_state.last_strategy_bars_by_stream.items()
+            },
+            fencing_token=3,
+            last_status_message="bar_observed",
+            updated_at=runtime_event.ingest_time,
+        )
+    )
     service = ApiControlPlaneService(
         settings=settings,
         session_factory=session_factory,
@@ -304,6 +342,10 @@ def test_api_market_endpoints_return_live_bars_and_reconstructed_equity_curve(
     try:
         with TestClient(app) as client:
             bars_response = client.get("/v1/market/bars", params={"limit": 3})
+            runtime_bars_response = client.get(
+                "/v1/market/runtime-bars",
+                params={"symbol": "600036.SH", "timeframe": "15m"},
+            )
             curve_response = client.get("/v1/portfolio/equity-curve", params={"limit": 3})
             hourly_bars_response = client.get(
                 "/v1/market/bars",
@@ -377,6 +419,86 @@ def test_api_market_endpoints_return_live_bars_and_reconstructed_equity_curve(
         assert hourly_bars_response.json()["timeframe"] == "1h"
         assert hourly_bars_response.json()["count"] == 2
         assert hourly_bars_response.json()["bars"][1]["time"] == "2026-04-02T10:45:00+08:00"
+
+        assert runtime_bars_response.status_code == 200
+        assert runtime_bars_response.json() == {
+            "filters": {
+                "account_id": settings.account_id,
+                "symbol": "600036.SH",
+                "timeframe": "15m",
+            },
+            "source": "trader_runtime_status",
+            "trader_run_id": str(DEFAULT_TRADER_RUN_ID),
+            "instance_id": "instance-A",
+            "lifecycle_status": "running",
+            "health_status": "alive",
+            "readiness_status": "ready",
+            "updated_at": "2026-04-02T10:16:00+08:00",
+            "count": {
+                "last_seen": 1,
+                "last_strategy": 1,
+            },
+            "available_streams": [
+                {
+                    "stream_key": "cn_equity:600036.SH:15m",
+                    "symbol": "600036.SH",
+                    "timeframe": "15m",
+                    "exchange": "cn_equity",
+                    "last_seen_event_time": "2026-04-02T10:15:00+08:00",
+                    "last_strategy_event_time": "2026-04-02T10:15:00+08:00",
+                }
+            ],
+            "last_seen_bars": [
+                {
+                    "stream_key": "cn_equity:600036.SH:15m",
+                    "bar_key": "cn_equity:600036.SH:15m:2026-04-02T10:00:00+08:00",
+                    "exchange": "cn_equity",
+                    "symbol": "600036.SH",
+                    "timeframe": "15m",
+                    "bar_start_time": "2026-04-02T10:00:00+08:00",
+                    "bar_end_time": "2026-04-02T10:15:00+08:00",
+                    "event_time": "2026-04-02T10:15:00+08:00",
+                    "ingest_time": "2026-04-02T10:16:00+08:00",
+                    "open": 39.45,
+                    "high": 39.85,
+                    "low": 39.3,
+                    "close": 39.8,
+                    "volume": 120000.0,
+                    "quote_volume": 4740000.0,
+                    "trade_count": None,
+                    "closed": True,
+                    "final": True,
+                    "source_kind": "historical",
+                    "trade_date": "2026-04-02",
+                    "trading_phase": "CONTINUOUS_AUCTION",
+                }
+            ],
+            "last_strategy_bars": [
+                {
+                    "stream_key": "cn_equity:600036.SH:15m",
+                    "bar_key": "cn_equity:600036.SH:15m:2026-04-02T10:00:00+08:00",
+                    "exchange": "cn_equity",
+                    "symbol": "600036.SH",
+                    "timeframe": "15m",
+                    "bar_start_time": "2026-04-02T10:00:00+08:00",
+                    "bar_end_time": "2026-04-02T10:15:00+08:00",
+                    "event_time": "2026-04-02T10:15:00+08:00",
+                    "ingest_time": "2026-04-02T10:16:00+08:00",
+                    "open": 39.45,
+                    "high": 39.85,
+                    "low": 39.3,
+                    "close": 39.8,
+                    "volume": 120000.0,
+                    "quote_volume": 4740000.0,
+                    "trade_count": None,
+                    "closed": True,
+                    "final": True,
+                    "source_kind": "historical",
+                    "trade_date": "2026-04-02",
+                    "trading_phase": "CONTINUOUS_AUCTION",
+                }
+            ],
+        }
     finally:
         get_settings.cache_clear()
         os.environ.pop("SIGNALARK_POSTGRES_DSN", None)

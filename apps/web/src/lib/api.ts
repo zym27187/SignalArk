@@ -7,6 +7,7 @@ import type {
   OrderHistoryPayload,
   PositionsPayload,
   ReplayEventsPayload,
+  RuntimeBarsPayload,
   StatusPayload,
 } from "../types/api";
 import type { ResearchSnapshot } from "../types/research";
@@ -157,6 +158,20 @@ export async function fetchMarketBars(params?: {
   }
   query.set("limit", String(params?.limit ?? 96));
   return requestJson<MarketBarsPayload>(`/v1/market/bars?${query.toString()}`);
+}
+
+export async function fetchRuntimeBars(params?: {
+  symbol?: string;
+  timeframe?: string;
+}): Promise<RuntimeBarsPayload> {
+  const query = new URLSearchParams();
+  if (params?.symbol) {
+    query.set("symbol", params.symbol);
+  }
+  if (params?.timeframe) {
+    query.set("timeframe", params.timeframe);
+  }
+  return requestJson<RuntimeBarsPayload>(`/v1/market/runtime-bars?${query.toString()}`);
 }
 
 export async function fetchEquityCurve(params?: {

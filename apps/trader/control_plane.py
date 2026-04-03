@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, inspect, select, update
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text, inspect, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Mapped, mapped_column, sessionmaker
 from src.domain.events import BarEvent
@@ -93,6 +93,12 @@ class TraderRuntimeStatusRecord(Base):
     market_data_fresh: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     latest_final_bar_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     current_trading_phase: Mapped[str | None] = mapped_column(String(64))
+    last_seen_bars_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    last_strategy_bars_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
     fencing_token: Mapped[int | None] = mapped_column(Integer)
     last_status_message: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -157,6 +163,8 @@ class TraderRuntimeStatusSnapshot:
     market_data_fresh: bool
     latest_final_bar_time: datetime | None
     current_trading_phase: str | None
+    last_seen_bars: dict[str, dict[str, object]]
+    last_strategy_bars: dict[str, dict[str, object]]
     fencing_token: int | None
     last_status_message: str | None
     updated_at: datetime
@@ -217,6 +225,8 @@ def _runtime_status_from_record(record: TraderRuntimeStatusRecord) -> TraderRunt
         market_data_fresh=record.market_data_fresh,
         latest_final_bar_time=_shanghai_datetime(record.latest_final_bar_time),
         current_trading_phase=record.current_trading_phase,
+        last_seen_bars=_json_object_mapping(record.last_seen_bars_json),
+        last_strategy_bars=_json_object_mapping(record.last_strategy_bars_json),
         fencing_token=record.fencing_token,
         last_status_message=record.last_status_message,
         updated_at=_shanghai_datetime(record.updated_at) or shanghai_now(),
@@ -522,6 +532,8 @@ class TraderControlPlaneStore:
                     market_data_fresh=snapshot.market_data_fresh,
                     latest_final_bar_time=snapshot.latest_final_bar_time,
                     current_trading_phase=snapshot.current_trading_phase,
+                    last_seen_bars_json=snapshot.last_seen_bars,
+                    last_strategy_bars_json=snapshot.last_strategy_bars,
                     fencing_token=snapshot.fencing_token,
                     last_status_message=snapshot.last_status_message,
                     updated_at=snapshot.updated_at,
@@ -542,6 +554,8 @@ class TraderControlPlaneStore:
             record.market_data_fresh = snapshot.market_data_fresh
             record.latest_final_bar_time = snapshot.latest_final_bar_time
             record.current_trading_phase = snapshot.current_trading_phase
+            record.last_seen_bars_json = snapshot.last_seen_bars
+            record.last_strategy_bars_json = snapshot.last_strategy_bars
             record.fencing_token = snapshot.fencing_token
             record.last_status_message = snapshot.last_status_message
             record.updated_at = snapshot.updated_at
@@ -827,11 +841,16 @@ class TraderControlRuntime:
     async def observe_bar(self, event: BarEvent) -> None:
         if not event.closed or not event.final:
             return
+        if self._runtime_state is not None:
+            self._runtime_state.record_seen_bar(event)
         self._latest_final_bar_time = event.event_time
         self._current_trading_phase = (
             event.market_state.trading_phase.value if event.market_state is not None else None
         )
         await self.refresh(reason="bar_observed", force_heartbeat=False)
+
+    async def persist_runtime_audit(self) -> None:
+        await self._persist_runtime_status()
 
     async def refresh(self, *, reason: str, force_heartbeat: bool) -> None:
         if self._runtime_state is None:
@@ -1133,6 +1152,16 @@ class TraderControlRuntime:
                 market_data_fresh=self._runtime_state.market_data_fresh,
                 latest_final_bar_time=self._runtime_state.latest_final_bar_time,
                 current_trading_phase=self._runtime_state.current_trading_phase,
+                last_seen_bars={
+                    stream_key: dict(snapshot)
+                    for stream_key, snapshot in self._runtime_state.last_seen_bars_by_stream.items()
+                },
+                last_strategy_bars={
+                    stream_key: dict(snapshot)
+                    for stream_key, snapshot in (
+                        self._runtime_state.last_strategy_bars_by_stream.items()
+                    )
+                },
                 fencing_token=self._lease_snapshot.fencing_token,
                 last_status_message=self._last_status_message,
                 updated_at=self._clock(),
@@ -1152,3 +1181,13 @@ def _shanghai_datetime(value: datetime | None) -> datetime | None:
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=SHANGHAI_TIMEZONE)
     return value.astimezone(SHANGHAI_TIMEZONE)
+
+
+def _json_object_mapping(value: Any) -> dict[str, dict[str, object]]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, dict[str, object]] = {}
+    for key, item in value.items():
+        if isinstance(key, str) and isinstance(item, dict):
+            normalized[key] = dict(item)
+    return normalized

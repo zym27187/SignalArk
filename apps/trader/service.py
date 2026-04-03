@@ -453,6 +453,8 @@ class TraderService:
             return
 
         self._runtime_state.record_strategy_bar(event)
+        if self._control_runtime is not None:
+            await self._control_runtime.persist_runtime_audit()
         context = TraderEventContext(
             trader_run_id=self._runtime_state.trader_run_id,
             instance_id=self._runtime_state.instance_id,

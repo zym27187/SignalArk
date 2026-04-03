@@ -5,7 +5,7 @@ import { DefinitionGrid } from "../DefinitionGrid";
 import { MetricCard } from "../MetricCard";
 import { SectionCard } from "../SectionCard";
 import type { MarketDataState } from "../../hooks/use-market-data";
-import { formatDecimal, titleCase } from "../../lib/format";
+import { formatDateTime, formatDecimal, titleCase } from "../../lib/format";
 import { getResearchSnapshot } from "../../lib/research-fixtures";
 import type { StatusPayload } from "../../types/api";
 
@@ -67,6 +67,9 @@ export function MarketView({
     usingLiveCurve,
     fallbackSnapshot.sourceLabel,
   );
+  const runtimeAudit = marketData.snapshot.runtimeBars;
+  const runtimeSeenBar = runtimeAudit.last_seen_bars[0] ?? null;
+  const runtimeStrategyBar = runtimeAudit.last_strategy_bars[0] ?? null;
   const sessionMove = lastBar.close - firstBar.open;
   const sessionMovePct = (sessionMove / firstBar.open) * 100;
   const maxEquity = Math.max(...runtimePnlCurve.map((point) => point.value));
@@ -77,6 +80,15 @@ export function MarketView({
     (usingLiveBars && usingLiveCurve
       ? "K 线和权益曲线都来自真实只读接口。"
       : "当只读接口返回空载荷或暂时不可用时，页面会自动回退到本地示例数据。");
+  const runtimeAuditHint =
+    marketData.snapshot.sectionErrors.runtimeBars ??
+    (runtimeSeenBar
+      ? "该审计视图展示 trader runtime 实际落盘的观察结果，不会重新回拉 Eastmoney 历史 K 线。"
+      : runtimeAudit.available_streams.length > 0
+        ? `当前 runtime 最近记录的流：${runtimeAudit.available_streams
+            .map((stream) => `${stream.symbol}/${stream.timeframe}`)
+            .join("、")}`
+        : "当前 runtime 还没有落盘任何已观察或已消费的 bar。");
 
   return (
     <main className="page-stack">
@@ -161,6 +173,50 @@ export function MarketView({
         </div>
 
         <aside className="page-grid__rail">
+          <SectionCard
+            eyebrow="审计"
+            title="Runtime 实际消费数据"
+            description="补齐 trader 当时实际看到的 bar，而不只是临时重拉行情。"
+          >
+            <DefinitionGrid
+              items={[
+                {
+                  label: "审计 API",
+                  value: "/v1/market/runtime-bars",
+                  hint: runtimeAuditHint,
+                },
+                {
+                  label: "Last Seen Bar",
+                  value: runtimeSeenBar
+                    ? `${formatDateTime(runtimeSeenBar.event_time)} / ${formatDecimal(runtimeSeenBar.close, 2)}`
+                    : "暂无匹配流",
+                  hint: runtimeSeenBar
+                    ? `${runtimeSeenBar.symbol} · ${runtimeSeenBar.timeframe} · ${runtimeSeenBar.source_kind ?? "unknown"}`
+                    : `当前筛选 ${selectedSymbol} / ${selectedTimeframe} 还没有 runtime 落盘 bar。`,
+                },
+                {
+                  label: "Last Strategy Bar",
+                  value: runtimeStrategyBar
+                    ? `${formatDateTime(runtimeStrategyBar.event_time)} / ${formatDecimal(runtimeStrategyBar.close, 2)}`
+                    : "尚未进入策略",
+                  hint: runtimeStrategyBar
+                    ? `${runtimeStrategyBar.symbol} · ${runtimeStrategyBar.timeframe} · 真正送入策略的最新 bar`
+                    : "如果当前流只被 runtime 看到、但还没真正送入策略，这里会保持为空。",
+                },
+                {
+                  label: "已知流",
+                  value:
+                    runtimeAudit.available_streams.length > 0
+                      ? runtimeAudit.available_streams
+                          .map((stream) => `${stream.symbol}/${stream.timeframe}`)
+                          .join(", ")
+                      : "暂无",
+                  hint: "这里展示 runtime 最近持有的 stream 视图，可快速判断页面筛选是否和 trader 实际消费流一致。",
+                },
+              ]}
+            />
+          </SectionCard>
+
           <SectionCard
             eyebrow="就绪度"
             title="数据面规划"

@@ -68,7 +68,7 @@ export interface BacktestDecisionSnapshot {
   orderPlanSide: string | null;
 }
 
-export type ResearchSnapshotSourceMode = "fixture" | "live";
+export type ResearchSnapshotSourceMode = "fixture" | "imported" | "live";
 
 export interface ResearchSnapshot {
   datasetName: string;

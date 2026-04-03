@@ -8,7 +8,7 @@ from typing import Any, Literal
 from src.domain.events import BarEvent
 from src.services.backtest import BacktestDecisionRecord, BacktestRunResult
 
-ResearchSnapshotSourceMode = Literal["fixture", "live"]
+ResearchSnapshotSourceMode = Literal["fixture", "imported", "live"]
 
 
 def build_web_snapshot_payload(

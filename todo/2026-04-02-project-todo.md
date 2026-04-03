@@ -37,15 +37,13 @@
 - [x] done：给 diagnostics/replay-events 前端补筛选和定位能力。
   已完成内容：运维页已经接入共享活动筛选器，前端会把 `symbol`、`trader_run_id`、时间窗和 `limit` 同步传给 `fetchReplayEvents(...)`；事件回放现在和历史订单、历史成交共用同一组筛选上下文，可直接定位 protection mode、cancel-all 和对账相关事件。
 
-- [ ] 清理 research snapshot 契约，把“真实导出仍标记为 fixture”的状态收口。
-  已确认现状：`apps/research/main.py` 导出的真实 snapshot 里 `sourceMode` 仍写成 `"fixture"`，而前端类型 `apps/web/src/types/research.ts` 也只接受 `"fixture"`。
-  目标：显式区分 `fixture`、`imported`、`live` 等来源语义，避免后续 research API 接入时继续兼容脏契约。
+- [x] done：清理 research snapshot 契约，把“真实导出仍标记为 fixture”的状态收口。
+  已完成内容：`apps/research/snapshot.py` 与前端 `apps/web/src/types/research.ts` 现在统一支持 `fixture` / `imported` / `live` 三种来源；research CLI 导出的真实快照已改为 `sourceMode="imported"`，不再混用 fixture 语义。
 
 ## P2：增强审计一致性
 
-- [ ] 给市场页补“runtime 实际消费数据”的审计视图，而不只是临时拉 Eastmoney 历史 K 线。
-  已确认现状：`/v1/market/bars` 每次都会重新请求 Eastmoney 历史数据，控制台看到的不一定是 trader 当时实际消费的那组 bar。
-  目标：至少补一个 `runtime consumed bars / last seen bars` 只读接口，或给 collector / trader 已消费 bar 提供可回放落点，减少“页面看到的行情”和“策略当时看到的行情”不一致。
+- [x] done：给市场页补“runtime 实际消费数据”的审计视图，而不只是临时拉 Eastmoney 历史 K 线。
+  已完成内容：runtime 状态已持久化每个 stream 的 `last seen bars` / `last strategy bars` 审计快照；后端新增 `/v1/market/runtime-bars`，前端市场页也已接入对应审计卡片，可直接看到 trader 实际看到和实际送入策略的 bar。
 
 ## P0：已完成
 

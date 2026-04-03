@@ -126,6 +126,7 @@ def test_research_cli_runs_backtest_and_exports_result_files(tmp_path: Path) -> 
     assert len(result_payload["equity_curve"]) == 3
 
     assert snapshot_payload["sourceLabel"] == "由 research CLI 导出的真实回测结果"
+    assert snapshot_payload["sourceMode"] == "imported"
     assert snapshot_payload["manifest"]["strategyId"] == "baseline_momentum_v1"
     assert snapshot_payload["performance"]["tradeCount"] == 2
     assert snapshot_payload["performance"]["endingEquity"] == 99926.3404

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from sqlalchemy import select
@@ -379,6 +379,76 @@ class ApiControlPlaneService:
                 }
                 for bar in bars
             ],
+        }
+
+    def market_runtime_bars_payload(
+        self,
+        *,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+    ) -> dict[str, object]:
+        normalized_symbol = self._resolve_symbol(symbol) if symbol is not None else None
+        normalized_timeframe = self._resolve_timeframe(timeframe) if timeframe is not None else None
+
+        try:
+            runtime_status = self._control_store.load_runtime_status(self._settings.account_id)
+        except Exception as exc:
+            if _is_missing_persistence_table_error(exc):
+                runtime_status = None
+            else:
+                raise
+
+        last_seen_bars_by_stream = (
+            runtime_status.last_seen_bars if runtime_status is not None else {}
+        )
+        last_strategy_bars_by_stream = (
+            runtime_status.last_strategy_bars if runtime_status is not None else {}
+        )
+        return {
+            "filters": {
+                "account_id": self._settings.account_id,
+                "symbol": normalized_symbol,
+                "timeframe": normalized_timeframe,
+            },
+            "source": "trader_runtime_status",
+            "trader_run_id": None if runtime_status is None else runtime_status.trader_run_id,
+            "instance_id": None if runtime_status is None else runtime_status.instance_id,
+            "lifecycle_status": None if runtime_status is None else runtime_status.lifecycle_status,
+            "health_status": None if runtime_status is None else runtime_status.health_status,
+            "readiness_status": None if runtime_status is None else runtime_status.readiness_status,
+            "updated_at": (
+                None if runtime_status is None else runtime_status.updated_at.isoformat()
+            ),
+            "count": {
+                "last_seen": len(
+                    _filter_runtime_bar_audit_snapshots(
+                        last_seen_bars_by_stream,
+                        symbol=normalized_symbol,
+                        timeframe=normalized_timeframe,
+                    )
+                ),
+                "last_strategy": len(
+                    _filter_runtime_bar_audit_snapshots(
+                        last_strategy_bars_by_stream,
+                        symbol=normalized_symbol,
+                        timeframe=normalized_timeframe,
+                    )
+                ),
+            },
+            "available_streams": _build_runtime_stream_summaries(
+                last_seen_bars_by_stream=last_seen_bars_by_stream,
+                last_strategy_bars_by_stream=last_strategy_bars_by_stream,
+            ),
+            "last_seen_bars": _filter_runtime_bar_audit_snapshots(
+                last_seen_bars_by_stream,
+                symbol=normalized_symbol,
+                timeframe=normalized_timeframe,
+            ),
+            "last_strategy_bars": _filter_runtime_bar_audit_snapshots(
+                last_strategy_bars_by_stream,
+                symbol=normalized_symbol,
+                timeframe=normalized_timeframe,
+            ),
         }
 
     async def equity_curve_payload(
@@ -880,3 +950,64 @@ def _build_research_backtest_bars(
         seen_bar_keys.add(bar.bar_key)
         events.append(bar.to_bar_event())
     return tuple(events)
+
+
+def _filter_runtime_bar_audit_snapshots(
+    snapshots_by_stream: dict[str, dict[str, object]],
+    *,
+    symbol: str | None,
+    timeframe: str | None,
+) -> list[dict[str, object]]:
+    filtered = [
+        dict(snapshot)
+        for snapshot in snapshots_by_stream.values()
+        if (symbol is None or snapshot.get("symbol") == symbol)
+        and (timeframe is None or snapshot.get("timeframe") == timeframe)
+    ]
+    return sorted(
+        filtered,
+        key=lambda snapshot: (
+            str(snapshot.get("event_time") or ""),
+            str(snapshot.get("stream_key") or ""),
+        ),
+        reverse=True,
+    )
+
+
+def _build_runtime_stream_summaries(
+    *,
+    last_seen_bars_by_stream: dict[str, dict[str, object]],
+    last_strategy_bars_by_stream: dict[str, dict[str, object]],
+) -> list[dict[str, Any]]:
+    stream_keys = set(last_seen_bars_by_stream) | set(last_strategy_bars_by_stream)
+    summaries: list[dict[str, Any]] = []
+    for stream_key in stream_keys:
+        seen_snapshot = last_seen_bars_by_stream.get(stream_key)
+        strategy_snapshot = last_strategy_bars_by_stream.get(stream_key)
+        anchor_snapshot = seen_snapshot or strategy_snapshot or {}
+        summaries.append(
+            {
+                "stream_key": stream_key,
+                "symbol": anchor_snapshot.get("symbol"),
+                "timeframe": anchor_snapshot.get("timeframe"),
+                "exchange": anchor_snapshot.get("exchange"),
+                "last_seen_event_time": (
+                    None if seen_snapshot is None else seen_snapshot.get("event_time")
+                ),
+                "last_strategy_event_time": (
+                    None if strategy_snapshot is None else strategy_snapshot.get("event_time")
+                ),
+            }
+        )
+    return sorted(
+        summaries,
+        key=lambda summary: (
+            str(
+                summary.get("last_seen_event_time")
+                or summary.get("last_strategy_event_time")
+                or ""
+            ),
+            str(summary.get("stream_key") or ""),
+        ),
+        reverse=True,
+    )

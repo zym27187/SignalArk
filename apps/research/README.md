@@ -55,7 +55,7 @@ CLI 支持这些常用参数：
 
 - `--input`：必填，输入 JSON 文件路径
 - `--output`：可选，导出 `BacktestRunResult` JSON；不传时打印到 stdout
-- `--web-snapshot-output`：可选，导出与 `apps/web/src/lib/research-fixtures.ts` 语义对齐的快照 JSON
+- `--web-snapshot-output`：可选，导出前端研究页可直接消费的快照 JSON；真实导出会显式标记 `sourceMode=imported`
 - `--initial-cash`：可选，默认 `100000`
 - `--slippage-bps`：可选，默认 `5`
 - `--config-profile` / `--config-file`：可选，允许显式切换配置层

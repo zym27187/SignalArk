@@ -10,6 +10,7 @@ from typing import Literal
 from uuid import uuid4
 
 from src.domain.events import BarEvent
+from src.domain.market import build_bar_stream_key
 from src.domain.risk import RiskControlState, resolve_risk_control_state
 from src.shared.types import shanghai_now
 
@@ -18,6 +19,7 @@ HealthStatus = Literal["booting", "alive", "draining", "stopped"]
 ReadinessStatus = Literal["not_ready", "ready", "draining"]
 IntegrationStatus = Literal["reserved", "bound"]
 SingleActiveStatus = Literal["unbound", "observed", "acquired", "lost", "rejected"]
+RuntimeBarAuditSnapshot = dict[str, str | float | int | bool | None]
 
 
 def default_instance_id() -> str:
@@ -146,6 +148,10 @@ class TraderRuntimeState:
     last_strategy_reason_summary: str | None = None
     last_ignored_bar_key: str | None = None
     last_ignored_bar_reason: str | None = None
+    last_seen_bars_by_stream: dict[str, RuntimeBarAuditSnapshot] = field(default_factory=dict)
+    last_strategy_bars_by_stream: dict[str, RuntimeBarAuditSnapshot] = field(
+        default_factory=dict
+    )
     pipeline: PipelineState = field(default_factory=PipelineState)
     single_active: SingleActiveState = field(default_factory=SingleActiveState)
 
@@ -239,8 +245,14 @@ class TraderRuntimeState:
         if isinstance(event, BarEvent):
             self.last_bar_key = event.bar_key
 
+    def record_seen_bar(self, event: BarEvent) -> None:
+        snapshot = _build_runtime_bar_audit_snapshot(event)
+        self.last_seen_bars_by_stream[snapshot["stream_key"]] = snapshot
+
     def record_strategy_bar(self, event: BarEvent) -> None:
         self.last_strategy_bar_key = event.bar_key
+        snapshot = _build_runtime_bar_audit_snapshot(event)
+        self.last_strategy_bars_by_stream[snapshot["stream_key"]] = snapshot
 
     def record_strategy_decision(
         self,
@@ -334,6 +346,10 @@ class TraderRuntimeState:
             "last_strategy_reason_summary": self.last_strategy_reason_summary,
             "last_ignored_bar_key": self.last_ignored_bar_key,
             "last_ignored_bar_reason": self.last_ignored_bar_reason,
+            "last_seen_bars": _sorted_runtime_bar_audit_snapshots(self.last_seen_bars_by_stream),
+            "last_strategy_bars": _sorted_runtime_bar_audit_snapshots(
+                self.last_strategy_bars_by_stream
+            ),
             "event_bus_pending_count": event_bus_pending_count,
             "pipeline": self.pipeline.snapshot(),
             "single_active": self.single_active.snapshot(),
@@ -344,3 +360,46 @@ def _isoformat(value: datetime | None) -> str | None:
     if value is None:
         return None
     return value.isoformat()
+
+
+def _build_runtime_bar_audit_snapshot(event: BarEvent) -> RuntimeBarAuditSnapshot:
+    market_state = event.market_state
+    stream_key = build_bar_stream_key(event.exchange, event.symbol, event.timeframe)
+    return {
+        "stream_key": stream_key,
+        "bar_key": event.bar_key,
+        "exchange": event.exchange,
+        "symbol": event.symbol,
+        "timeframe": event.timeframe,
+        "bar_start_time": event.bar_start_time.isoformat(),
+        "bar_end_time": event.bar_end_time.isoformat(),
+        "event_time": event.event_time.isoformat(),
+        "ingest_time": event.ingest_time.isoformat(),
+        "open": float(event.open),
+        "high": float(event.high),
+        "low": float(event.low),
+        "close": float(event.close),
+        "volume": float(event.volume),
+        "quote_volume": None if event.quote_volume is None else float(event.quote_volume),
+        "trade_count": event.trade_count,
+        "closed": event.closed,
+        "final": event.final,
+        "source_kind": event.source_kind,
+        "trade_date": market_state.trade_date.isoformat() if market_state is not None else None,
+        "trading_phase": (
+            market_state.trading_phase.value if market_state is not None else None
+        ),
+    }
+
+
+def _sorted_runtime_bar_audit_snapshots(
+    snapshots_by_stream: dict[str, RuntimeBarAuditSnapshot],
+) -> list[RuntimeBarAuditSnapshot]:
+    return sorted(
+        snapshots_by_stream.values(),
+        key=lambda snapshot: (
+            snapshot["event_time"] or "",
+            snapshot["stream_key"] or "",
+        ),
+        reverse=True,
+    )
