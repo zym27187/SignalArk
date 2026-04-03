@@ -349,6 +349,8 @@ describe("useDashboardData", () => {
     await act(async () => {
       await result.current.applyActivityFilters({
         symbol: "600036.SH",
+        status: "filled",
+        orderId: "22222222-2222-4222-8222-222222222222",
         traderRunId: "11111111-1111-4111-8111-111111111111",
         startTime: "2026-04-02T10:00",
         endTime: "2026-04-02T11:00",
@@ -358,6 +360,7 @@ describe("useDashboardData", () => {
 
     expect(mockedFetchOrderHistory).toHaveBeenLastCalledWith({
       symbol: "600036.SH",
+      status: "FILLED",
       traderRunId: "11111111-1111-4111-8111-111111111111",
       startTime: new Date("2026-04-02T10:00").toISOString(),
       endTime: new Date("2026-04-02T11:00").toISOString(),
@@ -365,6 +368,7 @@ describe("useDashboardData", () => {
     });
     expect(mockedFetchFillHistory).toHaveBeenLastCalledWith({
       symbol: "600036.SH",
+      orderId: "22222222-2222-4222-8222-222222222222",
       traderRunId: "11111111-1111-4111-8111-111111111111",
       startTime: new Date("2026-04-02T10:00").toISOString(),
       endTime: new Date("2026-04-02T11:00").toISOString(),

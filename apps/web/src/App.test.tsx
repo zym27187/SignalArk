@@ -63,6 +63,8 @@ describe("App", () => {
       actionMessage: null,
       activityFilters: {
         symbol: "",
+        status: "",
+        orderId: "",
         traderRunId: "",
         startTime: "",
         endTime: "",

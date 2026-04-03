@@ -1,4 +1,4 @@
-import { formatDateTime, formatDecimal, titleCase } from "../lib/format";
+import { compactId, formatDateTime, formatDecimal, titleCase } from "../lib/format";
 import type { FillHistoryEntry } from "../types/api";
 
 interface FillHistoryTableProps {
@@ -22,6 +22,7 @@ export function FillHistoryTable({ fills, error }: FillHistoryTableProps) {
         <table className="data-table">
           <thead>
             <tr>
+              <th>Order ID</th>
               <th>标的</th>
               <th>方向</th>
               <th>数量</th>
@@ -35,6 +36,7 @@ export function FillHistoryTable({ fills, error }: FillHistoryTableProps) {
           <tbody>
             {fills.map((fill) => (
               <tr key={fill.fill_id}>
+                <td title={fill.order_id}>{compactId(fill.order_id)}</td>
                 <td>{fill.symbol}</td>
                 <td>{titleCase(fill.side)}</td>
                 <td>{formatDecimal(fill.qty, 0)}</td>

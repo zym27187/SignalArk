@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
 
+import { titleCase } from "../lib/format";
 import type { DashboardActivityFilters } from "../types/api";
 
 const LIMIT_OPTIONS = [12, 25, 50, 100];
+const ORDER_STATUS_OPTIONS = [
+  "NEW",
+  "ACK",
+  "PARTIALLY_FILLED",
+  "FILLED",
+  "CANCELED",
+  "REJECTED",
+];
 
 interface ActivityFiltersPanelProps {
   filters: DashboardActivityFilters;
@@ -55,6 +64,44 @@ export function ActivityFiltersPanel({
               </option>
             ))}
           </select>
+        </label>
+
+        <label className="filter-form__field">
+          <span>订单状态</span>
+          <select
+            value={draft.status}
+            onChange={(event) => {
+              setDraft((previous) => ({
+                ...previous,
+                status: event.target.value,
+              }));
+            }}
+          >
+            <option value="">全部状态</option>
+            {ORDER_STATUS_OPTIONS.map((status) => (
+              <option
+                key={status}
+                value={status}
+              >
+                {titleCase(status)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="filter-form__field">
+          <span>Order ID</span>
+          <input
+            type="text"
+            placeholder="可选，输入完整订单 UUID"
+            value={draft.orderId}
+            onChange={(event) => {
+              setDraft((previous) => ({
+                ...previous,
+                orderId: event.target.value,
+              }));
+            }}
+          />
         </label>
 
         <label className="filter-form__field">
@@ -144,9 +191,8 @@ export function ActivityFiltersPanel({
       </div>
 
       <p className="filter-form__hint">
-        当前筛选会同时作用于历史订单、历史成交和事件回放。
+        `symbol`、`trader_run_id`、时间窗和条数会联动全部视图；`订单状态` 只作用于历史订单，`Order ID` 只作用于历史成交。
       </p>
     </form>
   );
 }
-

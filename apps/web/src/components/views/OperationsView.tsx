@@ -134,7 +134,7 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         <SectionCard
           eyebrow="筛选"
           title="执行与诊断筛选"
-          description="同一组筛选会同步作用于历史订单、历史成交和事件回放。"
+          description="共享基础筛选会联动全部视图，订单状态和 Order ID 会按各自表格生效。"
         >
           <ActivityFiltersPanel
             filters={dashboard.activityFilters}

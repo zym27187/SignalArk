@@ -1,4 +1,4 @@
-import { formatDateTime, formatDecimal, titleCase } from "../lib/format";
+import { compactId, formatDateTime, formatDecimal, titleCase } from "../lib/format";
 import type { HistoryOrder } from "../types/api";
 
 interface OrderHistoryTableProps {
@@ -22,6 +22,7 @@ export function OrderHistoryTable({ orders, error }: OrderHistoryTableProps) {
         <table className="data-table">
           <thead>
             <tr>
+              <th>Order ID</th>
               <th>标的</th>
               <th>方向</th>
               <th>类型</th>
@@ -37,6 +38,7 @@ export function OrderHistoryTable({ orders, error }: OrderHistoryTableProps) {
           <tbody>
             {orders.map((order) => (
               <tr key={order.order_id}>
+                <td title={order.order_id}>{compactId(order.order_id)}</td>
                 <td>{order.symbol}</td>
                 <td>{titleCase(order.side)}</td>
                 <td>{titleCase(order.order_type)}</td>
@@ -55,4 +57,3 @@ export function OrderHistoryTable({ orders, error }: OrderHistoryTableProps) {
     </div>
   );
 }
-

@@ -25,6 +25,8 @@ import type {
 const POLL_INTERVAL_MS = 15000;
 const DEFAULT_ACTIVITY_FILTERS: DashboardActivityFilters = {
   symbol: "",
+  status: "",
+  orderId: "",
   traderRunId: "",
   startTime: "",
   endTime: "",
@@ -83,7 +85,7 @@ function toIsoDateTime(value: string): string | undefined {
   return parsed.toISOString();
 }
 
-function buildActivityQuery(filters: DashboardActivityFilters) {
+function buildSharedActivityQuery(filters: DashboardActivityFilters) {
   const symbol = filters.symbol.trim().toUpperCase();
   const traderRunId = filters.traderRunId.trim();
   return {
@@ -92,6 +94,24 @@ function buildActivityQuery(filters: DashboardActivityFilters) {
     startTime: toIsoDateTime(filters.startTime),
     endTime: toIsoDateTime(filters.endTime),
     limit: normalizeLimit(filters.limit),
+  };
+}
+
+function buildOrderHistoryQuery(filters: DashboardActivityFilters) {
+  const sharedQuery = buildSharedActivityQuery(filters);
+  const status = filters.status.trim().toUpperCase();
+  return {
+    ...sharedQuery,
+    status: status || undefined,
+  };
+}
+
+function buildFillHistoryQuery(filters: DashboardActivityFilters) {
+  const sharedQuery = buildSharedActivityQuery(filters);
+  const orderId = filters.orderId.trim();
+  return {
+    ...sharedQuery,
+    orderId: orderId || undefined,
   };
 }
 
@@ -114,7 +134,9 @@ export function useDashboardData() {
 
   async function refresh(nextFilters?: DashboardActivityFilters) {
     const activeFilters = nextFilters ?? activityFiltersRef.current;
-    const activityQuery = buildActivityQuery(activeFilters);
+    const sharedActivityQuery = buildSharedActivityQuery(activeFilters);
+    const orderHistoryQuery = buildOrderHistoryQuery(activeFilters);
+    const fillHistoryQuery = buildFillHistoryQuery(activeFilters);
     const isInitialLoad = !hasLoadedRef.current;
 
     if (isInitialLoad) {
@@ -135,9 +157,9 @@ export function useDashboardData() {
         fetchStatus(),
         fetchPositions(),
         fetchActiveOrders(),
-        fetchOrderHistory(activityQuery),
-        fetchFillHistory(activityQuery),
-        fetchReplayEvents(activityQuery),
+        fetchOrderHistory(orderHistoryQuery),
+        fetchFillHistory(fillHistoryQuery),
+        fetchReplayEvents(sharedActivityQuery),
       ]);
 
     if (!mountedRef.current) {
@@ -227,6 +249,8 @@ export function useDashboardData() {
     const normalizedFilters = {
       ...nextFilters,
       symbol: nextFilters.symbol.trim().toUpperCase(),
+      status: nextFilters.status.trim().toUpperCase(),
+      orderId: nextFilters.orderId.trim(),
       traderRunId: nextFilters.traderRunId.trim(),
       limit: normalizeLimit(nextFilters.limit),
     };

@@ -231,6 +231,8 @@ export interface ControlActionResponse {
 
 export interface DashboardActivityFilters {
   symbol: string;
+  status: string;
+  orderId: string;
   traderRunId: string;
   startTime: string;
   endTime: string;
