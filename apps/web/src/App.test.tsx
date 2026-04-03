@@ -109,14 +109,7 @@ describe("App", () => {
         sourceLabel: "由 research API 生成的真实回测结果",
         sourceMode: "live",
         klineBars: [],
-        runtimePnlCurve: [
-          {
-            time: "2026-04-02T10:00:00+08:00",
-            value: 100000,
-            baseline: 100000,
-          },
-        ],
-        backtestEquityCurve: [
+        equityCurve: [
           {
             time: "2026-04-02T10:00:00+08:00",
             value: 100000,

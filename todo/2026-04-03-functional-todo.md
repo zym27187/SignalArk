@@ -16,9 +16,9 @@
 
 ## P0：优先收口语义漂移
 
-- [ ] 收口 research snapshot 契约，处理 `runtimePnlCurve` 与 `backtestEquityCurve` 语义重叠的问题。
-- [ ] 明确 research 页对外展示的是“回测权益曲线”还是“runtime 盘中权益曲线”，避免前端和导出文件继续沿用占位字段。
-- [ ] 统一 research API、research CLI 导出、前端类型定义里的同名字段语义，减少后续继续兼容占位命名的成本。
+- [x] done：收口 research snapshot 契约，移除 `runtimePnlCurve` 与 `backtestEquityCurve` 的重复导出。
+- [x] done：研究页现在统一展示 `equityCurve`，明确其语义为“research 回测权益曲线”。
+- [x] done：research API、research CLI 导出、前端类型定义和相关测试已统一到同一份 `equityCurve` 契约。
 
 ## P1：补齐已有后端能力的前端入口
 
@@ -57,4 +57,3 @@
 - 多市场数据源
 - 多策略组合
 - AI / ML 训练与实验平台
-

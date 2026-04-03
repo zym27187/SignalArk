@@ -52,8 +52,8 @@ async def _run(args: argparse.Namespace) -> None:
             notes=(
                 "该文件由 `python -m apps.research` 生成，可作为真实回测导出结果留档。",
                 "该导出来源会显式标记为 imported，而不是继续混用 fixture 语义。",
-                "如需前端直接展示真实研究结果，后续可在 HTTP 接口中复用这份导出契约。",
-                "当前 runtimePnlCurve 使用与 backtestEquityCurve 相同的导出曲线作为占位。",
+                "该导出会统一使用 `equityCurve` 表示 research 回测权益曲线。",
+                "前端与 HTTP research snapshot 会复用同一份研究快照契约。",
             ),
         )
         _write_json(snapshot_path, snapshot_payload)

@@ -54,9 +54,9 @@ export function MarketView({
   const usingLiveBars = marketData.snapshot.bars.length > 0;
   const usingLiveCurve = marketData.snapshot.equityCurve.length > 0;
   const bars = usingLiveBars ? marketData.snapshot.bars : fallbackSnapshot.klineBars;
-  const runtimePnlCurve = usingLiveCurve
+  const displayedEquityCurve = usingLiveCurve
     ? marketData.snapshot.equityCurve
-    : fallbackSnapshot.runtimePnlCurve;
+    : fallbackSnapshot.equityCurve;
   const firstBar = bars[0];
   const lastBar = bars[bars.length - 1];
   const activeSymbol =
@@ -72,8 +72,8 @@ export function MarketView({
   const runtimeStrategyBar = runtimeAudit.last_strategy_bars[0] ?? null;
   const sessionMove = lastBar.close - firstBar.open;
   const sessionMovePct = (sessionMove / firstBar.open) * 100;
-  const maxEquity = Math.max(...runtimePnlCurve.map((point) => point.value));
-  const minEquity = Math.min(...runtimePnlCurve.map((point) => point.value));
+  const maxEquity = Math.max(...displayedEquityCurve.map((point) => point.value));
+  const minEquity = Math.min(...displayedEquityCurve.map((point) => point.value));
   const marketDataHint =
     marketData.snapshot.sectionErrors.bars ??
     marketData.snapshot.sectionErrors.equityCurve ??
@@ -165,7 +165,7 @@ export function MarketView({
             <AreaChart
               title="区间权益"
               subtitle={usingLiveCurve ? "组合权益重建曲线" : "以 100,000 模拟本金为基线"}
-              points={runtimePnlCurve}
+              points={displayedEquityCurve}
               accent="amber"
               formatAsMoney
             />

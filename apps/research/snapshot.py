@@ -25,7 +25,7 @@ def build_web_snapshot_payload(
     cost_assumptions = result.manifest.cost_assumptions
     performance = result.performance
     baseline = float(performance.starting_equity)
-    backtest_equity_curve = [
+    equity_curve = [
         {
             "time": point.event_time.isoformat(),
             "value": float(point.equity),
@@ -49,8 +49,7 @@ def build_web_snapshot_payload(
             }
             for bar in bars
         ],
-        "runtimePnlCurve": backtest_equity_curve,
-        "backtestEquityCurve": backtest_equity_curve,
+        "equityCurve": equity_curve,
         "manifest": {
             "runId": str(result.manifest.run_id),
             "accountId": result.manifest.account_id,

@@ -146,5 +146,8 @@ def test_api_research_snapshot_returns_live_backtest_payload(
     assert payload["performance"]["fillCount"] == 2
     assert payload["performance"]["endingEquity"] == 99926.3404
     assert len(payload["klineBars"]) == 3
+    assert len(payload["equityCurve"]) == 3
+    assert "runtimePnlCurve" not in payload
+    assert "backtestEquityCurve" not in payload
     assert len(payload["decisions"]) == 3
     assert payload["decisions"][1]["skipReason"] == "sellable_qty_exhausted"

@@ -34,8 +34,7 @@ describe("useResearchData", () => {
           volume: 120000,
         },
       ],
-      runtimePnlCurve: [{ time: "2026-04-02T10:00:00+08:00", value: 100000, baseline: 100000 }],
-      backtestEquityCurve: [
+      equityCurve: [
         { time: "2026-04-02T10:00:00+08:00", value: 100000, baseline: 100000 },
       ],
       manifest: {

@@ -81,10 +81,8 @@ function buildSymbolVariant(
     priceMultiplier: number;
     priceOffset: number;
     volumeMultiplier: number;
-    runtimeCurveOffset: number;
-    runtimeCurveStep: number;
-    backtestCurveOffset: number;
-    backtestCurveStep: number;
+    equityCurveOffset: number;
+    equityCurveStep: number;
     performanceDelta: number;
     totalReturnPct: number;
     maxDrawdownPct: number;
@@ -95,10 +93,8 @@ function buildSymbolVariant(
     priceMultiplier,
     priceOffset,
     volumeMultiplier,
-    runtimeCurveOffset,
-    runtimeCurveStep,
-    backtestCurveOffset,
-    backtestCurveStep,
+    equityCurveOffset,
+    equityCurveStep,
     performanceDelta,
     totalReturnPct,
     maxDrawdownPct,
@@ -115,22 +111,13 @@ function buildSymbolVariant(
     };
   });
 
-  const runtimePnlCurve = mapCurve(base.runtimePnlCurve, (point, index) => ({
+  const equityCurve = mapCurve(base.equityCurve, (point, index) => ({
     ...point,
-    value: roundCurveValue(point.value + runtimeCurveOffset + runtimeCurveStep * index),
+    value: roundCurveValue(point.value + equityCurveOffset + equityCurveStep * index),
     baseline:
       point.baseline === undefined
         ? undefined
-        : roundCurveValue(point.baseline + runtimeCurveOffset),
-  }));
-
-  const backtestEquityCurve = mapCurve(base.backtestEquityCurve, (point, index) => ({
-    ...point,
-    value: roundCurveValue(point.value + backtestCurveOffset + backtestCurveStep * index),
-    baseline:
-      point.baseline === undefined
-        ? undefined
-        : roundCurveValue(point.baseline + backtestCurveOffset),
+        : roundCurveValue(point.baseline + equityCurveOffset),
   }));
 
   return {
@@ -138,8 +125,7 @@ function buildSymbolVariant(
     datasetName: `CN Equity / ${symbol} / ${base.manifest.timeframe}`,
     sourceLabel: FIXTURE_SOURCE_LABEL,
     klineBars: transformedBars,
-    runtimePnlCurve,
-    backtestEquityCurve,
+    equityCurve,
     manifest: {
       ...base.manifest,
       symbols: [symbol],
@@ -166,9 +152,10 @@ function buildSymbolVariant(
     ),
     notes: [
       "市场页和研究页现在都支持按 symbol/timeframe 在前端切换。",
-      "研究页当前仍使用本地示例目录；仓库同时已经提供 `python -m apps.research` CLI 生成真实回测导出。",
-      "这些示例字段与 Python 服务层中的 BacktestRunResult 语义保持一致。",
-      "等 research HTTP 接口就绪后，可以直接复用这套 symbol/timeframe 视图切换结构。",
+      "research fixture 现在统一使用 `equityCurve` 表示回测权益曲线。",
+      "仓库已经提供 `python -m apps.research` CLI 与 `/v1/research/snapshot` 输出同构快照。",
+      "这些示例字段与 Python 服务层中的 research snapshot 契约保持一致。",
+      "市场页当前仍可复用这套 symbol/timeframe 结构作为开发态兜底。",
     ],
   };
 }
@@ -181,24 +168,21 @@ function buildTimeframeVariant(
     return {
       ...base,
       klineBars: base.klineBars.map((bar) => ({ ...bar })),
-      runtimePnlCurve: base.runtimePnlCurve.map((point) => ({ ...point })),
-      backtestEquityCurve: base.backtestEquityCurve.map((point) => ({ ...point })),
+      equityCurve: base.equityCurve.map((point) => ({ ...point })),
       decisions: base.decisions.map((decision) => ({ ...decision })),
       notes: [...base.notes],
     };
   }
 
   const klineBars = aggregateBars(base.klineBars, 4);
-  const runtimePnlCurve = sampleCurve(base.runtimePnlCurve, 4);
-  const backtestEquityCurve = sampleCurve(base.backtestEquityCurve, 3);
+  const equityCurve = sampleCurve(base.equityCurve, 3);
   const symbol = base.manifest.symbols[0] ?? DEFAULT_SYMBOL;
 
   return {
     ...base,
     datasetName: `CN Equity / ${symbol} / ${timeframe}`,
     klineBars,
-    runtimePnlCurve,
-    backtestEquityCurve,
+    equityCurve,
     manifest: {
       ...base.manifest,
       timeframe,
@@ -208,7 +192,7 @@ function buildTimeframeVariant(
     },
     performance: {
       ...base.performance,
-      barCount: backtestEquityCurve.length,
+      barCount: equityCurve.length,
     },
     decisions: base.decisions.map((decision) =>
       replaceDecisionScope(decision, {
@@ -321,31 +305,7 @@ const baseResearchSnapshot: ResearchSnapshot = {
       volume: 182000,
     },
   ],
-  runtimePnlCurve: [
-    { time: "2026-04-02T09:45:00+08:00", value: 100000, baseline: 100000 },
-    { time: "2026-04-02T10:00:00+08:00", value: 100018, baseline: 100000 },
-    {
-      time: "2026-04-02T10:15:00+08:00",
-      value: 100062,
-      baseline: 100000,
-      annotation: "动量入场",
-    },
-    { time: "2026-04-02T10:30:00+08:00", value: 100041, baseline: 100000 },
-    { time: "2026-04-02T10:45:00+08:00", value: 100088, baseline: 100000 },
-    { time: "2026-04-02T11:00:00+08:00", value: 100071, baseline: 100000 },
-    { time: "2026-04-02T13:15:00+08:00", value: 100094, baseline: 100000 },
-    { time: "2026-04-02T13:30:00+08:00", value: 100122, baseline: 100000 },
-    { time: "2026-04-02T13:45:00+08:00", value: 100101, baseline: 100000 },
-    { time: "2026-04-02T14:00:00+08:00", value: 100084, baseline: 100000 },
-    { time: "2026-04-02T14:15:00+08:00", value: 100113, baseline: 100000 },
-    {
-      time: "2026-04-02T14:30:00+08:00",
-      value: 100149,
-      baseline: 100000,
-      annotation: "收盘接近日高",
-    },
-  ],
-  backtestEquityCurve: [
+  equityCurve: [
     { time: "2026-04-01T14:00:00+08:00", value: 100000, baseline: 100000 },
     {
       time: "2026-04-01T14:15:00+08:00",
@@ -443,9 +403,10 @@ const baseResearchSnapshot: ResearchSnapshot = {
   ],
   notes: [
     "市场页和研究页现在都支持按 symbol/timeframe 在前端切换。",
-    "研究页当前仍使用本地示例目录；仓库同时已经提供 `python -m apps.research` CLI 生成真实回测导出。",
-    "这些示例字段与 Python 服务层中的 BacktestRunResult 语义保持一致。",
-    "等 research HTTP 接口就绪后，可以直接复用这套 symbol/timeframe 视图切换结构。",
+    "research fixture 统一使用 `equityCurve` 表示回测权益曲线。",
+    "仓库同时已经提供 `python -m apps.research` CLI 与 `/v1/research/snapshot` 生成真实回测快照。",
+    "这些示例字段与 Python 服务层中的 research snapshot 契约保持一致。",
+    "市场页当前仍可复用这套 symbol/timeframe 视图切换结构作为开发态兜底。",
   ],
 };
 
@@ -454,10 +415,8 @@ const secondSymbolSnapshot = buildSymbolVariant(baseResearchSnapshot, {
   priceMultiplier: 0.31,
   priceOffset: -0.12,
   volumeMultiplier: 1.28,
-  runtimeCurveOffset: -48,
-  runtimeCurveStep: 6,
-  backtestCurveOffset: 92,
-  backtestCurveStep: 5,
+  equityCurveOffset: 92,
+  equityCurveStep: 5,
   performanceDelta: 92.4418,
   totalReturnPct: 0.0188,
   maxDrawdownPct: 0.0512,

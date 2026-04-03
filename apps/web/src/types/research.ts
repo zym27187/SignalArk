@@ -75,8 +75,7 @@ export interface ResearchSnapshot {
   sourceLabel: string;
   sourceMode: ResearchSnapshotSourceMode;
   klineBars: CandleBar[];
-  runtimePnlCurve: CurvePoint[];
-  backtestEquityCurve: CurvePoint[];
+  equityCurve: CurvePoint[];
   manifest: BacktestManifestSnapshot;
   performance: BacktestPerformanceSnapshot;
   decisions: BacktestDecisionSnapshot[];

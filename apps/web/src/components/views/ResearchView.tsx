@@ -29,7 +29,7 @@ export function ResearchView({
   const snapshot = researchData.snapshot;
   const manifest = snapshot?.manifest;
   const performance = snapshot?.performance;
-  const backtestEquityCurve = snapshot?.backtestEquityCurve ?? [];
+  const equityCurve = snapshot?.equityCurve ?? [];
   const decisions = snapshot?.decisions ?? [];
   const notes = snapshot?.notes ?? [];
   const sourceLabel = snapshot?.sourceLabel
@@ -81,7 +81,7 @@ export function ResearchView({
           <h2 className="page-hero__title">真实回测结果页</h2>
           <p className="page-hero__summary">
             当前研究页会直接请求 `/v1/research/snapshot`，按选中的 symbol/timeframe
-            生成一份真实 backtest snapshot，而不是固定展示本地 fixture。
+            生成一份真实 backtest snapshot，并统一展示 research 回测权益曲线。
           </p>
           <DatasetSwitcher
             symbolOptions={availableSymbols.map((value) => ({ value }))}
@@ -150,11 +150,11 @@ export function ResearchView({
             description="当前按 symbol/timeframe 选择展示的 research 回测权益曲线。"
           >
             {researchData.error ? <p className="section-error">{researchData.error}</p> : null}
-            {backtestEquityCurve.length > 0 && manifest ? (
+            {equityCurve.length > 0 && manifest ? (
               <AreaChart
                 title="回测权益"
                 subtitle={`${manifest.symbols.join(", ")} · ${manifest.timeframe} · ${manifest.barCount} 根 K 线`}
-                points={backtestEquityCurve}
+                points={equityCurve}
                 accent="red"
                 formatAsMoney
               />

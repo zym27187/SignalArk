@@ -547,7 +547,7 @@ class ApiControlPlaneService:
             notes=(
                 "该快照由 `/v1/research/snapshot` 基于真实历史 K 线即时生成。",
                 "当前 research 页已直接消费后端回测结果，不再固定停留在本地 fixture 页面。",
-                "当前 runtimePnlCurve 仍与 backtestEquityCurve 共用同一条回测权益曲线。",
+                "research snapshot 统一返回 `equityCurve`，仅表示回测权益曲线。",
             ),
         )
 
