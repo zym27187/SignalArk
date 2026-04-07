@@ -261,7 +261,9 @@ class Settings(BaseSettings):
     market: Literal["a_share"] = "a_share"
     execution_mode: Literal["paper"] = "paper"
     account_id: Literal["paper_account_001"] = "paper_account_001"
-    primary_strategy_id: Literal["baseline_momentum_v1"] = "baseline_momentum_v1"
+    primary_strategy_id: Literal["baseline_momentum_v1", "ai_bar_judge_v1"] = (
+        "baseline_momentum_v1"
+    )
     supported_symbols: list[str] = Field(default_factory=lambda: list(FIXED_SUPPORTED_SYMBOLS))
     symbols: list[str] = Field(default_factory=lambda: ["600036.SH"])
     primary_timeframe: Literal["15m"] = "15m"

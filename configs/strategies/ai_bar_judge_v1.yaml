@@ -1,0 +1,8 @@
+strategy_id: ai_bar_judge_v1
+description: LLM-ready bar judgment strategy with a safe heuristic fallback.
+lookback_bars: 12
+target_position: 400
+min_confidence: 0.60
+provider_mode: heuristic_stub
+entry_threshold_pct: 0.0008
+exit_threshold_pct: -0.0005

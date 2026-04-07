@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from functools import lru_cache
@@ -14,6 +13,8 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.domain.events import BarEvent
+from src.domain.strategy.ai import AI_BAR_JUDGE_V1, build_ai_bar_judge_strategy
+from src.domain.strategy.audit import StrategyDecisionAudit
 from src.domain.strategy.signal import Signal, SignalType
 
 BASELINE_MOMENTUM_V1 = "baseline_momentum_v1"
@@ -41,15 +42,6 @@ class BaselineMomentumConfig(BaseModel):
     description: str = "Long-only threshold momentum against previous close."
     target_position: Decimal = Field(gt=Decimal("0"))
     entry_threshold_pct: Decimal = Field(ge=Decimal("0"), lt=Decimal("1"))
-
-
-@dataclass(frozen=True, slots=True)
-class StrategyDecisionAudit:
-    """Structured audit data for the latest strategy decision."""
-
-    input_snapshot: dict[str, str | None]
-    signal_snapshot: dict[str, str]
-    reason_summary: str
 
 
 def _config_path(strategy_id: str) -> Path:
@@ -186,7 +178,7 @@ class BaselineMomentumStrategy:
         }
 
 
-def build_strategy(*, strategy_id: str, account_id: str) -> BaselineMomentumStrategy:
+def build_strategy(*, strategy_id: str, account_id: str) -> object:
     """Resolve the configured primary strategy into a runtime implementation."""
 
     normalized_strategy_id = strategy_id.strip()
@@ -198,5 +190,10 @@ def build_strategy(*, strategy_id: str, account_id: str) -> BaselineMomentumStra
             target_position=config.target_position,
             entry_threshold_pct=config.entry_threshold_pct,
             description=config.description,
+        )
+    if normalized_strategy_id == AI_BAR_JUDGE_V1:
+        return build_ai_bar_judge_strategy(
+            strategy_id=normalized_strategy_id,
+            account_id=account_id,
         )
     raise ValueError(f"Unsupported primary strategy: {strategy_id}")
