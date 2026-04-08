@@ -69,4 +69,4 @@ dev:
 	bash ./scripts/run_dev_stack.sh
 
 up:
-	SIGNALARK_INCLUDE_TRADER=1 bash ./scripts/run_dev_stack.sh
+	SIGNALARK_INCLUDE_TRADER=1 SIGNALARK_MARKET_DATA_SOURCE=$${SIGNALARK_MARKET_DATA_SOURCE:-fixture} bash ./scripts/run_dev_stack.sh

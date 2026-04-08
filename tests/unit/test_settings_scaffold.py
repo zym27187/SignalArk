@@ -44,6 +44,12 @@ def test_execution_mode_is_paper_only() -> None:
         Settings(execution_mode="live")
 
 
+def test_fixture_market_data_source_is_allowed() -> None:
+    settings = Settings(market_data_source="fixture")
+
+    assert settings.market_data_source == "fixture"
+
+
 def test_lease_heartbeat_must_be_shorter_than_ttl() -> None:
     with pytest.raises(ValueError, match="smaller than lease TTL"):
         Settings(lease_ttl_seconds=10, lease_heartbeat_interval_seconds=10)

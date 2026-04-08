@@ -268,7 +268,7 @@ class Settings(BaseSettings):
     symbols: list[str] = Field(default_factory=lambda: ["600036.SH"])
     primary_timeframe: Literal["15m"] = "15m"
     market_data_mode: Literal["bar"] = "bar"
-    market_data_source: Literal["eastmoney"] = "eastmoney"
+    market_data_source: Literal["eastmoney", "fixture"] = "eastmoney"
     strategy_trigger: Literal["closed_bar"] = "closed_bar"
     symbol_rules: dict[str, AshareSymbolRule] = Field(
         default_factory=lambda: {
@@ -388,8 +388,8 @@ class Settings(BaseSettings):
         if self.execution_mode != "paper":
             raise ValueError("V1 execution_mode must remain paper.")
 
-        if self.market_data_source != "eastmoney":
-            raise ValueError("V1 market_data_source must remain eastmoney.")
+        if self.market_data_source not in {"eastmoney", "fixture"}:
+            raise ValueError("V1 market_data_source must be eastmoney or fixture.")
 
         if self.lease_heartbeat_interval_seconds >= self.lease_ttl_seconds:
             raise ValueError("Lease heartbeat interval must be smaller than lease TTL.")

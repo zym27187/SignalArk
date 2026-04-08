@@ -54,6 +54,8 @@ make dev
 make up
 ```
 
+`make up` 默认会给 trader 注入本地 fixture 行情，方便在没有 Eastmoney 实时链路时也能把控制台跑起来。
+
 如果你只想先跑前端自动化测试：
 
 ```bash

@@ -9,9 +9,13 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 from apps.collector.checkpoints import FileCollectorCheckpointStore
-from apps.collector.service import CollectorService
+from apps.collector.service import CollectorService, build_default_collector_service
 from src.domain.market import NormalizedBar
-from src.infra.exchanges import EastmoneyAshareBarGateway, EastmoneyAshareBarNormalizer
+from src.infra.exchanges import (
+    EastmoneyAshareBarGateway,
+    EastmoneyAshareBarNormalizer,
+    FixtureAshareBarGateway,
+)
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 BASE_END_LOCAL = datetime(2026, 3, 31, 14, 30, tzinfo=SHANGHAI)
@@ -204,6 +208,42 @@ async def test_collector_bootstraps_history_and_live_stream_without_duplicate_fi
 
     checkpoint_state = checkpoint_store.load_state()
     assert checkpoint_state[STREAM_KEY]["last_bar_key"] == events[-1].bar_key
+
+
+@pytest.mark.asyncio
+async def test_fixture_gateway_produces_recent_final_bar_without_remote_io() -> None:
+    def clock() -> datetime:
+        return datetime(2026, 4, 9, 1, 42, tzinfo=SHANGHAI)
+
+    gateway = FixtureAshareBarGateway(clock=clock, sleep=_no_sleep)
+
+    bars = await gateway.fetch_historical_bars("600036.SH", TIMEFRAME, max_bars=1)
+
+    assert len(bars) == 1
+    assert bars[0].bar_end_time == datetime(2026, 4, 9, 1, 30, tzinfo=SHANGHAI)
+    assert bars[0].closed is True
+    assert bars[0].final is True
+    assert bars[0].source_payload["source"] == "signalark_fixture_bar"
+    assert bars[0].market_state is not None
+
+
+@pytest.mark.asyncio
+async def test_default_collector_service_can_select_fixture_gateway() -> None:
+    collector = build_default_collector_service(
+        exchange="cn_equity",
+        symbols=["600036.SH"],
+        timeframe=TIMEFRAME,
+        market_data_source="fixture",
+    )
+
+    try:
+        events = await _collect_events(collector, max_events=1)
+    finally:
+        await collector.aclose()
+
+    assert isinstance(collector._gateway, FixtureAshareBarGateway)
+    assert len(events) == 1
+    assert events[0].source_payload["source"] == "signalark_fixture_bar"
 
 
 @pytest.mark.asyncio

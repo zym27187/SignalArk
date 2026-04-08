@@ -5,12 +5,12 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import structlog
 from src.domain.events import BarEvent
 from src.domain.market import FinalBarGate, NormalizedBar
-from src.infra.exchanges import EastmoneyAshareBarGateway
+from src.infra.exchanges import EastmoneyAshareBarGateway, FixtureAshareBarGateway
 
 from apps.collector.checkpoints import FileCollectorCheckpointStore
 
@@ -205,13 +205,26 @@ def build_default_collector_service(
     exchange: str,
     symbols: Sequence[str],
     timeframe: str,
+    market_data_source: Literal["eastmoney", "fixture"] = "eastmoney",
     symbol_rules: dict[str, Any] | None = None,
 ) -> CollectorService:
     """Build the default collector runtime used by the CLI entrypoint."""
+    gateway: MarketBarGateway
+    checkpoint_store: CollectorCheckpointStore
+    history_seed_bars = 200
+    if market_data_source == "fixture":
+        gateway = FixtureAshareBarGateway()
+        checkpoint_store = NullCollectorCheckpointStore()
+        history_seed_bars = 1
+    else:
+        gateway = EastmoneyAshareBarGateway(symbol_rules=symbol_rules)
+        checkpoint_store = FileCollectorCheckpointStore()
+
     return CollectorService(
-        EastmoneyAshareBarGateway(symbol_rules=symbol_rules),
+        gateway,
         exchange=exchange,
         symbols=symbols,
         timeframe=timeframe,
-        checkpoint_store=FileCollectorCheckpointStore(),
+        checkpoint_store=checkpoint_store,
+        history_seed_bars=history_seed_bars,
     )

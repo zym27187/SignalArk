@@ -20,6 +20,7 @@ async def _run() -> None:
         exchange=settings.exchange,
         symbols=settings.symbols,
         timeframe=settings.primary_timeframe,
+        market_data_source=settings.market_data_source,
         symbol_rules=settings.symbol_rules,
     )
 
@@ -29,6 +30,7 @@ async def _run() -> None:
         exchange=settings.exchange,
         symbols=settings.symbols,
         timeframe=settings.primary_timeframe,
+        market_data_source=settings.market_data_source,
     )
 
     try:

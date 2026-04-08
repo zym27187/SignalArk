@@ -146,6 +146,7 @@ make up
 
 - `make dev` 会同时拉起 `http://127.0.0.1:8000` 和 `http://127.0.0.1:5173`
 - `make up` 会在 `make dev` 的基础上额外拉起 `trader`
+- `make up` 默认给 trader 注入 `SIGNALARK_MARKET_DATA_SOURCE=fixture`，方便本地演示控制台；如果你想显式走 Eastmoney，可运行 `SIGNALARK_MARKET_DATA_SOURCE=eastmoney make up`
 - 如果 `.env` 或进程环境里没有 `SIGNALARK_POSTGRES_DSN`，`make dev` 会先 fail-fast
 - 如果前端依赖还没安装，`make dev` 会提示先执行 `make web-install`
 
@@ -156,6 +157,12 @@ make trader
 ```
 
 `make trader` 已经内置 collector，不需要再额外启动一个 collector 才能交易。
+
+如果你只想本地跑通 trader 而不依赖 Eastmoney，可以显式使用 fixture 数据源：
+
+```bash
+SIGNALARK_MARKET_DATA_SOURCE=fixture make trader
+```
 
 如果你只想单独观察 Eastmoney K 线采集和 checkpoint 行为，可以单独运行：
 
