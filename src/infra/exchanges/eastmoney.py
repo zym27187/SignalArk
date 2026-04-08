@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from datetime import datetime
 from decimal import Decimal
@@ -22,6 +24,17 @@ EASTMONEY_REST_BASE_URL = "https://push2his.eastmoney.com"
 EASTMONEY_KLINE_ENDPOINT = "/api/qt/stock/kline/get"
 EASTMONEY_UT_TOKEN = "fa5fd1943c7b386f172d6893dbfba10b"
 EASTMONEY_MAX_KLINES_PER_REQUEST = 1000
+EASTMONEY_MAX_SAMPLE_KLINES = 1_000_000
+EASTMONEY_JSONP_CALLBACK = "signalark_jsonp"
+EASTMONEY_REQUEST_HEADERS = {
+    "Accept": "*/*",
+    "Referer": "https://quote.eastmoney.com/",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/135.0.0.0 Safari/537.36"
+    ),
+}
 A_SHARE_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 Clock = Callable[[], datetime]
@@ -101,6 +114,26 @@ def _rule_decimal(rule: object, field_name: str) -> Decimal | None:
     if raw_value is None:
         return None
     return Decimal(str(raw_value))
+
+
+def _decode_eastmoney_payload(raw: str) -> dict[str, object]:
+    """Accept both bare JSON and JSONP payloads used by Eastmoney quote pages."""
+    text = raw.strip()
+    if not text:
+        return {}
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        match = re.fullmatch(r"[\w$.]+\((.*)\)\s*;?", text, flags=re.DOTALL)
+        if match is None:
+            raise ValueError("Eastmoney response is neither JSON nor JSONP.") from None
+        payload = json.loads(match.group(1))
+
+    if not isinstance(payload, dict):
+        raise ValueError("Eastmoney response payload must be a JSON object.")
+
+    return payload
 
 
 class EastmoneyAshareBarNormalizer:
@@ -254,7 +287,11 @@ class EastmoneyAshareBarGateway:
         default_price_tick: Decimal = Decimal("0.01"),
     ) -> None:
         self._owns_http_client = http_client is None
-        self._http_client = http_client or httpx.AsyncClient(base_url=rest_base_url, timeout=10.0)
+        self._http_client = http_client or httpx.AsyncClient(
+            base_url=rest_base_url,
+            timeout=10.0,
+            headers=EASTMONEY_REQUEST_HEADERS,
+        )
         self._live_stream_factory = live_stream_factory
         self._live_poll_bars = live_poll_bars
         self._poll_interval_seconds = poll_interval_seconds
@@ -330,28 +367,29 @@ class EastmoneyAshareBarGateway:
         normalized_symbol, secid = _normalize_symbol_to_secid(symbol)
         has_time_bounds = start_time is not None or end_time is not None
         params = {
+            "cb": EASTMONEY_JSONP_CALLBACK,
             "secid": secid,
+            "ut": EASTMONEY_UT_TOKEN,
             "fields1": "f1,f2,f3,f4,f5,f6",
             "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
             "klt": _normalize_timeframe_to_klt(timeframe),
             "fqt": "1",
-            "ut": EASTMONEY_UT_TOKEN,
+            "beg": _format_history_query_bound(start_time, default="0"),
+            "end": _format_history_query_bound(end_time, default="20500101"),
+            "smplmt": str(EASTMONEY_MAX_SAMPLE_KLINES),
+            "lmt": str(EASTMONEY_MAX_SAMPLE_KLINES),
         }
-        if has_time_bounds:
-            params["beg"] = _format_history_query_bound(start_time, default="0")
-            params["end"] = _format_history_query_bound(end_time, default="20500101")
-        else:
-            params["end"] = "20500101"
-
         if max_bars is not None:
             params["lmt"] = str(max_bars)
-        elif start_time is None:
-            params["lmt"] = str(EASTMONEY_MAX_KLINES_PER_REQUEST)
+            if not has_time_bounds:
+                # Mirror the quote page's "lastcount" shortcut for recent-bar queries.
+                params.pop("beg", None)
+                params.pop("smplmt", None)
 
         response = await self._http_client.get(EASTMONEY_KLINE_ENDPOINT, params=params)
         response.raise_for_status()
 
-        payload = response.json()
+        payload = _decode_eastmoney_payload(response.text)
         data = payload.get("data") if isinstance(payload, dict) else None
         klines = data.get("klines") if isinstance(data, dict) else None
         if klines is None:

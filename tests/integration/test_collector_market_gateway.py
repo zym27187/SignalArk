@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator, Sequence
 from datetime import datetime, timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -106,6 +108,19 @@ def _build_transport_with_failures(
         if isinstance(attempt, Exception):
             raise attempt
         return httpx.Response(200, json=_history_page(attempt), request=request)
+
+    return httpx.MockTransport(_handler)
+
+
+def _build_jsonp_transport(rows: list[str]) -> httpx.MockTransport:
+    def _handler(request: httpx.Request) -> httpx.Response:
+        callback = request.url.params.get("cb") or "callback"
+        payload = json.dumps(_history_page(rows), ensure_ascii=False)
+        return httpx.Response(
+            200,
+            text=f"{callback}({payload});",
+            request=request,
+        )
 
     return httpx.MockTransport(_handler)
 
@@ -349,12 +364,94 @@ async def test_collector_recovers_when_live_stream_ends_without_exception(
 
 
 @pytest.mark.asyncio
+async def test_gateway_decodes_jsonp_history_payloads() -> None:
+    client = httpx.AsyncClient(
+        transport=_build_jsonp_transport([_kline_row(BASE_END_LOCAL, close_price="39.42")]),
+        base_url="https://eastmoney.test",
+    )
+    gateway = EastmoneyAshareBarGateway(http_client=client)
+
+    try:
+        bars = await gateway.fetch_historical_bars("600036.SH", TIMEFRAME, max_bars=1)
+    finally:
+        await gateway.aclose()
+        await client.aclose()
+
+    assert len(bars) == 1
+    assert bars[0].symbol == "600036.SH"
+    assert bars[0].close == Decimal("39.42")
+
+
+@pytest.mark.asyncio
+async def test_gateway_uses_frontend_style_recent_bar_query_params() -> None:
+    seen_params: dict[str, str | None] = {}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        for key in (
+            "cb",
+            "secid",
+            "ut",
+            "fields1",
+            "fields2",
+            "klt",
+            "fqt",
+            "beg",
+            "end",
+            "smplmt",
+            "lmt",
+        ):
+            seen_params[key] = request.url.params.get(key)
+        payload = json.dumps(
+            _history_page([_kline_row(BASE_END_LOCAL, close_price="39.42")]),
+            ensure_ascii=False,
+        )
+        return httpx.Response(
+            200,
+            text=f"{request.url.params['cb']}({payload});",
+            request=request,
+        )
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(_handler),
+        base_url="https://eastmoney.test",
+    )
+    gateway = EastmoneyAshareBarGateway(http_client=client)
+
+    try:
+        bars = await gateway.fetch_historical_bars("600036.SH", TIMEFRAME, max_bars=8)
+    finally:
+        await gateway.aclose()
+        await client.aclose()
+
+    assert len(bars) == 1
+    assert seen_params == {
+        "cb": "signalark_jsonp",
+        "secid": "1.600036",
+        "ut": "fa5fd1943c7b386f172d6893dbfba10b",
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+        "klt": "15",
+        "fqt": "1",
+        "beg": None,
+        "end": "20500101",
+        "smplmt": None,
+        "lmt": "8",
+    }
+
+
+@pytest.mark.asyncio
 async def test_gateway_uses_time_bounds_without_recent_bar_limit_for_recovery() -> None:
     seen_params: dict[str, str | None] = {}
 
     def _handler(request: httpx.Request) -> httpx.Response:
+        seen_params["cb"] = request.url.params.get("cb")
+        seen_params["secid"] = request.url.params.get("secid")
+        seen_params["ut"] = request.url.params.get("ut")
+        seen_params["klt"] = request.url.params.get("klt")
+        seen_params["fqt"] = request.url.params.get("fqt")
         seen_params["beg"] = request.url.params.get("beg")
         seen_params["end"] = request.url.params.get("end")
+        seen_params["smplmt"] = request.url.params.get("smplmt")
         seen_params["lmt"] = request.url.params.get("lmt")
         return httpx.Response(
             200,
@@ -383,7 +480,13 @@ async def test_gateway_uses_time_bounds_without_recent_bar_limit_for_recovery() 
 
     assert len(bars) == 1
     assert seen_params == {
+        "cb": "signalark_jsonp",
+        "secid": "1.600036",
+        "ut": "fa5fd1943c7b386f172d6893dbfba10b",
+        "klt": "15",
+        "fqt": "1",
         "beg": start_time.strftime("%Y%m%d"),
         "end": end_time.strftime("%Y%m%d"),
-        "lmt": None,
+        "smplmt": "1000000",
+        "lmt": "1000000",
     }
