@@ -9,13 +9,13 @@ interface EventTimelineProps {
 export function EventTimeline({ events, error }: EventTimelineProps) {
   return (
     <div className="event-timeline">
-      {error ? <p className="section-error">事件流异常：{error}</p> : null}
+      {error ? <p className="section-error">事件读取失败：{error}</p> : null}
 
       {events.length === 0 ? (
         <div className="empty-state">
-          <p className="empty-state__title">暂无回放事件</p>
+          <p className="empty-state__title">还没有关键事件</p>
           <p className="empty-state__copy">
-            交易运行时开始产出审计事件后，这里会形成一条便于值守查看的时间线。
+            当交易系统开始产出事件后，这里会按时间顺序列出最近发生的事情。
           </p>
         </div>
       ) : (
@@ -30,7 +30,7 @@ export function EventTimeline({ events, error }: EventTimelineProps) {
                 <span>{formatDateTime(event.event_time)}</span>
               </div>
               <p className="event-list__meta">
-                {event.source} · {event.symbol ?? "账户范围"} · 运行 {compactId(event.trader_run_id)}
+                来源 {event.source} · {event.symbol ?? "账户"} · 批次 {compactId(event.trader_run_id)}
               </p>
               <p className="event-list__payload">{summarizePayload(event.payload_json)}</p>
             </li>

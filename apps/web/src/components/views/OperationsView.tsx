@@ -47,35 +47,35 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
 
         <section className="metric-grid">
           <MetricCard
-            label="就绪状态"
-            value={status?.ready ? "就绪" : "待命"}
-            hint={titleCase(status?.status)}
+            label="运行准备"
+            value={status?.ready ? "可以运行" : "等待中"}
+            hint={`系统状态：${titleCase(status?.status)}`}
             tone={status?.ready ? "positive" : "warning"}
           />
           <MetricCard
             label="控制状态"
             value={titleCase(status?.control_state)}
-            hint={status?.strategy_enabled ? "策略已启用" : "策略已被操作员暂停"}
+            hint={status?.strategy_enabled ? "自动下单已开启" : "自动下单已暂停"}
             tone={controlTone(status?.control_state)}
           />
           <MetricCard
-            label="行情数据"
-            value={status?.market_data_fresh ? "最新" : "过期"}
-            hint={titleCase(status?.current_trading_phase)}
+            label="行情更新"
+            value={status?.market_data_fresh ? "已更新" : "待更新"}
+            hint={`当前时段：${titleCase(status?.current_trading_phase)}`}
             tone={status?.market_data_fresh ? "positive" : "warning"}
           />
           <MetricCard
-            label="租约令牌"
+            label="当前控制编号"
             value={status?.fencing_token ?? "--"}
-            hint={`持有者 ${compactId(status?.lease_owner_instance_id)}`}
+            hint={`当前由 ${compactId(status?.lease_owner_instance_id)} 持有`}
             tone="default"
           />
         </section>
 
         <SectionCard
-          eyebrow="组合"
+          eyebrow="账户"
           title="当前持仓"
-          description="控制平面当前看到的已持久化持仓状态。"
+          description="这里看账户里还持有哪些仓位，以及它们现在的盈亏。"
         >
           <PositionsTable
             positions={dashboard.snapshot.positions}
@@ -84,9 +84,9 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         </SectionCard>
 
         <SectionCard
-          eyebrow="执行"
-          title="活动订单"
-          description="供人工复核与一键撤单的实时订单队列。"
+          eyebrow="进行中"
+          title="未完成订单"
+          description="这里看还在排队、已接收或部分成交的订单。"
         >
           <OrdersTable
             orders={dashboard.snapshot.orders}
@@ -95,9 +95,9 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         </SectionCard>
 
         <SectionCard
-          eyebrow="执行复核"
+          eyebrow="回看"
           title="历史订单"
-          description="按当前筛选回看订单状态流转、风控裁决和最终结果。"
+          description="这里按筛选回看订单从提交到结束的全过程。"
         >
           <OrderHistoryTable
             orders={dashboard.snapshot.orderHistory}
@@ -106,9 +106,9 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         </SectionCard>
 
         <SectionCard
-          eyebrow="执行复核"
+          eyebrow="回看"
           title="历史成交"
-          description="按当前筛选查看已持久化 fills，减少人工直查数据库。"
+          description="这里看已经真正成交的记录，不用再手动查库。"
         >
           <FillHistoryTable
             fills={dashboard.snapshot.fills}
@@ -119,9 +119,9 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
 
       <aside className="dashboard-grid__rail">
         <SectionCard
-          eyebrow="操作员"
-          title="控制动作"
-          description="人工干预应保持可见、明确且可回退。"
+          eyebrow="人工操作"
+          title="手动操作"
+          description="需要人工介入时，可以在这里暂停、恢复或撤单。"
         >
           <ControlPanel
             status={status}
@@ -132,9 +132,9 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         </SectionCard>
 
         <SectionCard
-          eyebrow="筛选"
-          title="执行与诊断筛选"
-          description="共享基础筛选会联动全部视图，订单状态和 Order ID 会按各自表格生效。"
+          eyebrow="查看范围"
+          title="筛选条件"
+          description="设置时间、标的和状态后，下面各块会一起切到同一批数据。"
         >
           <ActivityFiltersPanel
             filters={dashboard.activityFilters}
@@ -146,9 +146,9 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         </SectionCard>
 
         <SectionCard
-          eyebrow="诊断"
-          title="近期事件回放"
-          description="基于当前筛选上下文返回的审计时间线。"
+          eyebrow="最近动态"
+          title="最近发生了什么"
+          description="按当前筛选展示最近的关键事件时间线。"
         >
           <EventTimeline
             events={deferredEvents}

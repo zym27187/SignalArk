@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { StatusHero } from "./StatusHero";
 
 describe("StatusHero", () => {
-  it("renders the localized runtime summary and error state", () => {
+  it("renders the simplified runtime summary and error state", () => {
     render(
       <StatusHero
         status={{
@@ -35,10 +35,12 @@ describe("StatusHero", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "模拟交易控制面板" })).toBeInTheDocument();
-    expect(screen.getByText("熔断模式 · 运行中 · 待命")).toBeInTheDocument();
-    expect(screen.getByText("状态流异常：状态查询失败")).toBeInTheDocument();
-    expect(screen.getByText("开发")).toBeInTheDocument();
-    expect(screen.getByText("模拟盘")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "交易运行总览" })).toBeInTheDocument();
+    expect(
+      screen.getByText("当前已紧急暂停，系统运行中，暂时等待中。自动策略已开启。"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("状态读取失败：状态查询失败")).toBeInTheDocument();
+    expect(screen.getByText("开发环境")).toBeInTheDocument();
+    expect(screen.getByText("模拟交易")).toBeInTheDocument();
   });
 });

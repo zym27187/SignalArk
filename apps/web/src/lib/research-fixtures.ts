@@ -8,7 +8,7 @@ import type {
 
 const DEFAULT_SYMBOL = "600036.SH";
 const DEFAULT_TIMEFRAME = "15m";
-const FIXTURE_SOURCE_LABEL = "与第 8 阶段回测结果契约对齐的本地多标的示例数据";
+const FIXTURE_SOURCE_LABEL = "本地示例数据";
 
 function roundPrice(value: number): number {
   return Number(value.toFixed(2));
@@ -151,11 +151,11 @@ function buildSymbolVariant(
       }),
     ),
     notes: [
-      "市场页和研究页现在都支持按 symbol/timeframe 在前端切换。",
-      "research fixture 现在统一使用 `equityCurve` 表示回测权益曲线。",
-      "仓库已经提供 `python -m apps.research` CLI 与 `/v1/research/snapshot` 输出同构快照。",
-      "这些示例字段与 Python 服务层中的 research snapshot 契约保持一致。",
-      "市场页当前仍可复用这套 symbol/timeframe 结构作为开发态兜底。",
+      "这里支持按标的和周期切换查看结果。",
+      "资金曲线会直接展示账户资金随时间的变化。",
+      "如果真实回测结果暂时不可用，页面会退回到这份本地示例数据。",
+      "页面里的字段结构和真实回测结果保持一致。",
+      "市场页也复用了同样的切换方式。",
     ],
   };
 }
@@ -329,7 +329,7 @@ const baseResearchSnapshot: ResearchSnapshot = {
     accountId: "paper_account_001",
     strategyId: "baseline_momentum_v1",
     handlerName: "BaselineMomentumStrategy",
-    description: "复用生产基线动量逻辑的最小事件驱动回放。",
+    description: "一套用于演示的基线动量回放。",
     symbols: ["600036.SH"],
     timeframe: "15m",
     barCount: 7,
@@ -402,11 +402,11 @@ const baseResearchSnapshot: ResearchSnapshot = {
     },
   ],
   notes: [
-    "市场页和研究页现在都支持按 symbol/timeframe 在前端切换。",
-    "research fixture 统一使用 `equityCurve` 表示回测权益曲线。",
-    "仓库同时已经提供 `python -m apps.research` CLI 与 `/v1/research/snapshot` 生成真实回测快照。",
-    "这些示例字段与 Python 服务层中的 research snapshot 契约保持一致。",
-    "市场页当前仍可复用这套 symbol/timeframe 视图切换结构作为开发态兜底。",
+    "这里支持按标的和周期切换查看结果。",
+    "资金曲线会直接展示账户资金随时间的变化。",
+    "如果真实回测结果暂时不可用，页面会退回到这份本地示例数据。",
+    "页面里的字段结构和真实回测结果保持一致。",
+    "市场页也复用了同样的切换方式。",
   ],
 };
 

@@ -78,6 +78,9 @@ describe("ControlPanel", () => {
     expect(
       within(resultPanel as HTMLElement).getByText("全撤请求已应用到当前活动订单。"),
     ).toBeInTheDocument();
+    expect(
+      within(resultPanel as HTMLElement).getByText("控制状态：已紧急暂停"),
+    ).toBeInTheDocument();
     expect(within(resultPanel as HTMLElement).getByText("请求数")).toBeInTheDocument();
     expect(within(resultPanel as HTMLElement).getByText("成功撤单")).toBeInTheDocument();
     expect(within(resultPanel as HTMLElement).getByText("跳过数")).toBeInTheDocument();

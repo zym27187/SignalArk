@@ -12,18 +12,18 @@ const viewOptions: Array<{
 }> = [
   {
     key: "operations",
-    label: "运维",
-    description: "控制平面、持仓、订单与人工操作。",
+    label: "交易",
+    description: "看状态、持仓、订单和人工操作。",
   },
   {
     key: "market",
     label: "市场",
-    description: "K 线监控与盘中盈亏可视化骨架。",
+    description: "看价格走势和账户盈亏变化。",
   },
   {
     key: "research",
     label: "研究",
-    description: "与第 8 阶段结果契约对齐的回测结果页。",
+    description: "看回测结果和每一步交易原因。",
   },
 ];
 
@@ -31,7 +31,7 @@ export function ViewSwitcher({ value, onChange }: ViewSwitcherProps) {
   return (
     <nav
       className="view-switcher"
-      aria-label="控制台主视图导航"
+      aria-label="主视图导航"
     >
       {viewOptions.map((option) => (
         <button

@@ -8,17 +8,17 @@ interface BacktestDecisionTableProps {
 export function BacktestDecisionTable({ decisions }: BacktestDecisionTableProps) {
   return (
     <div className="table-shell">
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>事件时间</th>
-            <th>动作</th>
-            <th>信号</th>
-            <th>目标仓位</th>
-            <th>成交次数</th>
-            <th>原因</th>
-          </tr>
-        </thead>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>发生时间</th>
+              <th>做了什么</th>
+              <th>信号</th>
+              <th>目标仓位</th>
+              <th>成交笔数</th>
+              <th>为什么</th>
+            </tr>
+          </thead>
         <tbody>
           {decisions.map((decision) => (
             <tr key={decision.barKey}>
@@ -34,8 +34,8 @@ export function BacktestDecisionTable({ decisions }: BacktestDecisionTableProps)
               <td>
                 <div className="decision-reason">
                   <strong>{decision.reasonSummary}</strong>
-                  {decision.skipReason ? <span>跳过：{titleCase(decision.skipReason)}</span> : null}
-                  {decision.orderPlanSide ? <span>订单：{titleCase(decision.orderPlanSide)}</span> : null}
+                  {decision.skipReason ? <span>跳过原因：{titleCase(decision.skipReason)}</span> : null}
+                  {decision.orderPlanSide ? <span>下单方向：{titleCase(decision.orderPlanSide)}</span> : null}
                 </div>
               </td>
             </tr>

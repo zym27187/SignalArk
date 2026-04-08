@@ -9,30 +9,30 @@ interface OrderHistoryTableProps {
 export function OrderHistoryTable({ orders, error }: OrderHistoryTableProps) {
   return (
     <div className="table-shell">
-      {error ? <p className="section-error">历史订单异常：{error}</p> : null}
+      {error ? <p className="section-error">历史订单读取失败：{error}</p> : null}
 
       {orders.length === 0 ? (
         <div className="empty-state">
           <p className="empty-state__title">暂无历史订单</p>
           <p className="empty-state__copy">
-            应用筛选后，这里会展示最近一段时间的订单生命周期结果。
+            更新筛选后，这里会展示最近一段时间订单从提交到结束的结果。
           </p>
         </div>
       ) : (
         <table className="data-table">
           <thead>
             <tr>
-              <th>Order ID</th>
+              <th>订单编号</th>
               <th>标的</th>
               <th>方向</th>
               <th>类型</th>
               <th>数量</th>
-              <th>已成交</th>
-              <th>均价</th>
+              <th>已成交数量</th>
+              <th>成交均价</th>
               <th>状态</th>
-              <th>风控</th>
-              <th>只减仓</th>
-              <th>更新时间</th>
+              <th>风险判断</th>
+              <th>仅减仓</th>
+              <th>最后更新</th>
             </tr>
           </thead>
           <tbody>

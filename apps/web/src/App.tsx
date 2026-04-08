@@ -68,8 +68,8 @@ export default function App() {
     dashboard.isRefreshing
     || (view === "market" && marketData.isRefreshing)
     || (view === "research" && researchData.isRefreshing)
-      ? "刷新中..."
-      : "刷新快照";
+      ? "更新中..."
+      : "刷新内容";
 
   function renderView() {
     switch (view) {
@@ -110,16 +110,16 @@ export default function App() {
 
       <header className="masthead">
         <div className="masthead__copy">
-          <p className="masthead__eyebrow">模拟交易 / 控制平面 / 第一阶段</p>
-          <h1 className="masthead__title">SignalArk 控制台</h1>
+          <p className="masthead__eyebrow">模拟交易 / 交易总览</p>
+          <h1 className="masthead__title">SignalArk 交易看板</h1>
           <p className="masthead__summary">
-            用于运维值守、市场可视化与研究结果复核的多视图前端控制台。
+            把交易状态、市场走势和回测结果放到同一个页面里，方便快速看清现在发生了什么。
           </p>
         </div>
 
         <div className="masthead__actions">
           <div className="masthead__meta">
-            <span className="mini-label">最近刷新</span>
+            <span className="mini-label">最近更新</span>
             <strong>{formatDateTime(activeFetchedAt)}</strong>
           </div>
           <button

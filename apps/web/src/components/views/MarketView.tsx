@@ -26,15 +26,15 @@ function resolveSourceLabel(
   fallbackLabel: string,
 ) {
   if (usingLiveBars && usingLiveCurve) {
-    return "真实 API 数据";
+    return "真实数据";
   }
 
   if (usingLiveBars) {
-    return "K 线真实 / 权益示例";
+    return "价格真实 / 资金示例";
   }
 
   if (usingLiveCurve) {
-    return "权益真实 / K 线示例";
+    return "资金真实 / 价格示例";
   }
 
   return fallbackLabel;
@@ -78,27 +78,26 @@ export function MarketView({
     marketData.snapshot.sectionErrors.bars ??
     marketData.snapshot.sectionErrors.equityCurve ??
     (usingLiveBars && usingLiveCurve
-      ? "K 线和权益曲线都来自真实只读接口。"
-      : "当只读接口返回空载荷或暂时不可用时，页面会自动回退到本地示例数据。");
+      ? "价格和账户曲线都来自实时接口。"
+      : "如果实时接口暂时没返回数据，页面会自动切换到本地示例数据。");
   const runtimeAuditHint =
     marketData.snapshot.sectionErrors.runtimeBars ??
     (runtimeSeenBar
-      ? "该审计视图展示 trader runtime 实际落盘的观察结果，不会重新回拉 Eastmoney 历史 K 线。"
+      ? "这里展示的是交易系统当时实际记录到的价格。"
       : runtimeAudit.available_streams.length > 0
-        ? `当前 runtime 最近记录的流：${runtimeAudit.available_streams
+        ? `系统最近记录的品种：${runtimeAudit.available_streams
             .map((stream) => `${stream.symbol}/${stream.timeframe}`)
             .join("、")}`
-        : "当前 runtime 还没有落盘任何已观察或已消费的 bar。");
+        : "系统暂时还没有记录到对应的价格。");
 
   return (
     <main className="page-stack">
       <section className="page-hero">
         <div className="page-hero__copy">
-          <p className="page-hero__eyebrow">市场监控</p>
-          <h2 className="page-hero__title">K 线区域与盘中盈亏骨架</h2>
+          <p className="page-hero__eyebrow">市场走势</p>
+          <h2 className="page-hero__title">价格走势与账户盈亏</h2>
           <p className="page-hero__summary">
-            市场视图现在优先读取真实 K 线与账户权益接口；如果本地环境还没有累计足够
-            的快照或只读接口暂时不可用，会自动回退到示例数据保持页面可用。
+            这里优先展示真实价格和账户曲线；如果本地还没积累足够数据，页面会自动用示例数据补位，保证图表始终可看。
           </p>
           <DatasetSwitcher
             symbolOptions={availableSymbols.map((value) => ({ value }))}
@@ -122,22 +121,22 @@ export function MarketView({
         <MetricCard
           label="最新价"
           value={formatDecimal(lastBar.close, 2)}
-          hint={`收盘来源：${usingLiveBars ? "真实 K 线接口" : "示例数据"}`}
+          hint={`价格来源：${usingLiveBars ? "真实价格接口" : "示例数据"}`}
           tone="positive"
         />
         <MetricCard
-          label="区间涨跌"
+          label="这段时间涨跌"
           value={`${sessionMove >= 0 ? "+" : ""}${formatDecimal(sessionMovePct, 2)}%`}
-          hint={`${sessionMove >= 0 ? "+" : ""}${formatDecimal(sessionMove, 2)} 元`}
+          hint={`累计变化 ${sessionMove >= 0 ? "+" : ""}${formatDecimal(sessionMove, 2)} 元`}
           tone={sessionMove >= 0 ? "positive" : "danger"}
         />
         <MetricCard
-          label="区间权益带"
+          label="账户资金范围"
           value={`${formatDecimal(minEquity, 0)} - ${formatDecimal(maxEquity, 0)}`}
           hint={
             usingLiveCurve
-              ? "基于余额快照、全账户成交与多标的价格重建"
-              : "基于本地曲线示例数据推导"
+              ? "按账户余额、成交和价格变化重建"
+              : "基于本地示例数据估算"
           }
           tone="default"
         />
@@ -147,24 +146,24 @@ export function MarketView({
         <div className="page-grid__main">
           <SectionCard
             eyebrow="价格走势"
-            title="K 线区域"
-            description="针对选中标的和周期的真实蜡烛图视图。"
+            title="价格变化"
+            description="看选中标的在这段时间里的价格变化。"
           >
             <CandlestickChart
               title={activeSymbol}
-              subtitle={`${timeframe} K 线${usingLiveBars ? "" : "（示例兜底）"}`}
+              subtitle={`${timeframe} 价格走势${usingLiveBars ? "" : "（示例补位）"}`}
               bars={bars}
             />
           </SectionCard>
 
           <SectionCard
-            eyebrow="盈亏"
-            title="盘中权益曲线"
-            description="按选中周期重建的整账户组合权益时间线。"
+            eyebrow="账户变化"
+            title="账户盈亏变化"
+            description="看这段时间账户资金是怎么波动的。"
           >
             <AreaChart
-              title="区间权益"
-              subtitle={usingLiveCurve ? "组合权益重建曲线" : "以 100,000 模拟本金为基线"}
+              title="账户资金"
+              subtitle={usingLiveCurve ? "按真实账户变化重建" : "以 100,000 模拟本金为基线"}
               points={displayedEquityCurve}
               accent="amber"
               formatAsMoney
@@ -174,78 +173,78 @@ export function MarketView({
 
         <aside className="page-grid__rail">
           <SectionCard
-            eyebrow="审计"
-            title="Runtime 实际消费数据"
-            description="补齐 trader 当时实际看到的 bar，而不只是临时重拉行情。"
+            eyebrow="核对"
+            title="系统实际看到的数据"
+            description="确认交易系统当时看到的最新行情，而不是事后重新拉取的数据。"
           >
             <DefinitionGrid
               items={[
                 {
-                  label: "审计 API",
+                  label: "查看接口",
                   value: "/v1/market/runtime-bars",
                   hint: runtimeAuditHint,
                 },
                 {
-                  label: "Last Seen Bar",
+                  label: "系统最近看到",
                   value: runtimeSeenBar
                     ? `${formatDateTime(runtimeSeenBar.event_time)} / ${formatDecimal(runtimeSeenBar.close, 2)}`
                     : "暂无匹配流",
                   hint: runtimeSeenBar
                     ? `${runtimeSeenBar.symbol} · ${runtimeSeenBar.timeframe} · ${runtimeSeenBar.source_kind ?? "unknown"}`
-                    : `当前筛选 ${selectedSymbol} / ${selectedTimeframe} 还没有 runtime 落盘 bar。`,
+                    : `当前筛选 ${selectedSymbol} / ${selectedTimeframe} 还没有落盘记录。`,
                 },
                 {
-                  label: "Last Strategy Bar",
+                  label: "最近用于决策",
                   value: runtimeStrategyBar
                     ? `${formatDateTime(runtimeStrategyBar.event_time)} / ${formatDecimal(runtimeStrategyBar.close, 2)}`
-                    : "尚未进入策略",
+                    : "还没进入策略",
                   hint: runtimeStrategyBar
-                    ? `${runtimeStrategyBar.symbol} · ${runtimeStrategyBar.timeframe} · 真正送入策略的最新 bar`
-                    : "如果当前流只被 runtime 看到、但还没真正送入策略，这里会保持为空。",
+                    ? `${runtimeStrategyBar.symbol} · ${runtimeStrategyBar.timeframe} · 真正送入策略的最新价格`
+                    : "如果系统看到了价格，但还没真正拿去做策略判断，这里会保持为空。",
                 },
                 {
-                  label: "已知流",
+                  label: "已记录品种",
                   value:
                     runtimeAudit.available_streams.length > 0
                       ? runtimeAudit.available_streams
                           .map((stream) => `${stream.symbol}/${stream.timeframe}`)
                           .join(", ")
                       : "暂无",
-                  hint: "这里展示 runtime 最近持有的 stream 视图，可快速判断页面筛选是否和 trader 实际消费流一致。",
+                  hint: "这里展示系统最近记录过的品种和周期，可快速判断页面筛选是否和真实消费流一致。",
                 },
               ]}
             />
           </SectionCard>
 
           <SectionCard
-            eyebrow="就绪度"
-            title="数据面规划"
-            description="市场页已切到真实 API，并保留开发态兜底。"
+            eyebrow="数据说明"
+            title="当前数据接入情况"
+            description="说明页面现在用的是真实数据还是示例数据。"
           >
             <DefinitionGrid
               items={[
                 {
-                  label: "当前来源",
+                  label: "当前展示数据",
                   value: sourceLabel,
                   hint: marketDataHint,
                 },
                 {
-                  label: "K 线 API",
+                  label: "价格接口",
                   value: "/v1/market/bars",
                   hint:
-                    marketData.snapshot.sectionErrors.bars ?? "查询参数：symbol + timeframe + limit。",
+                    marketData.snapshot.sectionErrors.bars ?? "按标的、周期和条数读取价格。",
                 },
                 {
-                  label: "权益 API",
+                  label: "账户曲线接口",
                   value: "/v1/portfolio/equity-curve",
                   hint:
                     marketData.snapshot.sectionErrors.equityCurve ??
-                    "使用余额快照、全账户成交与多标的历史价格重建组合权益曲线。",
+                    "使用账户余额、成交和价格变化重建资金曲线。",
                 },
                 {
-                  label: "交易器状态",
+                  label: "系统控制状态",
                   value: titleCase(status?.control_state),
-                  hint: "控制状态已经可以实时从 API 获取。",
+                  hint: "当前交易状态已经可以实时从接口获取。",
                 },
               ]}
             />

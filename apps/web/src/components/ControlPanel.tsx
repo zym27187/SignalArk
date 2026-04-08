@@ -63,11 +63,11 @@ export function ControlPanel({
     <div className="control-panel">
       <div className="control-panel__status-strip">
         <div>
-          <span className="mini-label">当前控制状态</span>
+          <span className="mini-label">系统当前状态</span>
           <strong>{titleCase(status?.control_state)}</strong>
         </div>
         <div>
-          <span className="mini-label">最近一次全撤</span>
+          <span className="mini-label">上次全部撤单</span>
           <strong>{formatDateTime(status?.last_cancel_all_at)}</strong>
         </div>
       </div>
@@ -110,7 +110,7 @@ export function ControlPanel({
             >
               <span className="control-button__title">确认执行</span>
               <span className="control-button__description">
-                该动作会立即提交到当前在线控制平面。
+                该操作会立即发送到当前在线控制服务。
               </span>
             </button>
             <button
@@ -176,10 +176,10 @@ export function ControlPanel({
       <div className="control-panel__footer">
         <p className="control-panel__message">
           {confirmingAction
-            ? "高风险动作需要二次确认，避免误触直接影响线上控制状态。"
-            : "操作动作将提交到在线 FastAPI 控制平面。"}
+            ? "高风险操作需要二次确认，避免误触直接影响当前交易状态。"
+            : "这里的操作会直接发送到在线控制服务。"}
         </p>
-        <p className="control-panel__endpoint">API 目标：{API_BASE_URL}</p>
+        <p className="control-panel__endpoint">当前接口：{API_BASE_URL}</p>
       </div>
     </div>
   );

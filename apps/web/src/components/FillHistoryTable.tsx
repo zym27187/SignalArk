@@ -9,27 +9,27 @@ interface FillHistoryTableProps {
 export function FillHistoryTable({ fills, error }: FillHistoryTableProps) {
   return (
     <div className="table-shell">
-      {error ? <p className="section-error">历史成交异常：{error}</p> : null}
+      {error ? <p className="section-error">历史成交读取失败：{error}</p> : null}
 
       {fills.length === 0 ? (
         <div className="empty-state">
           <p className="empty-state__title">暂无历史成交</p>
           <p className="empty-state__copy">
-            这里会展示已持久化的成交记录，方便复核真实执行结果。
+            这里会展示已经真正成交的记录，方便回看实际执行结果。
           </p>
         </div>
       ) : (
         <table className="data-table">
           <thead>
             <tr>
-              <th>Order ID</th>
+              <th>订单编号</th>
               <th>标的</th>
               <th>方向</th>
-              <th>数量</th>
+              <th>成交数量</th>
               <th>成交价</th>
               <th>费用</th>
-              <th>流动性</th>
-              <th>只减仓</th>
+              <th>成交方式</th>
+              <th>仅减仓</th>
               <th>成交时间</th>
             </tr>
           </thead>

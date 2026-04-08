@@ -9,13 +9,13 @@ interface OrdersTableProps {
 export function OrdersTable({ orders, error }: OrdersTableProps) {
   return (
     <div className="table-shell">
-      {error ? <p className="section-error">订单数据异常：{error}</p> : null}
+      {error ? <p className="section-error">订单读取失败：{error}</p> : null}
 
       {orders.length === 0 ? (
         <div className="empty-state">
-          <p className="empty-state__title">暂无活动订单</p>
+          <p className="empty-state__title">暂无未完成订单</p>
           <p className="empty-state__copy">
-            这里只展示控制平面中的 `NEW`、`ACK` 和 `PARTIALLY_FILLED` 订单。
+            这里只展示还没结束的订单，比如待处理、已接收或部分成交。
           </p>
         </div>
       ) : (
@@ -26,10 +26,10 @@ export function OrdersTable({ orders, error }: OrdersTableProps) {
               <th>方向</th>
               <th>类型</th>
               <th>数量</th>
-              <th>已成交</th>
+              <th>已成交数量</th>
               <th>状态</th>
-              <th>只减仓</th>
-              <th>提交时间</th>
+              <th>仅减仓</th>
+              <th>下单时间</th>
             </tr>
           </thead>
           <tbody>

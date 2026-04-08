@@ -90,10 +90,10 @@ export function ActivityFiltersPanel({
         </label>
 
         <label className="filter-form__field">
-          <span>Order ID</span>
+          <span>订单编号</span>
           <input
             type="text"
-            placeholder="可选，输入完整订单 UUID"
+            placeholder="可选，输入完整订单编号"
             value={draft.orderId}
             onChange={(event) => {
               setDraft((previous) => ({
@@ -105,10 +105,10 @@ export function ActivityFiltersPanel({
         </label>
 
         <label className="filter-form__field">
-          <span>Trader Run ID</span>
+          <span>运行批次编号</span>
           <input
             type="text"
-            placeholder="可选，输入完整 UUID"
+            placeholder="可选，输入完整批次编号"
             value={draft.traderRunId}
             onChange={(event) => {
               setDraft((previous) => ({
@@ -148,7 +148,7 @@ export function ActivityFiltersPanel({
         </label>
 
         <label className="filter-form__field">
-          <span>返回条数</span>
+          <span>显示条数</span>
           <select
             value={String(draft.limit)}
             onChange={(event) => {
@@ -176,7 +176,7 @@ export function ActivityFiltersPanel({
           className="filter-form__button filter-form__button--primary"
           disabled={isRefreshing}
         >
-          {isRefreshing ? "应用中..." : "应用筛选"}
+          {isRefreshing ? "更新中..." : "更新结果"}
         </button>
         <button
           type="button"
@@ -191,7 +191,7 @@ export function ActivityFiltersPanel({
       </div>
 
       <p className="filter-form__hint">
-        `symbol`、`trader_run_id`、时间窗和条数会联动全部视图；`订单状态` 只作用于历史订单，`Order ID` 只作用于历史成交。
+        标的、运行批次、时间范围和显示条数会同步影响全部区域；订单状态只影响历史订单，订单编号只影响历史成交。
       </p>
     </form>
   );

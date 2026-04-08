@@ -32,36 +32,41 @@ export function ResearchView({
   const equityCurve = snapshot?.equityCurve ?? [];
   const decisions = snapshot?.decisions ?? [];
   const notes = snapshot?.notes ?? [];
-  const sourceLabel = snapshot?.sourceLabel
-    ?? (researchData.isLoading ? "正在生成真实回测快照" : "等待 research 数据");
+  const sourceLabel = snapshot
+    ? snapshot.sourceMode === "fixture"
+      ? snapshot.sourceLabel
+      : "真实回测结果"
+    : researchData.isLoading
+      ? "正在生成回测结果"
+      : "等待回测数据";
   const sourceIsFixture = snapshot?.sourceMode === "fixture";
   const metadataItems = manifest
     ? [
         {
-          label: "运行 ID",
+          label: "本次回测编号",
           value: manifest.runId,
           hint: manifest.description,
         },
         {
-          label: "时间窗口",
+          label: "回测时间范围",
           value: `${formatDateTime(manifest.startTime)} 至 ${formatDateTime(manifest.endTime)}`,
         },
         {
-          label: "账户 / 标的",
+          label: "账户与标的",
           value: `${manifest.accountId} / ${manifest.symbols.join(", ")}`,
           hint: `${manifest.handlerName} · ${manifest.timeframe}`,
         },
         {
-          label: "成本假设",
+          label: "交易成本假设",
           value: `滑点 ${formatDecimal(manifest.slippageBps, 0)} bps`,
           hint: `${manifest.feeModel} + ${manifest.slippageModel}`,
         },
         {
-          label: "数据指纹",
+          label: "数据版本标识",
           value: manifest.dataFingerprint,
         },
         {
-          label: "清单指纹",
+          label: "配置版本标识",
           value: manifest.manifestFingerprint,
         },
       ]
@@ -69,7 +74,7 @@ export function ResearchView({
         {
           label: "当前状态",
           value: researchData.isLoading ? "生成中" : "等待数据",
-          hint: researchData.error ?? "选择 symbol/timeframe 后会调用 /v1/research/snapshot。",
+          hint: researchData.error ?? "选择标的和周期后，这里会生成一份回测结果。",
         },
       ];
 
@@ -77,11 +82,10 @@ export function ResearchView({
     <main className="page-stack">
       <section className="page-hero">
         <div className="page-hero__copy">
-          <p className="page-hero__eyebrow">研究实验室</p>
-          <h2 className="page-hero__title">真实回测结果页</h2>
+          <p className="page-hero__eyebrow">策略回看</p>
+          <h2 className="page-hero__title">回测结果一眼看懂</h2>
           <p className="page-hero__summary">
-            当前研究页会直接请求 `/v1/research/snapshot`，按选中的 symbol/timeframe
-            生成一份真实 backtest snapshot，并统一展示 research 回测权益曲线。
+            这里会按你选中的标的和周期，直接生成一份回测结果，帮助快速看清这套策略在这段时间里赚了多少、回撤多大、为什么买卖。
           </p>
           <DatasetSwitcher
             symbolOptions={availableSymbols.map((value) => ({ value }))}
@@ -101,7 +105,7 @@ export function ResearchView({
 
       <section className="metric-grid">
         <MetricCard
-          label="净收益"
+          label="这次赚亏"
           value={formatSignedMoney(performance?.netPnl)}
           hint={
             performance
@@ -111,17 +115,17 @@ export function ResearchView({
           tone={performance && performance.netPnl >= 0 ? "positive" : "default"}
         />
         <MetricCard
-          label="最大回撤"
+          label="中途最大回落"
           value={
             performance
               ? `${formatDecimal(performance.maxDrawdownPct, 4)}%`
               : "--"
           }
-          hint={performance ? "整段回放过程中的峰谷回撤" : "等待回测结果。"}
+          hint={performance ? "回测过程中从高点回落最多的一次" : "等待回测结果。"}
           tone="warning"
         />
         <MetricCard
-          label="交易次数"
+          label="完成交易数"
           value={performance?.tradeCount ?? "--"}
           hint={
             performance
@@ -131,7 +135,7 @@ export function ResearchView({
           tone="default"
         />
         <MetricCard
-          label="期末权益"
+          label="结束时账户资金"
           value={formatDecimal(performance?.endingEquity, 2)}
           hint={
             performance
@@ -145,14 +149,14 @@ export function ResearchView({
       <section className="page-grid">
         <div className="page-grid__main">
           <SectionCard
-            eyebrow="绩效"
-            title="权益曲线"
-            description="当前按 symbol/timeframe 选择展示的 research 回测权益曲线。"
+            eyebrow="资金变化"
+            title="账户资金变化"
+            description="看选中标的在这次回测里的账户资金变化。"
           >
             {researchData.error ? <p className="section-error">{researchData.error}</p> : null}
             {equityCurve.length > 0 && manifest ? (
               <AreaChart
-                title="回测权益"
+                title="回测资金"
                 subtitle={`${manifest.symbols.join(", ")} · ${manifest.timeframe} · ${manifest.barCount} 根 K 线`}
                 points={equityCurve}
                 accent="red"
@@ -161,29 +165,29 @@ export function ResearchView({
             ) : (
               <div className="empty-state">
                 <p className="empty-state__title">
-                  {researchData.isLoading ? "正在生成 research 快照" : "暂无 research 快照"}
+                  {researchData.isLoading ? "正在生成回测结果" : "暂无回测结果"}
                 </p>
                 <p className="empty-state__copy">
                   {researchData.error
                     ? "当前请求失败，可稍后重试或手动刷新。"
-                    : "切换到研究视图后，页面会基于真实历史 K 线即时生成回测结果。"}
+                    : "切换到这里后，页面会基于真实历史价格即时生成一份回测结果。"}
                 </p>
               </div>
             )}
           </SectionCard>
 
           <SectionCard
-            eyebrow="审计"
-            title="决策时间线"
-            description="与回测决策记录模型对齐的逐 Bar 信号与订单计划审计。"
+            eyebrow="买卖原因"
+            title="每一步为什么买卖"
+            description="按时间列出信号、动作和下单计划。"
           >
             {decisions.length > 0 ? (
               <BacktestDecisionTable decisions={decisions} />
             ) : (
               <div className="empty-state">
-                <p className="empty-state__title">尚无决策记录</p>
+                <p className="empty-state__title">还没有决策记录</p>
                 <p className="empty-state__copy">
-                  生成研究快照后，这里会展示逐 bar 的信号与订单计划审计。
+                  生成回测结果后，这里会展示每一步的信号和下单计划。
                 </p>
               </div>
             )}
@@ -192,17 +196,17 @@ export function ResearchView({
 
         <aside className="page-grid__rail">
           <SectionCard
-            eyebrow="清单"
-            title="运行元数据"
-            description="可序列化的运行标识与回放假设。"
+            eyebrow="回测信息"
+            title="本次回放信息"
+            description="这次回测用的时间范围、标的和成本假设。"
           >
             <DefinitionGrid items={metadataItems} />
           </SectionCard>
 
           <SectionCard
-            eyebrow="说明"
-            title="前端集成说明"
-            description="当前数据来源、入口契约，以及研究页的实时接线方式。"
+            eyebrow="数据说明"
+            title="这页数据从哪来"
+            description="说明当前展示的数据来源和接入方式。"
           >
             {notes.length > 0 ? (
               <ul className="note-list">
@@ -212,9 +216,9 @@ export function ResearchView({
               </ul>
             ) : (
               <div className="empty-state">
-                <p className="empty-state__title">等待说明数据</p>
+                <p className="empty-state__title">等待说明内容</p>
                 <p className="empty-state__copy">
-                  research 快照返回后，这里会展示当前回放来源和前端集成说明。
+                  回测结果返回后，这里会展示当前回放来源和页面说明。
                 </p>
               </div>
             )}
