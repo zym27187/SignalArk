@@ -89,6 +89,33 @@ class ApiControlPlaneService:
             lambda: EastmoneyAshareBarGateway(symbol_rules=settings.symbol_rules)
         )
 
+    def _default_status_payload(self, *, message: str | None = None) -> dict[str, object]:
+        """Keep `/health/ready` and `/v1/status` shape stable during empty-state startup."""
+        return {
+            "trader_run_id": None,
+            "instance_id": None,
+            "account_id": self._settings.account_id,
+            "control_state": "normal",
+            "strategy_enabled": True,
+            "kill_switch_active": False,
+            "protection_mode_active": False,
+            "ready": False,
+            "status": "not_ready",
+            "health_status": "unknown",
+            "lifecycle_status": "stopped",
+            "market_data_fresh": False,
+            "market_state_available": False,
+            "latest_final_bar_time": None,
+            "current_trading_phase": None,
+            "lease_owner_instance_id": None,
+            "lease_expires_at": None,
+            "last_heartbeat_at": None,
+            "fencing_token": None,
+            "last_cancel_all_at": None,
+            "cancel_all_token": 0,
+            "message": message,
+        }
+
     def live_payload(self) -> dict[str, object]:
         database_connected = False
         try:
@@ -109,12 +136,7 @@ class ApiControlPlaneService:
                 market_stale_threshold_seconds=self._settings.market_stale_threshold_seconds,
             )
         except Exception as exc:
-            return {
-                "status": "not_ready",
-                "ready": False,
-                "account_id": self._settings.account_id,
-                "message": str(exc),
-            }
+            return self._default_status_payload(message=str(exc))
 
     def status_payload(self) -> dict[str, object]:
         payload = self.ready_payload()

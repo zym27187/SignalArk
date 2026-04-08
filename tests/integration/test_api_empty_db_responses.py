@@ -80,6 +80,8 @@ def test_api_read_endpoints_return_empty_payloads_before_core_tables_exist(
 
     try:
         with TestClient(app) as client:
+            ready = client.get("/health/ready")
+            status = client.get("/v1/status")
             positions = client.get("/v1/positions")
             active_orders = client.get("/v1/orders/active")
             order_history = client.get("/v1/orders/history", params={"limit": 20})
@@ -87,6 +89,46 @@ def test_api_read_endpoints_return_empty_payloads_before_core_tables_exist(
             market_bars = client.get("/v1/market/bars", params={"limit": 1})
             equity_curve = client.get("/v1/portfolio/equity-curve", params={"limit": 20})
             replay_events = client.get("/v1/diagnostics/replay-events", params={"limit": 20})
+
+        assert ready.status_code == 200
+        assert ready.json() == {
+            "trader_run_id": None,
+            "instance_id": None,
+            "account_id": settings.account_id,
+            "control_state": "normal",
+            "strategy_enabled": True,
+            "kill_switch_active": False,
+            "protection_mode_active": False,
+            "ready": False,
+            "status": "not_ready",
+            "health_status": "unknown",
+            "lifecycle_status": "stopped",
+            "market_data_fresh": False,
+            "market_state_available": False,
+            "latest_final_bar_time": None,
+            "current_trading_phase": None,
+            "lease_owner_instance_id": None,
+            "lease_expires_at": None,
+            "last_heartbeat_at": None,
+            "fencing_token": None,
+            "last_cancel_all_at": None,
+            "cancel_all_token": 0,
+            "message": (
+                "Control-plane schema is missing required tables: "
+                "trader_account_leases, trader_controls, trader_runtime_status. "
+                "Run `.venv/bin/alembic -c migrations/alembic.ini upgrade head` first."
+            ),
+        }
+
+        assert status.status_code == 200
+        assert status.json() == {
+            **ready.json(),
+            "service": settings.app_name,
+            "env": settings.env,
+            "execution_mode": settings.execution_mode,
+            "exchange": settings.exchange,
+            "symbols": settings.symbols,
+        }
 
         assert positions.status_code == 200
         assert positions.json() == {
