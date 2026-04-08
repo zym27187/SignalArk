@@ -136,9 +136,16 @@ make web
 make dev
 ```
 
+一条命令同时启动前端、API 和 trader：
+
+```bash
+make up
+```
+
 说明：
 
 - `make dev` 会同时拉起 `http://127.0.0.1:8000` 和 `http://127.0.0.1:5173`
+- `make up` 会在 `make dev` 的基础上额外拉起 `trader`
 - 如果 `.env` 或进程环境里没有 `SIGNALARK_POSTGRES_DSN`，`make dev` 会先 fail-fast
 - 如果前端依赖还没安装，`make dev` 会提示先执行 `make web-install`
 
@@ -173,6 +180,7 @@ make web-build
 make web-preview
 make web-install
 make dev
+make up
 make trader
 make collector
 .venv/bin/python -m apps.research --input ./bars.json --output ./artifacts/backtest-result.json

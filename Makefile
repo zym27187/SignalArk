@@ -1,4 +1,4 @@
-.PHONY: install format lint test test-unit test-migrations test-integration test-e2e api trader collector research mcp web-install web web-test web-build web-preview dev
+.PHONY: install format lint test test-unit test-migrations test-integration test-e2e api trader collector research mcp web-install web web-test web-build web-preview dev up
 
 VENV ?= .venv
 WEB_DIR := apps/web
@@ -67,3 +67,6 @@ web-preview:
 
 dev:
 	bash ./scripts/run_dev_stack.sh
+
+up:
+	SIGNALARK_INCLUDE_TRADER=1 bash ./scripts/run_dev_stack.sh

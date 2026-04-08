@@ -48,6 +48,12 @@ VITE_SIGNALARK_API_BASE_URL=http://127.0.0.1:8000
 make dev
 ```
 
+如果你想把前端、API 和 trader 一起拉起来：
+
+```bash
+make up
+```
+
 如果你只想先跑前端自动化测试：
 
 ```bash

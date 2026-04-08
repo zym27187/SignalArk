@@ -4,7 +4,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_CMD=("$ROOT_DIR/.venv/bin/uvicorn" "apps.api.main:app" "--factory" "--host" "0.0.0.0" "--port" "8000" "--reload")
+TRADER_CMD=("$ROOT_DIR/.venv/bin/python" "-m" "apps.trader.main")
 WEB_CMD=("npm" "--prefix" "$ROOT_DIR/apps/web" "run" "dev" "--" "--host" "127.0.0.1" "--port" "5173")
+INCLUDE_TRADER="${SIGNALARK_INCLUDE_TRADER:-0}"
 PIDS=()
 
 cleanup() {
@@ -68,6 +70,12 @@ main() {
   echo "Starting SignalArk web console on http://127.0.0.1:5173"
   "${WEB_CMD[@]}" &
   PIDS+=("$!")
+
+  if [[ "$INCLUDE_TRADER" == "1" ]]; then
+    echo "Starting SignalArk trader runtime"
+    "${TRADER_CMD[@]}" &
+    PIDS+=("$!")
+  fi
 
   wait_for_first_exit
 }
