@@ -98,7 +98,7 @@ class CollectorService:
         """Yield only closed/final bars after bootstrap, dedup, and recovery."""
         emitted = 0
 
-        for event in await self._backfill(stage="bootstrap"):
+        for event in await self._backfill_with_retry(stage="bootstrap"):
             yield event
             emitted += 1
             if max_events is not None and emitted >= max_events:
@@ -133,11 +133,26 @@ class CollectorService:
 
             await self._sleep(self._reconnect_delay_seconds)
 
-            for event in await self._backfill(stage="recovery"):
+            for event in await self._backfill_with_retry(stage="recovery"):
                 yield event
                 emitted += 1
                 if max_events is not None and emitted >= max_events:
                     return
+
+    async def _backfill_with_retry(self, *, stage: str) -> list[BarEvent]:
+        while True:
+            try:
+                return await self._backfill(stage=stage)
+            except Exception as exc:
+                self._logger.warning(
+                    "collector_backfill_failed",
+                    stage=stage,
+                    exchange=self._exchange,
+                    timeframe=self._timeframe,
+                    symbols=list(self._symbols),
+                    error=str(exc),
+                )
+                await self._sleep(self._reconnect_delay_seconds)
 
     async def _backfill(self, *, stage: str) -> list[BarEvent]:
         events: list[BarEvent] = []

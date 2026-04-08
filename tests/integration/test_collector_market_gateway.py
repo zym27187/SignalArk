@@ -96,6 +96,20 @@ def _build_transport(pages: list[list[str]]) -> httpx.MockTransport:
     return httpx.MockTransport(_handler)
 
 
+def _build_transport_with_failures(
+    attempts: list[list[str] | Exception],
+) -> httpx.MockTransport:
+    remaining_attempts = list(attempts)
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        attempt = remaining_attempts.pop(0) if remaining_attempts else []
+        if isinstance(attempt, Exception):
+            raise attempt
+        return httpx.Response(200, json=_history_page(attempt), request=request)
+
+    return httpx.MockTransport(_handler)
+
+
 async def _collect_events(collector: CollectorService, *, max_events: int) -> list:
     events = []
     async for event in collector.collect_actionable_bars(max_events=max_events):
@@ -172,6 +186,49 @@ async def test_collector_bootstraps_history_and_live_stream_without_duplicate_fi
     ]
     assert [event.source_kind for event in events] == ["historical", "realtime"]
     assert all(event.market_state is not None for event in events)
+
+    checkpoint_state = checkpoint_store.load_state()
+    assert checkpoint_state[STREAM_KEY]["last_bar_key"] == events[-1].bar_key
+
+
+@pytest.mark.asyncio
+async def test_collector_retries_bootstrap_backfill_until_history_recovers(
+    tmp_path,
+) -> None:
+    bar1_end = BASE_END_LOCAL
+    transport = _build_transport_with_failures(
+        [
+            httpx.RemoteProtocolError("Server disconnected without sending a response."),
+            [_kline_row(bar1_end, close_price="39.42")],
+        ]
+    )
+    client = httpx.AsyncClient(transport=transport, base_url="https://eastmoney.test")
+    gateway = EastmoneyAshareBarGateway(
+        http_client=client,
+        live_stream_factory=FakeLiveStreamFactory([[]]),
+        clock=lambda: bar1_end + timedelta(hours=1),
+    )
+    checkpoint_store = FileCollectorCheckpointStore(tmp_path / "collector-checkpoints.json")
+    collector = CollectorService(
+        gateway,
+        exchange="cn_equity",
+        symbols=["600036.SH"],
+        timeframe=TIMEFRAME,
+        checkpoint_store=checkpoint_store,
+        reconnect_delay_seconds=0,
+        sleep=_no_sleep,
+    )
+
+    try:
+        events = await _collect_events(collector, max_events=1)
+    finally:
+        await collector.aclose()
+        await client.aclose()
+
+    assert [event.bar_key for event in events] == [
+        "cn_equity:600036.SH:15m:2026-03-31T14:15:00+08:00",
+    ]
+    assert [event.source_kind for event in events] == ["historical"]
 
     checkpoint_state = checkpoint_store.load_state()
     assert checkpoint_state[STREAM_KEY]["last_bar_key"] == events[-1].bar_key
