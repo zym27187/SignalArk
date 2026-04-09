@@ -3,18 +3,35 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, ConfigDict, Field
 from src.config import get_settings
+from src.domain.strategy.ai import AiProviderRequestError
 from src.infra.db import create_database_engine, create_session_factory
 from src.infra.observability import build_observability
 from src.shared.logging import configure_logging
 
 from apps.api.control_plane import ApiControlPlaneService
 from apps.trader.control_plane import TraderControlPlaneStore
+
+
+class ResearchAiSnapshotRequest(BaseModel):
+    """Body contract for one AI-driven research snapshot request."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid", str_strip_whitespace=True)
+
+    symbol: str | None = None
+    timeframe: str | None = None
+    limit: int = Field(default=96, ge=1, le=500)
+    provider: Literal["heuristic_stub", "openai_compatible"] = "openai_compatible"
+    model: str | None = None
+    base_url: str | None = Field(default=None, alias="baseUrl")
+    api_key: str | None = Field(default=None, alias="apiKey")
 
 
 def build_control_plane_service(settings) -> ApiControlPlaneService:
@@ -199,6 +216,30 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Market data is temporarily unavailable.",
+            ) from exc
+
+    @app.post("/v1/research/ai-snapshot")
+    async def research_ai_snapshot(request: ResearchAiSnapshotRequest) -> dict[str, object]:
+        try:
+            return await service.research_ai_snapshot_payload(
+                symbol=request.symbol,
+                timeframe=request.timeframe,
+                limit=request.limit,
+                provider=request.provider,
+                model=request.model,
+                base_url=request.base_url,
+                api_key=request.api_key,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except AiProviderRequestError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
         except httpx.HTTPError as exc:
             raise HTTPException(
                 status_code=503,

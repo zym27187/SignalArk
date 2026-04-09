@@ -16,6 +16,13 @@ from src.domain.events import BarEvent
 from src.domain.execution import OrderSide, OrderStatus
 from src.domain.market import NormalizedBar
 from src.domain.reconciliation import ReplayEventFilters
+from src.domain.strategy import AI_BAR_JUDGE_V1, load_ai_bar_judge_config
+from src.domain.strategy.ai import (
+    HEURISTIC_STUB,
+    OPENAI_CHAT_COMPLETIONS,
+    AiBarJudgeStrategy,
+    OpenAiCompatibleDecisionProvider,
+)
 from src.infra.db import SqlAlchemyRepositories, session_scope
 from src.infra.db.models import (
     BalanceSnapshotRecord,
@@ -572,6 +579,101 @@ class ApiControlPlaneService:
                 "当前 research 页已直接消费后端回测结果，不再固定停留在本地 fixture 页面。",
                 "research snapshot 统一返回 `equityCurve`，仅表示回测权益曲线。",
             ),
+        )
+
+    async def research_ai_snapshot_payload(
+        self,
+        *,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        limit: int = 96,
+        provider: str = "openai_compatible",
+        model: str | None = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
+    ) -> dict[str, object]:
+        resolved_symbol = self._resolve_symbol(symbol)
+        resolved_timeframe = self._resolve_timeframe(timeframe)
+        bars = await self._fetch_historical_bars(
+            symbol=resolved_symbol,
+            timeframe=resolved_timeframe,
+            limit=limit,
+        )
+        backtest_bars = _build_research_backtest_bars(bars)
+        if not backtest_bars:
+            raise LookupError(
+                "No finalized bars are available to build an AI research snapshot yet."
+            )
+
+        strategy = self._build_research_ai_strategy(
+            provider=provider,
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+        )
+        result = await build_default_backtest_runner(
+            self._settings,
+            strategy=strategy,
+            initial_cash=DEFAULT_RESEARCH_INITIAL_CASH,
+            slippage_bps=DEFAULT_RESEARCH_SLIPPAGE_BPS,
+        ).run(backtest_bars)
+        notes = [
+            (
+                "本次 AI 快照通过 OpenAI-compatible Chat Completions 生成，"
+                f"模型 {model or '未指定'}，Base URL {base_url or '未指定'}。"
+                if provider == "openai_compatible"
+                else "本次 AI 快照使用仓库内置 heuristic stub 生成，不依赖外部模型服务。"
+            ),
+            "AI 回测参数由前端请求临时传入，API Key 仅用于本次回测请求，不会落库保存。",
+            (
+                "AI research snapshot 同样复用了 strategy、order plan、paper "
+                "execution 与 portfolio ledger 语义。"
+            ),
+        ]
+        return build_web_snapshot_payload(
+            result=result,
+            bars=backtest_bars,
+            source_label="由 research API 生成的 AI 回测结果",
+            source_mode="live",
+            notes=notes,
+        )
+
+    def _build_research_ai_strategy(
+        self,
+        *,
+        provider: str,
+        model: str | None,
+        base_url: str | None,
+        api_key: str | None,
+    ) -> AiBarJudgeStrategy:
+        config = load_ai_bar_judge_config(AI_BAR_JUDGE_V1)
+        if provider == "heuristic_stub":
+            provider_mode = HEURISTIC_STUB
+            decision_provider = None
+        elif provider == "openai_compatible":
+            provider_mode = OPENAI_CHAT_COMPLETIONS
+            decision_provider = OpenAiCompatibleDecisionProvider(
+                model=model or "",
+                base_url=base_url or "",
+                api_key=api_key or "",
+                entry_threshold_pct=config.entry_threshold_pct,
+                exit_threshold_pct=config.exit_threshold_pct,
+            )
+        else:
+            raise ValueError(f"Unsupported AI research provider: {provider}")
+
+        return AiBarJudgeStrategy(
+            account_id=self._settings.account_id,
+            strategy_id=config.strategy_id,
+            lookback_bars=config.lookback_bars,
+            target_position=config.target_position,
+            min_confidence=config.min_confidence,
+            provider_mode=provider_mode,
+            entry_threshold_pct=config.entry_threshold_pct,
+            exit_threshold_pct=config.exit_threshold_pct,
+            description=config.description,
+            provider=decision_provider,
+            suppress_provider_errors=False,
         )
 
     async def pause_strategy(self) -> dict[str, object]:

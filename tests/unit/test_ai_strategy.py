@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
+import httpx
 import pytest
 from apps.trader.runtime import TraderRuntimeState
 from apps.trader.service import TraderEventContext, build_default_trader_service
@@ -16,7 +18,12 @@ from src.domain.strategy import (
     build_strategy,
     load_ai_bar_judge_config,
 )
-from src.domain.strategy.ai import AiBarJudgeStrategy, AiDecisionRequest, AiStrategyDecision
+from src.domain.strategy.ai import (
+    AiBarJudgeStrategy,
+    AiDecisionRequest,
+    AiStrategyDecision,
+    OpenAiCompatibleDecisionProvider,
+)
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 BASE_TIME = datetime(2026, 4, 1, 14, 0, tzinfo=SHANGHAI)
@@ -170,6 +177,88 @@ async def test_ai_strategy_exposes_structured_decision_audit() -> None:
     assert audit.input_snapshot["diagnostic_cluster"] == "reversal"
     assert audit.signal_snapshot["confidence"] == "0.8800"
     assert audit.reason_summary == "bearish reversal"
+
+
+@pytest.mark.asyncio
+async def test_ai_strategy_can_surface_provider_errors_for_research_runs() -> None:
+    class ExplodingProvider:
+        async def decide(self, request: AiDecisionRequest) -> AiStrategyDecision:
+            del request
+            raise ValueError("invalid api key")
+
+    strategy = AiBarJudgeStrategy(
+        account_id="paper_account_001",
+        lookback_bars=2,
+        min_confidence=Decimal("0.60"),
+        provider=ExplodingProvider(),
+        suppress_provider_errors=False,
+    )
+
+    await strategy.on_bar(_bar_event(close=Decimal("39.52"), offset=0), _context())
+    with pytest.raises(ValueError, match="invalid api key"):
+        await strategy.on_bar(_bar_event(close=Decimal("39.64"), offset=1), _context())
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_provider_parses_chat_completions_payload() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://openai.test/v1/chat/completions"
+        assert request.headers["Authorization"] == "Bearer sk-test"
+        payload = json.loads(request.content.decode("utf-8"))
+        assert payload["model"] == "gpt-5.4"
+        assert payload["messages"][0]["role"] == "system"
+        return httpx.Response(
+            status_code=200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "action": "rebalance",
+                                    "confidence": "0.82",
+                                    "target_position": "500",
+                                    "reason_summary": "uptrend confirmed",
+                                    "provider_name": "openai",
+                                    "diagnostics": {"pattern": "trend"},
+                                }
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    provider = OpenAiCompatibleDecisionProvider(
+        model="gpt-5.4",
+        base_url="https://openai.test/v1",
+        api_key="sk-test",
+        entry_threshold_pct=Decimal("0.0008"),
+        exit_threshold_pct=Decimal("-0.0005"),
+        http_client_factory=lambda: httpx.AsyncClient(transport=transport),
+    )
+
+    decision = await provider.decide(
+        AiDecisionRequest(
+            strategy_id=AI_BAR_JUDGE_V1,
+            symbol="600036.SH",
+            timeframe="15m",
+            received_at=BASE_TIME,
+            recent_bars=(
+                _bar_event(close=Decimal("39.52"), offset=0),
+                _bar_event(close=Decimal("39.64"), offset=1),
+            ),
+            target_position=Decimal("400"),
+            min_confidence=Decimal("0.60"),
+        )
+    )
+
+    assert decision.action == "rebalance"
+    assert decision.confidence == Decimal("0.82")
+    assert decision.target_position == Decimal("500")
+    assert decision.provider_name == "openai"
+    assert decision.diagnostics["pattern"] == "trend"
 
 
 def test_build_strategy_resolves_ai_bar_judge_from_repo_config() -> None:

@@ -227,5 +227,6 @@ describe("App", () => {
       timeframe: "15m",
     });
     expect(screen.getByText(/paper_account_001 \/ 平安银行 \(000001\.SZ\)/)).toBeInTheDocument();
+    expect(screen.getByText("模型实验台")).toBeInTheDocument();
   });
 });

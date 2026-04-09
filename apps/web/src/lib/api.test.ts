@@ -9,6 +9,7 @@ import {
   fetchRuntimeBars,
   fetchStatus,
   postControlAction,
+  postResearchAiSnapshot,
 } from "./api";
 
 describe("api helpers", () => {
@@ -251,6 +252,58 @@ describe("api helpers", () => {
         headers: {
           Accept: "application/json",
         },
+      }),
+    );
+  });
+
+  it("posts AI research snapshot requests as JSON", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          datasetName: "cn_equity / 600036.SH / 15m",
+          sourceLabel: "由 research API 生成的 AI 回测结果",
+          sourceMode: "live",
+          klineBars: [],
+          equityCurve: [],
+          manifest: {},
+          performance: {},
+          decisions: [],
+          notes: [],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await postResearchAiSnapshot({
+      symbol: "600036.SH",
+      timeframe: "15m",
+      limit: 48,
+      provider: "openai_compatible",
+      model: "gpt-5.4",
+      baseUrl: "https://api.openai.com/v1",
+      apiKey: "sk-test",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/research/ai-snapshot",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          symbol: "600036.SH",
+          timeframe: "15m",
+          limit: 48,
+          provider: "openai_compatible",
+          model: "gpt-5.4",
+          baseUrl: "https://api.openai.com/v1",
+          apiKey: "sk-test",
+        }),
       }),
     );
   });

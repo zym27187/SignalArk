@@ -10,7 +10,7 @@ import type {
   RuntimeBarsPayload,
   StatusPayload,
 } from "../types/api";
-import type { ResearchSnapshot } from "../types/research";
+import type { ResearchAiSnapshotRequest, ResearchSnapshot } from "../types/research";
 import { localizeMessage } from "./format";
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
@@ -42,12 +42,25 @@ export class ApiError extends Error {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (init?.headers instanceof Headers) {
+    init.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+  } else if (Array.isArray(init?.headers)) {
+    for (const [key, value] of init.headers) {
+      headers[key] = value;
+    }
+  } else if (init?.headers) {
+    Object.assign(headers, init.headers);
+  }
+  if (!("Accept" in headers) && !("accept" in headers)) {
+    headers.Accept = "application/json";
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      Accept: "application/json",
-      ...(init?.headers ?? {}),
-    },
     ...init,
+    headers,
   });
 
   const raw = await response.text();
@@ -212,6 +225,26 @@ export async function fetchResearchSnapshot(params?: {
   }
   query.set("limit", String(params?.limit ?? 96));
   return requestJson<ResearchSnapshot>(`/v1/research/snapshot?${query.toString()}`);
+}
+
+export async function postResearchAiSnapshot(
+  params: ResearchAiSnapshotRequest,
+): Promise<ResearchSnapshot> {
+  return requestJson<ResearchSnapshot>("/v1/research/ai-snapshot", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      symbol: params.symbol,
+      timeframe: params.timeframe,
+      limit: params.limit ?? 96,
+      provider: params.provider,
+      model: params.model,
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+    }),
+  });
 }
 
 export async function postControlAction(

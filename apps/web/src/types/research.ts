@@ -68,6 +68,18 @@ export interface BacktestDecisionSnapshot {
   orderPlanSide: string | null;
 }
 
+export type ResearchAiProvider = "heuristic_stub" | "openai_compatible";
+
+export interface ResearchAiSnapshotRequest {
+  symbol?: string;
+  timeframe?: string;
+  limit?: number;
+  provider: ResearchAiProvider;
+  model?: string;
+  baseUrl?: string;
+  apiKey?: string;
+}
+
 export type ResearchSnapshotSourceMode = "fixture" | "imported" | "live";
 
 export interface ResearchSnapshot {
