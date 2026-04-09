@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ALEMBIC_CMD=("$ROOT_DIR/.venv/bin/alembic" "-c" "$ROOT_DIR/migrations/alembic.ini" "upgrade" "head")
 API_CMD=("$ROOT_DIR/.venv/bin/uvicorn" "apps.api.main:app" "--factory" "--host" "0.0.0.0" "--port" "8000" "--reload")
 TRADER_CMD=("$ROOT_DIR/.venv/bin/python" "-m" "apps.trader.main")
 WEB_CMD=("npm" "--prefix" "$ROOT_DIR/apps/web" "run" "dev" "--" "--host" "127.0.0.1" "--port" "5173")
@@ -24,6 +25,11 @@ cleanup() {
 }
 
 require_ready_stack() {
+  if [[ ! -x "$ROOT_DIR/.venv/bin/alembic" ]]; then
+    echo "Missing $ROOT_DIR/.venv/bin/alembic. Run 'make install' first." >&2
+    exit 1
+  fi
+
   if [[ ! -x "$ROOT_DIR/.venv/bin/uvicorn" ]]; then
     echo "Missing $ROOT_DIR/.venv/bin/uvicorn. Run 'make install' first." >&2
     exit 1
@@ -45,6 +51,11 @@ require_ready_stack() {
   fi
 }
 
+apply_migrations() {
+  echo "Applying database migrations"
+  "${ALEMBIC_CMD[@]}"
+}
+
 wait_for_first_exit() {
   while true; do
     for pid in "${PIDS[@]}"; do
@@ -62,6 +73,7 @@ main() {
 
   trap cleanup EXIT INT TERM
   cd "$ROOT_DIR"
+  apply_migrations
 
   echo "Starting SignalArk API on http://127.0.0.1:8000"
   "${API_CMD[@]}" &
