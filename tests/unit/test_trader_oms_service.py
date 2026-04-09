@@ -17,6 +17,7 @@ from src.config.settings import AshareSymbolRule, PaperCostModel
 from src.domain.execution import (
     ExecutionReport,
     Fill,
+    LiquidityType,
     Order,
     OrderIntent,
     OrderIntentStatus,
@@ -113,6 +114,27 @@ def _balance_snapshot(*, snapshot_time: datetime | None = None) -> BalanceSnapsh
         available=Decimal("100000"),
         locked=Decimal("0"),
         snapshot_time=timestamp,
+        created_at=timestamp,
+    )
+
+
+def _fill(*, fill_time: datetime | None = None) -> Fill:
+    timestamp = fill_time or (BASE_TIME - timedelta(minutes=5))
+    return Fill(
+        id=UUID("12121212-1212-4212-8212-121212121212"),
+        order_id=UUID("13131313-1313-4313-8313-131313131313"),
+        trader_run_id=TRADER_RUN_ID,
+        exchange_fill_id="paper-fill-unit-001",
+        account_id="paper_account_001",
+        exchange="cn_equity",
+        symbol="600036.SH",
+        side=OrderSide.BUY,
+        qty=Decimal("100"),
+        price=Decimal("39.50"),
+        fee=Decimal("1.2245"),
+        fee_asset="CNY",
+        liquidity_type=LiquidityType.TAKER,
+        fill_time=timestamp,
         created_at=timestamp,
     )
 
@@ -221,6 +243,10 @@ class RecordingPersistence(OmsPersistencePort):
         self.operations.append("save_fill")
         self.fills[fill.id] = fill
         return fill
+
+    def has_fill_history(self, *, account_id: str) -> bool:
+        self.operations.append("has_fill_history")
+        return any(fill.account_id == account_id for fill in self.fills.values())
 
     def get_latest_balance_snapshot(
         self,
@@ -465,6 +491,52 @@ async def test_trader_oms_service_releases_sellable_qty_before_sizing_on_new_tra
     assert persistence.position.sellable_qty == Decimal("300")
     event_types = [event.event_type for event in persistence.event_logs]
     assert "portfolio.sellable_qty_released" in event_types
+
+
+def test_trader_oms_service_recover_account_state_seeds_initial_balance_for_pristine_account() -> (
+    None
+):
+    persistence = RecordingPersistence()
+    persistence.position = None
+    persistence.balance_snapshots = []
+    service = TraderOmsService(persistence)
+
+    recovered_state = service.recover_account_state(
+        account_id="paper_account_001",
+        exchange="cn_equity",
+        recovery_trader_run_id=TRADER_RUN_ID,
+        effective_trade_date=BASE_TIME.date(),
+    )
+
+    assert len(recovered_state.latest_balance_snapshots) == 1
+    assert recovered_state.latest_balance_snapshots[0].total == Decimal("100000")
+    assert recovered_state.latest_balance_snapshots[0].available == Decimal("100000")
+    assert "has_fill_history" in persistence.operations
+    assert "save_balance_snapshot" in persistence.operations
+    assert persistence.event_logs[-1].event_type == "portfolio.balance_initialized"
+
+
+def test_trader_oms_service_recover_account_state_skips_seeding_when_fill_history_exists() -> (
+    None
+):
+    persistence = RecordingPersistence()
+    persistence.position = None
+    persistence.balance_snapshots = []
+    persisted_fill = _fill()
+    persistence.fills[persisted_fill.id] = persisted_fill
+    service = TraderOmsService(persistence)
+
+    recovered_state = service.recover_account_state(
+        account_id="paper_account_001",
+        exchange="cn_equity",
+        recovery_trader_run_id=TRADER_RUN_ID,
+        effective_trade_date=BASE_TIME.date(),
+    )
+
+    assert recovered_state.latest_balance_snapshots == ()
+    assert "has_fill_history" in persistence.operations
+    assert "save_balance_snapshot" not in persistence.operations
+    assert not persistence.event_logs
 
 
 @pytest.mark.asyncio
@@ -785,6 +857,7 @@ def test_build_default_trader_oms_service_uses_settings_backed_risk_policy(tmp_p
             max_total_open_notional_cny=Decimal("654321"),
             min_order_notional_cny=Decimal("4321"),
             market_stale_threshold_seconds=77,
+            paper_initial_cash=Decimal("234567"),
         )
 
         service = build_default_trader_oms_service(
@@ -797,6 +870,7 @@ def test_build_default_trader_oms_service_uses_settings_backed_risk_policy(tmp_p
         assert policy.max_total_open_notional_cny == Decimal("654321")
         assert policy.min_order_notional_cny == Decimal("4321")
         assert policy.market_stale_threshold_seconds == 77
+        assert service._paper_initial_cash == Decimal("234567")
     finally:
         engine.dispose()
 

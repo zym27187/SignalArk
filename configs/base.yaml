@@ -49,6 +49,7 @@ paper:
     commission: 0.0003
     transfer_fee: 0.00001
     stamp_duty_sell: 0.0005
+  initial_cash: 100000
   recovery_source: local_persistent_state
 
 api:

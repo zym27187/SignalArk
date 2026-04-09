@@ -45,6 +45,7 @@ DEFAULT_PAPER_COST_MODEL = {
     "transfer_fee": "0.00001",
     "stamp_duty_sell": "0.0005",
 }
+DEFAULT_PAPER_INITIAL_CASH = Decimal("100000")
 DEFAULT_API_CORS_ALLOWED_ORIGINS = (
     "http://127.0.0.1:5173",
     "http://localhost:5173",
@@ -74,6 +75,7 @@ YAML_PATH_TO_FIELD = {
     ("trading", "symbol_rules"): "symbol_rules",
     ("paper", "state_backend"): "paper_state_backend",
     ("paper", "cost_model"): "paper_cost_model",
+    ("paper", "initial_cash"): "paper_initial_cash",
     ("paper", "recovery_source"): "paper_recovery_source",
     ("api", "host"): "api_host",
     ("api", "port"): "api_port",
@@ -281,6 +283,7 @@ class Settings(BaseSettings):
     paper_cost_model: PaperCostModel = Field(
         default_factory=lambda: PaperCostModel(**DEFAULT_PAPER_COST_MODEL)
     )
+    paper_initial_cash: Decimal = Field(default=DEFAULT_PAPER_INITIAL_CASH, gt=Decimal("0"))
     paper_recovery_source: Literal["local_persistent_state"] = "local_persistent_state"
 
     postgres_dsn: str = "postgresql+psycopg://signalark:signalark@localhost:5432/signalark"

@@ -196,6 +196,64 @@ async def test_oms_service_with_paper_execution_persists_ack_fill_and_cost_event
 
 
 @pytest.mark.asyncio
+async def test_oms_service_recovery_seeds_initial_cash_for_first_paper_fill(
+    session_factory,
+) -> None:
+    with session_scope(session_factory) as session:
+        repositories = SqlAlchemyRepositories.from_session(session)
+        oms_service = TraderOmsService(
+            RepositoryBackedOmsPersistence(repositories),
+            execution_gateway=PaperExecutionAdapter(
+                cost_model=_paper_cost_model(),
+                clock=lambda: BASE_TIME + timedelta(seconds=3),
+            ),
+            paper_initial_cash=Decimal("123456"),
+        )
+
+        recovered_state = oms_service.recover_account_state(
+            account_id="paper_account_001",
+            exchange="cn_equity",
+            recovery_trader_run_id=TRADER_RUN_ID,
+            effective_trade_date=BASE_TIME.date(),
+        )
+        submission = await oms_service.submit_signal(
+            signal=_signal().model_copy(update={"target_position": Decimal("400")}),
+            symbol_rule=SYMBOL_RULE,
+            decision_price=Decimal("39.50"),
+            market_context=MARKET_STATE,
+            received_at=BASE_TIME + timedelta(seconds=2),
+        )
+
+        assert len(recovered_state.latest_balance_snapshots) == 1
+        assert recovered_state.latest_balance_snapshots[0].total == Decimal("123456")
+        assert submission is not None
+        assert submission.order.status is OrderStatus.FILLED
+        assert submission.order.filled_qty == Decimal("400")
+
+    with session_scope(session_factory) as session:
+        repositories = SqlAlchemyRepositories.from_session(session)
+        recovered_state = repositories.recovery.load_runtime_state(
+            account_id="paper_account_001",
+            trader_run_id=TRADER_RUN_ID,
+            event_limit=20,
+        )
+        event_types = tuple(
+            session.scalars(
+                select(EventLogRecord.event_type).order_by(
+                    EventLogRecord.created_at.asc(),
+                    EventLogRecord.id.asc(),
+                )
+            )
+        )
+
+    assert len(recovered_state.latest_balance_snapshots) == 1
+    assert recovered_state.latest_balance_snapshots[0].available == Decimal("107651.1020")
+    assert recovered_state.latest_balance_snapshots[0].total == Decimal("107651.1020")
+    assert event_types.count("portfolio.balance_initialized") == 1
+    assert event_types.count("portfolio.balance_updated") == 1
+
+
+@pytest.mark.asyncio
 async def test_oms_service_with_paper_execution_rejects_non_marketable_limit_orders(
     session_factory,
 ) -> None:

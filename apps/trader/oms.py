@@ -42,7 +42,7 @@ from src.domain.risk import (
 )
 from src.domain.strategy import Signal
 from src.infra.db import EventLogEntry, RecoveryState, SqlAlchemyRepositories, session_scope
-from src.infra.db.models import OrderIntentRecord, OrderRecord
+from src.infra.db.models import FillRecord, OrderIntentRecord, OrderRecord
 from src.infra.exchanges import PaperExecutionAdapter
 from src.infra.observability import SignalArkObservability
 from src.shared.types import SHANGHAI_TIMEZONE, shanghai_now
@@ -58,6 +58,8 @@ ACTIVE_ORDER_STATUSES = (
     "ACK",
     "PARTIALLY_FILLED",
 )
+DEFAULT_PAPER_INITIAL_CASH = Decimal("100000")
+PAPER_SETTLEMENT_ASSET = "CNY"
 
 
 class OmsPersistencePort(Protocol):
@@ -74,6 +76,8 @@ class OmsPersistencePort(Protocol):
     def get_fill(self, fill_id: UUID) -> Fill | None: ...
 
     def save_fill(self, fill: Fill) -> Fill: ...
+
+    def has_fill_history(self, *, account_id: str) -> bool: ...
 
     def get_latest_balance_snapshot(
         self,
@@ -198,6 +202,11 @@ class RepositoryBackedOmsPersistence:
     def save_fill(self, fill: Fill) -> Fill:
         return self.repositories.fills.save(fill)
 
+    def has_fill_history(self, *, account_id: str) -> bool:
+        session = self.repositories.fills.session
+        query = select(FillRecord.id).where(FillRecord.account_id == account_id).limit(1)
+        return session.scalar(query) is not None
+
     def get_latest_balance_snapshot(
         self,
         *,
@@ -306,6 +315,11 @@ class SessionFactoryBackedOmsPersistence:
     def save_fill(self, fill: Fill) -> Fill:
         return self._with_persistence(lambda persistence: persistence.save_fill(fill))
 
+    def has_fill_history(self, *, account_id: str) -> bool:
+        return self._with_persistence(
+            lambda persistence: persistence.has_fill_history(account_id=account_id)
+        )
+
     def get_latest_balance_snapshot(
         self,
         *,
@@ -380,6 +394,7 @@ def build_default_trader_oms_service(
         risk_gate=PreTradeRiskGate(policy=build_pretrade_risk_policy(settings)),
         control_store=control_store,
         observability=observability,
+        paper_initial_cash=settings.paper_initial_cash,
     )
 
 
@@ -468,7 +483,10 @@ class TraderOmsService:
         risk_gate: PreTradeRiskGate | None = None,
         control_store: TraderControlPlaneStore | None = None,
         observability: SignalArkObservability | None = None,
+        paper_initial_cash: Decimal = DEFAULT_PAPER_INITIAL_CASH,
     ) -> None:
+        if paper_initial_cash <= 0:
+            raise ValueError("paper_initial_cash must be positive")
         self._persistence = persistence
         self._execution_gateway = execution_gateway or NoopExecutionGateway()
         self._risk_gate = risk_gate or PreTradeRiskGate()
@@ -477,6 +495,7 @@ class TraderOmsService:
             service="trader_oms",
             logger_name="signalark.trader.oms",
         )
+        self._paper_initial_cash = paper_initial_cash
 
     async def submit_signal(
         self,
@@ -949,6 +968,7 @@ class TraderOmsService:
         self,
         *,
         account_id: str,
+        exchange: str,
         recovery_trader_run_id: UUID,
         effective_trade_date: date,
         event_limit: int = 100,
@@ -959,6 +979,14 @@ class TraderOmsService:
             event_limit=event_limit,
         )
         occurred_at = shanghai_now()
+        latest_balance_snapshots = self._seed_initial_balance_for_pristine_account(
+            account_id=account_id,
+            exchange=exchange,
+            trader_run_id=recovery_trader_run_id,
+            effective_trade_date=effective_trade_date,
+            occurred_at=occurred_at,
+            recovered_state=recovered_state,
+        )
         released_positions = tuple(
             self._release_position_for_trade_date(
                 position=position,
@@ -973,9 +1001,68 @@ class TraderOmsService:
             open_positions=tuple(
                 position for position in released_positions if position is not None
             ),
-            latest_balance_snapshots=recovered_state.latest_balance_snapshots,
+            latest_balance_snapshots=latest_balance_snapshots,
             recent_event_logs=recovered_state.recent_event_logs,
         )
+
+    def _seed_initial_balance_for_pristine_account(
+        self,
+        *,
+        account_id: str,
+        exchange: str,
+        trader_run_id: UUID,
+        effective_trade_date: date,
+        occurred_at: datetime,
+        recovered_state: RecoveryState,
+    ) -> tuple[BalanceSnapshot, ...]:
+        if recovered_state.latest_balance_snapshots:
+            return recovered_state.latest_balance_snapshots
+        if recovered_state.open_orders or recovered_state.open_positions:
+            return recovered_state.latest_balance_snapshots
+        if self._persistence.has_fill_history(account_id=account_id):
+            return recovered_state.latest_balance_snapshots
+
+        snapshot_time = datetime(
+            effective_trade_date.year,
+            effective_trade_date.month,
+            effective_trade_date.day,
+            tzinfo=SHANGHAI_TIMEZONE,
+        )
+        created_at = occurred_at if occurred_at >= snapshot_time else snapshot_time
+        balance_snapshot = self._save_balance_snapshot(
+            BalanceSnapshot(
+                account_id=account_id,
+                exchange=exchange,
+                asset=PAPER_SETTLEMENT_ASSET,
+                total=self._paper_initial_cash,
+                available=self._paper_initial_cash,
+                locked=Decimal("0"),
+                snapshot_time=snapshot_time,
+                created_at=created_at,
+            )
+        )
+        self._save_event_log(
+            EventLogEntry(
+                event_type="portfolio.balance_initialized",
+                source="trader_oms",
+                trader_run_id=trader_run_id,
+                account_id=account_id,
+                exchange=exchange,
+                related_object_type="balance_snapshot",
+                related_object_id=balance_snapshot.id,
+                event_time=occurred_at,
+                ingest_time=occurred_at,
+                payload_json={
+                    "asset": balance_snapshot.asset,
+                    "total": balance_snapshot.total,
+                    "available": balance_snapshot.available,
+                    "locked": balance_snapshot.locked,
+                    "reason": "paper_initial_cash_bootstrap",
+                },
+                created_at=occurred_at,
+            )
+        )
+        return (balance_snapshot,)
 
     def _apply_execution_report(
         self,

@@ -204,6 +204,7 @@ class TraderReconciliationRuntime:
         try:
             recovered_state = self._oms_service.recover_account_state(
                 account_id=self._account_id,
+                exchange=self._exchange,
                 recovery_trader_run_id=UUID(runtime_state.trader_run_id),
                 effective_trade_date=checked_at.date(),
                 event_limit=20,
