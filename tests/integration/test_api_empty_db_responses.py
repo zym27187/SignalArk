@@ -115,7 +115,8 @@ def test_api_read_endpoints_return_empty_payloads_before_core_tables_exist(
             "cancel_all_token": 0,
             "message": (
                 "Control-plane schema is missing required tables: "
-                "trader_account_leases, trader_controls, trader_runtime_status. "
+                "research_ai_settings, trader_account_leases, trader_controls, "
+                "trader_runtime_status. "
                 "Run `.venv/bin/alembic -c migrations/alembic.ini upgrade head` first."
             ),
         }

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 import { useDashboardData } from "./hooks/use-dashboard-data";
+import { useAiResearchSettings } from "./hooks/use-ai-research-settings";
 import { useMarketData } from "./hooks/use-market-data";
 import { useResearchData } from "./hooks/use-research-data";
 
@@ -14,11 +15,16 @@ vi.mock("./hooks/use-market-data", () => ({
   useMarketData: vi.fn(),
 }));
 
+vi.mock("./hooks/use-ai-research-settings", () => ({
+  useAiResearchSettings: vi.fn(),
+}));
+
 vi.mock("./hooks/use-research-data", () => ({
   useResearchData: vi.fn(),
 }));
 
 const mockedUseDashboardData = vi.mocked(useDashboardData);
+const mockedUseAiResearchSettings = vi.mocked(useAiResearchSettings);
 const mockedUseMarketData = vi.mocked(useMarketData);
 const mockedUseResearchData = vi.mocked(useResearchData);
 
@@ -170,6 +176,22 @@ describe("App", () => {
       isRefreshing: false,
       refresh: vi.fn(),
     }));
+    mockedUseAiResearchSettings.mockReturnValue({
+      settings: {
+        accountId: "paper_account_001",
+        provider: "openai_compatible",
+        model: "gpt-5.4",
+        baseUrl: "https://api.openai.com/v1",
+        hasApiKey: true,
+        apiKeyHint: "sk-...cret",
+        updatedAt: "2026-04-02T10:00:00+08:00",
+      },
+      error: null,
+      isLoading: false,
+      isSaving: false,
+      refresh: vi.fn(),
+      save: vi.fn(),
+    });
   });
 
   afterEach(() => {

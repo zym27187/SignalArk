@@ -25,11 +25,16 @@ if TYPE_CHECKING:
 LEASE_TABLE_NAME = "trader_account_leases"
 CONTROL_TABLE_NAME = "trader_controls"
 RUNTIME_STATUS_TABLE_NAME = "trader_runtime_status"
+RESEARCH_AI_SETTINGS_TABLE_NAME = "research_ai_settings"
+DEFAULT_RESEARCH_AI_PROVIDER = "openai_compatible"
+DEFAULT_RESEARCH_AI_MODEL = "gpt-5.4"
+DEFAULT_RESEARCH_AI_BASE_URL = "https://api.openai.com/v1"
 CONTROL_PLANE_TABLE_NAMES = frozenset(
     {
         CONTROL_TABLE_NAME,
         LEASE_TABLE_NAME,
         RUNTIME_STATUS_TABLE_NAME,
+        RESEARCH_AI_SETTINGS_TABLE_NAME,
     }
 )
 
@@ -104,6 +109,20 @@ class TraderRuntimeStatusRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class ResearchAiSettingsRecord(Base):
+    """Persist the research-page AI backtest configuration for one account."""
+
+    __tablename__ = RESEARCH_AI_SETTINGS_TABLE_NAME
+
+    account_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    base_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class TraderControlSnapshot:
     """Typed operator-control view shared between trader and API."""
@@ -171,6 +190,23 @@ class TraderRuntimeStatusSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class ResearchAiSettingsSnapshot:
+    """Account-scoped AI research settings persisted for the research page."""
+
+    account_id: str
+    provider: str = DEFAULT_RESEARCH_AI_PROVIDER
+    model: str = DEFAULT_RESEARCH_AI_MODEL
+    base_url: str = DEFAULT_RESEARCH_AI_BASE_URL
+    api_key: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @property
+    def has_api_key(self) -> bool:
+        return bool(self.api_key)
+
+
+@dataclass(frozen=True, slots=True)
 class LeaseActionResult:
     """Result of one acquire/heartbeat/release lease operation."""
 
@@ -230,6 +266,20 @@ def _runtime_status_from_record(record: TraderRuntimeStatusRecord) -> TraderRunt
         fencing_token=record.fencing_token,
         last_status_message=record.last_status_message,
         updated_at=_shanghai_datetime(record.updated_at) or shanghai_now(),
+    )
+
+
+def _research_ai_settings_from_record(
+    record: ResearchAiSettingsRecord,
+) -> ResearchAiSettingsSnapshot:
+    return ResearchAiSettingsSnapshot(
+        account_id=record.account_id,
+        provider=record.provider,
+        model=record.model,
+        base_url=record.base_url,
+        api_key=record.api_key,
+        created_at=_shanghai_datetime(record.created_at),
+        updated_at=_shanghai_datetime(record.updated_at),
     )
 
 
@@ -567,6 +617,74 @@ class TraderControlPlaneStore:
         with session_scope(self._session_factory) as session:
             record = session.get(TraderRuntimeStatusRecord, account_id)
             return None if record is None else _runtime_status_from_record(record)
+
+    def get_research_ai_settings(self, account_id: str) -> ResearchAiSettingsSnapshot:
+        self.ensure_schema()
+        with session_scope(self._session_factory) as session:
+            record = session.get(ResearchAiSettingsRecord, account_id)
+            if record is None:
+                now = self._clock()
+                record = ResearchAiSettingsRecord(
+                    account_id=account_id,
+                    provider=DEFAULT_RESEARCH_AI_PROVIDER,
+                    model=DEFAULT_RESEARCH_AI_MODEL,
+                    base_url=DEFAULT_RESEARCH_AI_BASE_URL,
+                    api_key=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(record)
+                session.flush()
+            return _research_ai_settings_from_record(record)
+
+    def save_research_ai_settings(
+        self,
+        *,
+        account_id: str,
+        provider: str,
+        model: str,
+        base_url: str,
+        api_key: str | None = None,
+        replace_api_key: bool = False,
+        clear_api_key: bool = False,
+    ) -> ResearchAiSettingsSnapshot:
+        self.ensure_schema()
+        normalized_provider = provider.strip()
+        normalized_model = model.strip()
+        normalized_base_url = base_url.strip()
+        if not normalized_provider:
+            raise ValueError("provider is required")
+        if not normalized_model:
+            raise ValueError("model is required")
+        if not normalized_base_url:
+            raise ValueError("base_url is required")
+
+        with session_scope(self._session_factory) as session:
+            record = session.get(ResearchAiSettingsRecord, account_id)
+            if record is None:
+                now = self._clock()
+                record = ResearchAiSettingsRecord(
+                    account_id=account_id,
+                    provider=DEFAULT_RESEARCH_AI_PROVIDER,
+                    model=DEFAULT_RESEARCH_AI_MODEL,
+                    base_url=DEFAULT_RESEARCH_AI_BASE_URL,
+                    api_key=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(record)
+                session.flush()
+
+            record.provider = normalized_provider
+            record.model = normalized_model
+            record.base_url = normalized_base_url
+            if clear_api_key:
+                record.api_key = None
+            elif replace_api_key:
+                record.api_key = None if api_key is None else api_key.strip()
+            record.updated_at = self._clock()
+            session.flush()
+            return _research_ai_settings_from_record(record)
 
     def build_status_view(
         self,

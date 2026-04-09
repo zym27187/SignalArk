@@ -344,6 +344,14 @@ select {
   background: rgba(177, 63, 63, 0.1);
 }
 
+.section-success {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  color: #0d624f;
+  background: rgba(12, 143, 120, 0.11);
+}
+
 .empty-state {
   padding: 18px;
   border-radius: var(--radius-md);
@@ -991,6 +999,17 @@ select {
   flex-wrap: wrap;
 }
 
+.ai-form__meta,
+.ai-form__actions,
+.ai-form__subactions {
+  display: grid;
+  gap: 12px;
+}
+
+.ai-form__actions {
+  justify-items: end;
+}
+
 .field {
   display: grid;
   gap: 8px;
@@ -1036,6 +1055,31 @@ select {
 .field__hint {
   color: var(--ink-muted);
   font-size: 0.9rem;
+}
+
+.secondary-button {
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(18, 40, 61, 0.12);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    border-color 140ms ease,
+    opacity 140ms ease;
+}
+
+.secondary-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(18, 40, 61, 0.08);
+}
+
+.secondary-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+  transform: none;
 }
 
 @media (max-width: 1180px) {
@@ -1094,6 +1138,10 @@ select {
   .chart-shell__header,
   .ai-form__footer {
     display: grid;
+  }
+
+  .ai-form__actions {
+    justify-items: start;
   }
 
   .dataset-switcher__options,

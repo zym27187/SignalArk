@@ -10,7 +10,12 @@ import type {
   RuntimeBarsPayload,
   StatusPayload,
 } from "../types/api";
-import type { ResearchAiSnapshotRequest, ResearchSnapshot } from "../types/research";
+import type {
+  ResearchAiSettings,
+  ResearchAiSettingsUpdateRequest,
+  ResearchAiSnapshotRequest,
+  ResearchSnapshot,
+} from "../types/research";
 import { localizeMessage } from "./format";
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
@@ -243,6 +248,28 @@ export async function postResearchAiSnapshot(
       model: params.model,
       baseUrl: params.baseUrl,
       apiKey: params.apiKey,
+    }),
+  });
+}
+
+export async function fetchResearchAiSettings(): Promise<ResearchAiSettings> {
+  return requestJson<ResearchAiSettings>("/v1/research/ai-settings");
+}
+
+export async function putResearchAiSettings(
+  params: ResearchAiSettingsUpdateRequest,
+): Promise<ResearchAiSettings> {
+  return requestJson<ResearchAiSettings>("/v1/research/ai-settings", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      provider: params.provider,
+      model: params.model,
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+      clearApiKey: params.clearApiKey ?? false,
     }),
   });
 }

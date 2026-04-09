@@ -36,7 +36,11 @@ from src.shared.types import SHANGHAI_TIMEZONE, shanghai_now
 
 from apps.research import build_default_backtest_runner
 from apps.research.snapshot import build_web_snapshot_payload
-from apps.trader.control_plane import TraderControlPlaneStore
+from apps.trader.control_plane import (
+    MissingControlPlaneSchemaError,
+    ResearchAiSettingsSnapshot,
+    TraderControlPlaneStore,
+)
 from apps.trader.oms import build_default_trader_oms_service
 from apps.trader.reconciliation import SessionFactoryBackedReconciliationStore
 
@@ -581,13 +585,41 @@ class ApiControlPlaneService:
             ),
         )
 
+    def research_ai_settings_payload(self) -> dict[str, object]:
+        try:
+            snapshot = self._control_store.get_research_ai_settings(self._settings.account_id)
+        except MissingControlPlaneSchemaError:
+            snapshot = ResearchAiSettingsSnapshot(account_id=self._settings.account_id)
+        return _serialize_research_ai_settings(snapshot)
+
+    def save_research_ai_settings(
+        self,
+        *,
+        provider: str,
+        model: str,
+        base_url: str,
+        api_key: str | None = None,
+        replace_api_key: bool = False,
+        clear_api_key: bool = False,
+    ) -> dict[str, object]:
+        snapshot = self._control_store.save_research_ai_settings(
+            account_id=self._settings.account_id,
+            provider=provider,
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            replace_api_key=replace_api_key,
+            clear_api_key=clear_api_key,
+        )
+        return _serialize_research_ai_settings(snapshot)
+
     async def research_ai_snapshot_payload(
         self,
         *,
         symbol: str | None = None,
         timeframe: str | None = None,
         limit: int = 96,
-        provider: str = "openai_compatible",
+        provider: str | None = None,
         model: str | None = None,
         base_url: str | None = None,
         api_key: str | None = None,
@@ -620,11 +652,12 @@ class ApiControlPlaneService:
         notes = [
             (
                 "本次 AI 快照通过 OpenAI-compatible Chat Completions 生成，"
-                f"模型 {model or '未指定'}，Base URL {base_url or '未指定'}。"
-                if provider == "openai_compatible"
+                f"模型 {strategy._provider.metadata().get('model', '未指定')}，"
+                f"Base URL {strategy._provider.metadata().get('base_url', '未指定')}。"
+                if strategy._provider_mode == OPENAI_CHAT_COMPLETIONS
                 else "本次 AI 快照使用仓库内置 heuristic stub 生成，不依赖外部模型服务。"
             ),
-            "AI 回测参数由前端请求临时传入，API Key 仅用于本次回测请求，不会落库保存。",
+            "AI 回测优先使用数据库中已保存的模型接入配置，前端临时输入会覆盖本次请求。",
             (
                 "AI research snapshot 同样复用了 strategy、order plan、paper "
                 "execution 与 portfolio ledger 语义。"
@@ -641,26 +674,51 @@ class ApiControlPlaneService:
     def _build_research_ai_strategy(
         self,
         *,
-        provider: str,
+        provider: str | None,
         model: str | None,
         base_url: str | None,
         api_key: str | None,
     ) -> AiBarJudgeStrategy:
         config = load_ai_bar_judge_config(AI_BAR_JUDGE_V1)
-        if provider == "heuristic_stub":
+        try:
+            persisted_settings = self._control_store.get_research_ai_settings(
+                self._settings.account_id
+            )
+        except MissingControlPlaneSchemaError:
+            persisted_settings = ResearchAiSettingsSnapshot(account_id=self._settings.account_id)
+        resolved_provider = (
+            provider.strip()
+            if provider is not None and provider.strip()
+            else persisted_settings.provider
+        )
+        resolved_model = (
+            model.strip() if model is not None and model.strip() else persisted_settings.model
+        )
+        resolved_base_url = (
+            base_url.strip()
+            if base_url is not None and base_url.strip()
+            else persisted_settings.base_url
+        )
+        resolved_api_key = (
+            api_key.strip()
+            if api_key is not None and api_key.strip()
+            else persisted_settings.api_key
+        )
+
+        if resolved_provider == "heuristic_stub":
             provider_mode = HEURISTIC_STUB
             decision_provider = None
-        elif provider == "openai_compatible":
+        elif resolved_provider == "openai_compatible":
             provider_mode = OPENAI_CHAT_COMPLETIONS
             decision_provider = OpenAiCompatibleDecisionProvider(
-                model=model or "",
-                base_url=base_url or "",
-                api_key=api_key or "",
+                model=resolved_model,
+                base_url=resolved_base_url,
+                api_key=resolved_api_key or "",
                 entry_threshold_pct=config.entry_threshold_pct,
                 exit_threshold_pct=config.exit_threshold_pct,
             )
         else:
-            raise ValueError(f"Unsupported AI research provider: {provider}")
+            raise ValueError(f"Unsupported AI research provider: {resolved_provider}")
 
         return AiBarJudgeStrategy(
             account_id=self._settings.account_id,
@@ -1136,3 +1194,26 @@ def _build_runtime_stream_summaries(
         ),
         reverse=True,
     )
+
+
+def _serialize_research_ai_settings(snapshot: ResearchAiSettingsSnapshot) -> dict[str, object]:
+    return {
+        "accountId": snapshot.account_id,
+        "provider": snapshot.provider,
+        "model": snapshot.model,
+        "baseUrl": snapshot.base_url,
+        "hasApiKey": snapshot.has_api_key,
+        "apiKeyHint": _mask_api_key(snapshot.api_key),
+        "updatedAt": None if snapshot.updated_at is None else snapshot.updated_at.isoformat(),
+    }
+
+
+def _mask_api_key(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if len(normalized) <= 8:
+        return "*" * len(normalized)
+    return f"{normalized[:3]}...{normalized[-4:]}"

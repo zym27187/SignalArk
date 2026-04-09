@@ -12,6 +12,7 @@ from src.config.settings import Settings
 from src.domain.market import MarketStateSnapshot, NormalizedBar, SuspensionStatus, TradingPhase
 from src.domain.strategy.ai import AiStrategyDecision, OpenAiCompatibleDecisionProvider
 from src.infra.db import create_database_engine, create_session_factory
+from tests.support.migrations import upgrade_database
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 BASE_TIME = datetime(2026, 4, 1, 14, 0, tzinfo=SHANGHAI)
@@ -103,6 +104,7 @@ def test_api_research_snapshot_returns_live_backtest_payload(
     from apps.api.main import create_app
 
     settings = _settings(database_url)
+    upgrade_database(database_url)
     engine = create_database_engine(database_url)
     session_factory = create_session_factory(engine)
     control_store = TraderControlPlaneStore(session_factory)
@@ -179,6 +181,7 @@ def test_api_ai_research_snapshot_returns_live_ai_backtest_payload(
     monkeypatch.setattr(OpenAiCompatibleDecisionProvider, "decide", fake_decide)
 
     settings = _settings(database_url)
+    upgrade_database(database_url)
     engine = create_database_engine(database_url)
     session_factory = create_session_factory(engine)
     control_store = TraderControlPlaneStore(session_factory)
@@ -226,3 +229,109 @@ def test_api_ai_research_snapshot_returns_live_ai_backtest_payload(
     assert payload["performance"]["fillCount"] == 1
     assert payload["decisions"][-1]["reasonSummary"] == "model confirmed the bullish stack"
     assert "OpenAI-compatible" in payload["notes"][0]
+
+
+def test_api_ai_research_settings_roundtrip_and_snapshot_can_reuse_saved_api_key(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("SIGNALARK_POSTGRES_DSN", database_url)
+    from src.config import get_settings
+
+    get_settings.cache_clear()
+    from apps.api.main import create_app
+
+    captured = {}
+
+    async def fake_decide(self, request):
+        captured["model"] = getattr(self, "_model", None)
+        captured["base_url"] = getattr(self, "_base_url", None)
+        captured["api_key"] = getattr(self, "_api_key", None)
+        del request
+        return AiStrategyDecision(
+            action="rebalance",
+            confidence=Decimal("0.83"),
+            target_position=Decimal("400"),
+            reason_summary="saved config triggered the entry",
+            provider_name="openai_compatible",
+            diagnostics={"source": "saved_settings"},
+        )
+
+    monkeypatch.setattr(OpenAiCompatibleDecisionProvider, "decide", fake_decide)
+
+    settings = _settings(database_url)
+    upgrade_database(database_url)
+    engine = create_database_engine(database_url)
+    session_factory = create_session_factory(engine)
+    control_store = TraderControlPlaneStore(session_factory)
+    service = ApiControlPlaneService(
+        settings=settings,
+        session_factory=session_factory,
+        control_store=control_store,
+        market_gateway_factory=lambda: FakeHistoricalBarGateway(
+            [
+                _bar(
+                    index=index,
+                    close=str(Decimal("39.47") + Decimal("0.03") * index),
+                    previous_close="39.47",
+                )
+                for index in range(12)
+            ]
+        ),
+    )
+    app = create_app(settings=settings, control_plane_service=service)
+
+    try:
+        with TestClient(app) as client:
+            initial = client.get("/v1/research/ai-settings")
+            assert initial.status_code == 200
+            initial_payload = initial.json()
+            assert initial_payload["provider"] == "openai_compatible"
+            assert initial_payload["model"] == "gpt-5.4"
+            assert initial_payload["baseUrl"] == "https://api.openai.com/v1"
+            assert initial_payload["hasApiKey"] is False
+
+            saved = client.put(
+                "/v1/research/ai-settings",
+                json={
+                    "provider": "openai_compatible",
+                    "model": "gpt-5.4-mini",
+                    "baseUrl": "https://saved-provider.test/v1",
+                    "apiKey": "sk-saved-secret",
+                },
+            )
+            assert saved.status_code == 200
+            saved_payload = saved.json()
+            assert saved_payload["provider"] == "openai_compatible"
+            assert saved_payload["model"] == "gpt-5.4-mini"
+            assert saved_payload["baseUrl"] == "https://saved-provider.test/v1"
+            assert saved_payload["hasApiKey"] is True
+            assert saved_payload["apiKeyHint"].startswith("sk-")
+
+            reloaded = client.get("/v1/research/ai-settings")
+            assert reloaded.status_code == 200
+            assert reloaded.json()["hasApiKey"] is True
+            assert reloaded.json()["apiKeyHint"] == saved_payload["apiKeyHint"]
+
+            snapshot = client.post(
+                "/v1/research/ai-snapshot",
+                json={
+                    "symbol": "600036.SH",
+                    "timeframe": "15m",
+                    "limit": 12,
+                    "provider": "openai_compatible",
+                    "model": "gpt-5.4-mini",
+                    "baseUrl": "https://saved-provider.test/v1",
+                },
+            )
+    finally:
+        engine.dispose()
+
+    assert snapshot.status_code == 200
+    payload = snapshot.json()
+    assert payload["manifest"]["strategyId"] == "ai_bar_judge_v1"
+    assert payload["decisions"][-1]["reasonSummary"] == "saved config triggered the entry"
+    assert captured["model"] == "gpt-5.4-mini"
+    assert captured["base_url"] == "https://saved-provider.test/v1"
+    assert captured["api_key"] == "sk-saved-secret"

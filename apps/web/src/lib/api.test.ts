@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  fetchResearchAiSettings,
   fetchFillHistory,
   fetchMarketBars,
   fetchOrderHistory,
@@ -10,6 +11,7 @@ import {
   fetchStatus,
   postControlAction,
   postResearchAiSnapshot,
+  putResearchAiSettings,
 } from "./api";
 
 describe("api helpers", () => {
@@ -303,6 +305,80 @@ describe("api helpers", () => {
           model: "gpt-5.4",
           baseUrl: "https://api.openai.com/v1",
           apiKey: "sk-test",
+        }),
+      }),
+    );
+  });
+
+  it("loads and saves persisted AI research settings", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            accountId: "paper_account_001",
+            provider: "openai_compatible",
+            model: "gpt-5.4",
+            baseUrl: "https://api.openai.com/v1",
+            hasApiKey: true,
+            apiKeyHint: "sk-...cret",
+            updatedAt: "2026-04-09T18:00:00+08:00",
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            accountId: "paper_account_001",
+            provider: "openai_compatible",
+            model: "gpt-5.4-mini",
+            baseUrl: "https://saved-provider.test/v1",
+            hasApiKey: true,
+            apiKeyHint: "sk-...cret",
+            updatedAt: "2026-04-09T18:05:00+08:00",
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+
+    await fetchResearchAiSettings();
+    await putResearchAiSettings({
+      provider: "openai_compatible",
+      model: "gpt-5.4-mini",
+      baseUrl: "https://saved-provider.test/v1",
+      apiKey: "sk-saved-secret",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8000/v1/research/ai-settings",
+      expect.objectContaining({
+        headers: {
+          Accept: "application/json",
+        },
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8000/v1/research/ai-settings",
+      expect.objectContaining({
+        method: "PUT",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          provider: "openai_compatible",
+          model: "gpt-5.4-mini",
+          baseUrl: "https://saved-provider.test/v1",
+          apiKey: "sk-saved-secret",
+          clearApiKey: false,
         }),
       }),
     );

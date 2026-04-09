@@ -70,6 +70,16 @@ export interface BacktestDecisionSnapshot {
 
 export type ResearchAiProvider = "heuristic_stub" | "openai_compatible";
 
+export interface ResearchAiSettings {
+  accountId: string;
+  provider: ResearchAiProvider;
+  model: string;
+  baseUrl: string;
+  hasApiKey: boolean;
+  apiKeyHint: string | null;
+  updatedAt: string | null;
+}
+
 export interface ResearchAiSnapshotRequest {
   symbol?: string;
   timeframe?: string;
@@ -78,6 +88,14 @@ export interface ResearchAiSnapshotRequest {
   model?: string;
   baseUrl?: string;
   apiKey?: string;
+}
+
+export interface ResearchAiSettingsUpdateRequest {
+  provider: ResearchAiProvider;
+  model: string;
+  baseUrl: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
 }
 
 export type ResearchSnapshotSourceMode = "fixture" | "imported" | "live";

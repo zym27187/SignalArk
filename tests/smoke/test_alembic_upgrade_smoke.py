@@ -20,9 +20,10 @@ EXPECTED_PHASE2_TABLES = {
     "trader_controls",
     "trader_account_leases",
     "trader_runtime_status",
+    "research_ai_settings",
     "alembic_version",
 }
-HEAD_REVISION = "20260403_090000"
+HEAD_REVISION = "20260409_190000"
 
 
 def _sqlite_database_url(path: Path) -> str:

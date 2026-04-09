@@ -17,7 +17,7 @@ from src.infra.observability import build_observability
 from src.shared.logging import configure_logging
 
 from apps.api.control_plane import ApiControlPlaneService
-from apps.trader.control_plane import TraderControlPlaneStore
+from apps.trader.control_plane import MissingControlPlaneSchemaError, TraderControlPlaneStore
 
 
 class ResearchAiSnapshotRequest(BaseModel):
@@ -28,10 +28,22 @@ class ResearchAiSnapshotRequest(BaseModel):
     symbol: str | None = None
     timeframe: str | None = None
     limit: int = Field(default=96, ge=1, le=500)
-    provider: Literal["heuristic_stub", "openai_compatible"] = "openai_compatible"
+    provider: Literal["heuristic_stub", "openai_compatible"] | None = None
     model: str | None = None
     base_url: str | None = Field(default=None, alias="baseUrl")
     api_key: str | None = Field(default=None, alias="apiKey")
+
+
+class ResearchAiSettingsUpdateRequest(BaseModel):
+    """Body contract for persisting AI research settings."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid", str_strip_whitespace=True)
+
+    provider: Literal["heuristic_stub", "openai_compatible"]
+    model: str
+    base_url: str = Field(alias="baseUrl")
+    api_key: str | None = Field(default=None, alias="apiKey")
+    clear_api_key: bool = Field(default=False, alias="clearApiKey")
 
 
 def build_control_plane_service(settings) -> ApiControlPlaneService:
@@ -221,6 +233,28 @@ def create_app(
                 status_code=503,
                 detail="Market data is temporarily unavailable.",
             ) from exc
+
+    @app.get("/v1/research/ai-settings")
+    async def research_ai_settings() -> dict[str, object]:
+        return service.research_ai_settings_payload()
+
+    @app.put("/v1/research/ai-settings")
+    async def update_research_ai_settings(
+        request: ResearchAiSettingsUpdateRequest,
+    ) -> dict[str, object]:
+        try:
+            return service.save_research_ai_settings(
+                provider=request.provider,
+                model=request.model,
+                base_url=request.base_url,
+                api_key=request.api_key,
+                replace_api_key="api_key" in request.model_fields_set,
+                clear_api_key=request.clear_api_key,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except MissingControlPlaneSchemaError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.post("/v1/research/ai-snapshot")
     async def research_ai_snapshot(request: ResearchAiSnapshotRequest) -> dict[str, object]:

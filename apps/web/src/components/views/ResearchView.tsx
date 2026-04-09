@@ -7,6 +7,7 @@ import { DefinitionGrid } from "../DefinitionGrid";
 import { MetricCard } from "../MetricCard";
 import { SectionCard } from "../SectionCard";
 import { useAiResearchData } from "../../hooks/use-ai-research-data";
+import { useAiResearchSettings } from "../../hooks/use-ai-research-settings";
 import type { ResearchDataState } from "../../hooks/use-research-data";
 import {
   formatDateTime,
@@ -115,14 +116,28 @@ export function ResearchView({
   onTimeframeChange,
 }: ResearchViewProps) {
   const aiResearchData = useAiResearchData();
+  const aiSettings = useAiResearchSettings({ enabled: true });
   const [aiProvider, setAiProvider] = useState<ResearchAiProvider>("openai_compatible");
   const [aiModel, setAiModel] = useState("gpt-5.4");
   const [aiBaseUrl, setAiBaseUrl] = useState("https://api.openai.com/v1");
   const [aiApiKey, setAiApiKey] = useState("");
+  const [clearSavedApiKey, setClearSavedApiKey] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
 
   useEffect(() => {
     aiResearchData.reset();
   }, [selectedSymbol, selectedTimeframe]);
+
+  useEffect(() => {
+    if (aiSettings.settings === null) {
+      return;
+    }
+    setAiProvider(aiSettings.settings.provider);
+    setAiModel(aiSettings.settings.model);
+    setAiBaseUrl(aiSettings.settings.baseUrl);
+    setAiApiKey("");
+    setClearSavedApiKey(false);
+  }, [aiSettings.settings]);
 
   const snapshot = researchData.snapshot;
   const manifest = snapshot?.manifest;
@@ -146,6 +161,41 @@ export function ResearchView({
     symbolNames,
     waitingHint: "填好模型接入信息后，这里会生成一份 AI 回测结果。",
   });
+  const savedApiKeyHint = aiSettings.settings?.hasApiKey ? aiSettings.settings.apiKeyHint : null;
+  const latestAiSettingsUpdatedAt = aiSettings.settings?.updatedAt;
+
+  async function persistAiSettings() {
+    const nextApiKey = aiApiKey.trim() ? aiApiKey.trim() : undefined;
+    const savedSettings = await aiSettings.save({
+      provider: aiProvider,
+      model: aiModel,
+      baseUrl: aiBaseUrl,
+      apiKey: nextApiKey,
+      clearApiKey: clearSavedApiKey,
+    });
+    if (savedSettings !== null) {
+      setAiApiKey("");
+      setClearSavedApiKey(false);
+      setSettingsMessage("AI 配置已保存到后端。");
+    }
+    return savedSettings;
+  }
+
+  async function saveAndRunAiBacktest() {
+    const savedSettings = await persistAiSettings();
+    if (savedSettings === null) {
+      return;
+    }
+    setSettingsMessage("AI 配置已保存，开始运行回测。");
+    await aiResearchData.run({
+      symbol: selectedSymbol,
+      timeframe: selectedTimeframe,
+      limit: 96,
+      provider: savedSettings.provider,
+      model: savedSettings.model,
+      baseUrl: savedSettings.baseUrl,
+    });
+  }
 
   function renderSnapshotSections(
     nextSnapshot: ResearchSnapshot | null,
@@ -345,23 +395,18 @@ export function ResearchView({
       <SectionCard
         eyebrow="AI 回测"
         title="模型实验台"
-        description="接入 OpenAI-compatible 模型，指定模型名和 Base URL，单独生成一份 AI 回测结果。"
+        description="数据库里会持久化保存 AI 回测配置，进入研究页时自动回填；运行回测时会优先复用后端已保存的 API Key。"
       >
         <form
           className="ai-form"
           onSubmit={(event) => {
             event.preventDefault();
-            void aiResearchData.run({
-              symbol: selectedSymbol,
-              timeframe: selectedTimeframe,
-              limit: 96,
-              provider: aiProvider,
-              model: aiProvider === "openai_compatible" ? aiModel : undefined,
-              baseUrl: aiProvider === "openai_compatible" ? aiBaseUrl : undefined,
-              apiKey: aiProvider === "openai_compatible" ? aiApiKey : undefined,
-            });
+            void saveAndRunAiBacktest();
           }}
         >
+          {aiSettings.error ? <p className="section-error">{aiSettings.error}</p> : null}
+          {settingsMessage ? <p className="section-success">{settingsMessage}</p> : null}
+
           <div className="ai-form__grid">
             <label className="field">
               <span className="field__label">接入方式</span>
@@ -422,7 +467,11 @@ export function ResearchView({
                 disabled={aiProvider !== "openai_compatible"}
               />
               <span className="field__hint">
-                仅用于当前这次 AI 回测请求，不会由前端持久化，也不会写回数据库。
+                {aiProvider !== "openai_compatible"
+                  ? "当前选择的是内置 heuristic stub，不会使用外部 API Key。"
+                  : savedApiKeyHint && !clearSavedApiKey
+                    ? `数据库里已保存 API Key：${savedApiKeyHint}。留空表示继续使用已保存值。`
+                    : "输入新 API Key 后保存，会写入后端数据库供后续回测复用。"}
               </span>
             </label>
           </div>
@@ -434,24 +483,63 @@ export function ResearchView({
           </datalist>
 
           <div className="ai-form__footer">
-            <div className="page-hero__chips page-hero__chips--left">
-              <span className="tag">
-                {aiProvider === "openai_compatible" ? "OpenAI Compatible" : "Heuristic Stub"}
-              </span>
-              <span className="tag">{formatSymbolLabel(selectedSymbol, symbolNames)}</span>
-              <span className="tag">{selectedTimeframe}</span>
-              {aiResearchData.snapshot?.manifest !== undefined ? (
-                <span className="tag">{aiResearchData.snapshot.manifest.strategyId}</span>
-              ) : null}
+            <div className="ai-form__meta">
+              <div className="page-hero__chips page-hero__chips--left">
+                <span className="tag">
+                  {aiProvider === "openai_compatible" ? "OpenAI Compatible" : "Heuristic Stub"}
+                </span>
+                <span className="tag">{formatSymbolLabel(selectedSymbol, symbolNames)}</span>
+                <span className="tag">{selectedTimeframe}</span>
+                {aiResearchData.snapshot?.manifest !== undefined ? (
+                  <span className="tag">{aiResearchData.snapshot.manifest.strategyId}</span>
+                ) : null}
+                {latestAiSettingsUpdatedAt ? (
+                  <span className="tag">已保存于 {formatDateTime(latestAiSettingsUpdatedAt)}</span>
+                ) : null}
+              </div>
+
+              <div className="ai-form__subactions">
+                {savedApiKeyHint ? (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      setClearSavedApiKey(true);
+                      setAiApiKey("");
+                      setSettingsMessage("当前会在下次保存时清除后端已保存的 API Key。");
+                    }}
+                    disabled={aiSettings.isSaving || aiResearchData.isLoading}
+                  >
+                    清除已保存 Key
+                  </button>
+                ) : null}
+              </div>
             </div>
 
-            <button
-              type="submit"
-              className="refresh-button"
-              disabled={aiResearchData.isLoading}
-            >
-              {aiResearchData.isLoading ? "AI 回测运行中..." : "运行 AI 回测"}
-            </button>
+            <div className="ai-form__actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  void persistAiSettings();
+                }}
+                disabled={aiSettings.isSaving || aiResearchData.isLoading}
+              >
+                {aiSettings.isSaving ? "保存中..." : "保存 AI 配置"}
+              </button>
+
+              <span className="tag">
+                {clearSavedApiKey ? "将清除已保存 Key" : "保存后立即运行"}
+              </span>
+
+              <button
+                type="submit"
+                className="refresh-button"
+                disabled={aiResearchData.isLoading || aiSettings.isSaving || aiSettings.isLoading}
+              >
+                {aiResearchData.isLoading ? "AI 回测运行中..." : "保存并运行 AI 回测"}
+              </button>
+            </div>
           </div>
         </form>
       </SectionCard>
@@ -476,7 +564,7 @@ export function ResearchView({
           notesTitle: "AI 结果从哪来",
           notesDescription: "说明当前 AI 回放的数据来源和模型接入方式。",
           emptyTitle: "还没有 AI 回测结果",
-          emptyCopy: "填好模型、Base URL 和 API Key 后，点击运行 AI 回测即可生成对照结果。",
+          emptyCopy: "填好并保存模型配置后，点击运行 AI 回测即可生成对照结果。",
         },
       })}
     </main>
