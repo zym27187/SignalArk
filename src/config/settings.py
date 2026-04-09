@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from decimal import Decimal
@@ -19,7 +20,11 @@ CONFIGS_DIR = ROOT_DIR / "configs"
 DOTENV_PATH = ROOT_DIR / ".env"
 ENV_PREFIX = "SIGNALARK_"
 DEFAULT_CONFIG_PROFILE = "dev"
-FIXED_SUPPORTED_SYMBOLS = ("600036.SH", "000001.SZ")
+DEFAULT_SUPPORTED_SYMBOLS = ("600036.SH", "000001.SZ")
+DEFAULT_SYMBOL_NAMES = {
+    "600036.SH": "招商银行",
+    "000001.SZ": "平安银行",
+}
 DEFAULT_SYMBOL_RULES = {
     "600036.SH": {
         "lot_size": "100",
@@ -67,6 +72,7 @@ YAML_PATH_TO_FIELD = {
     ("trading", "account_id"): "account_id",
     ("trading", "primary_strategy_id"): "primary_strategy_id",
     ("trading", "supported_symbols"): "supported_symbols",
+    ("trading", "symbol_names"): "symbol_names",
     ("trading", "symbols"): "symbols",
     ("trading", "primary_timeframe"): "primary_timeframe",
     ("trading", "market_data_mode"): "market_data_mode",
@@ -94,7 +100,7 @@ YAML_PATH_TO_FIELD = {
 
 
 class AshareSymbolRule(BaseModel):
-    """Fixed A-share trading rules for one supported symbol."""
+    """Configured A-share trading rules for one supported symbol."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -266,7 +272,8 @@ class Settings(BaseSettings):
     primary_strategy_id: Literal["baseline_momentum_v1", "ai_bar_judge_v1"] = (
         "baseline_momentum_v1"
     )
-    supported_symbols: list[str] = Field(default_factory=lambda: list(FIXED_SUPPORTED_SYMBOLS))
+    supported_symbols: list[str] = Field(default_factory=lambda: list(DEFAULT_SUPPORTED_SYMBOLS))
+    symbol_names: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_SYMBOL_NAMES))
     symbols: list[str] = Field(default_factory=lambda: ["600036.SH"])
     primary_timeframe: Literal["15m"] = "15m"
     market_data_mode: Literal["bar"] = "bar"
@@ -332,6 +339,32 @@ class Settings(BaseSettings):
             raise TypeError("symbol_rules must be a mapping keyed by symbol.")
         return {str(symbol).strip().upper(): rule for symbol, rule in value.items()}
 
+    @field_validator("symbol_names", mode="before")
+    @classmethod
+    def normalize_symbol_names(cls, value: object) -> dict[str, str]:
+        """Normalize symbol-name mappings from YAML or JSON env strings."""
+        if value is None:
+            return {}
+
+        raw_mapping = value
+        if isinstance(value, str):
+            try:
+                raw_mapping = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise ValueError("symbol_names must be valid JSON when provided via env.") from exc
+
+        if not isinstance(raw_mapping, Mapping):
+            raise TypeError("symbol_names must be a mapping keyed by symbol.")
+
+        normalized: dict[str, str] = {}
+        for symbol, name in raw_mapping.items():
+            normalized_symbol = str(symbol).strip().upper()
+            normalized_name = str(name).strip()
+            if not normalized_name:
+                raise ValueError("symbol_names entries must provide a non-empty display name.")
+            normalized[normalized_symbol] = normalized_name
+        return normalized
+
     @field_validator("api_cors_allowed_origins", mode="before")
     @classmethod
     def normalize_api_cors_allowed_origins(cls, value: object) -> list[str]:
@@ -373,20 +406,26 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_v1_contracts(self) -> Settings:
         """Enforce the V1 fixed boundaries and fail fast on invalid config."""
-        if self.supported_symbols != list(FIXED_SUPPORTED_SYMBOLS):
-            raise ValueError("V1 supported_symbols are fixed to 600036.SH and 000001.SZ.")
+        if not self.supported_symbols:
+            raise ValueError("supported_symbols must contain at least one symbol.")
 
-        if not 1 <= len(self.symbols) <= 3:
-            raise ValueError("V1 only supports 1-3 symbols.")
+        if len(set(self.supported_symbols)) != len(self.supported_symbols):
+            raise ValueError("supported_symbols must be unique.")
+
+        if not self.symbols:
+            raise ValueError("symbols must contain at least one active runtime symbol.")
 
         if len(set(self.symbols)) != len(self.symbols):
             raise ValueError("V1 symbols must be unique.")
 
         if not set(self.symbols).issubset(set(self.supported_symbols)):
-            raise ValueError("Runtime symbols must be a subset of the V1 supported_symbols list.")
+            raise ValueError("Runtime symbols must be a subset of supported_symbols.")
 
         if set(self.symbol_rules) != set(self.supported_symbols):
             raise ValueError("A-share symbol_rules must be declared for every supported symbol.")
+
+        if set(self.symbol_names) != set(self.supported_symbols):
+            raise ValueError("symbol_names must be declared for every supported symbol.")
 
         if self.execution_mode != "paper":
             raise ValueError("V1 execution_mode must remain paper.")

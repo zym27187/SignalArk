@@ -5,14 +5,20 @@ import { DefinitionGrid } from "../DefinitionGrid";
 import { MetricCard } from "../MetricCard";
 import { SectionCard } from "../SectionCard";
 import type { MarketDataState } from "../../hooks/use-market-data";
-import { formatDateTime, formatDecimal, titleCase } from "../../lib/format";
+import {
+  formatDateTime,
+  formatDecimal,
+  formatSymbolLabel,
+  titleCase,
+} from "../../lib/format";
 import { getResearchSnapshot } from "../../lib/research-fixtures";
-import type { StatusPayload } from "../../types/api";
+import type { StatusPayload, SymbolNameMap } from "../../types/api";
 
 interface MarketViewProps {
   status: StatusPayload | null;
   marketData: MarketDataState;
   availableSymbols: string[];
+  symbolNames: SymbolNameMap;
   availableTimeframes: string[];
   selectedSymbol: string;
   selectedTimeframe: string;
@@ -44,6 +50,7 @@ export function MarketView({
   status,
   marketData,
   availableSymbols,
+  symbolNames,
   availableTimeframes,
   selectedSymbol,
   selectedTimeframe,
@@ -61,6 +68,7 @@ export function MarketView({
   const lastBar = bars[bars.length - 1];
   const activeSymbol =
     marketData.snapshot.symbol ?? selectedSymbol ?? status?.symbols?.[0] ?? fallbackSnapshot.manifest.symbols[0];
+  const activeSymbolLabel = formatSymbolLabel(activeSymbol, symbolNames);
   const timeframe = marketData.snapshot.timeframe ?? selectedTimeframe ?? fallbackSnapshot.manifest.timeframe;
   const sourceLabel = resolveSourceLabel(
     usingLiveBars,
@@ -86,7 +94,7 @@ export function MarketView({
       ? "这里展示的是交易系统当时实际记录到的价格。"
       : runtimeAudit.available_streams.length > 0
         ? `系统最近记录的品种：${runtimeAudit.available_streams
-            .map((stream) => `${stream.symbol}/${stream.timeframe}`)
+            .map((stream) => `${formatSymbolLabel(stream.symbol, symbolNames)}/${stream.timeframe}`)
             .join("、")}`
         : "系统暂时还没有记录到对应的价格。");
 
@@ -100,7 +108,10 @@ export function MarketView({
             这里优先展示真实价格和账户曲线；如果本地还没积累足够数据，页面会自动用示例数据补位，保证图表始终可看。
           </p>
           <DatasetSwitcher
-            symbolOptions={availableSymbols.map((value) => ({ value }))}
+            symbolOptions={availableSymbols.map((value) => ({
+              value,
+              label: formatSymbolLabel(value, symbolNames),
+            }))}
             timeframeOptions={availableTimeframes.map((value) => ({ value }))}
             symbol={selectedSymbol}
             timeframe={selectedTimeframe}
@@ -112,7 +123,7 @@ export function MarketView({
           <span className={`tag${usingLiveBars && usingLiveCurve ? "" : " tag--fixture"}`}>
             {sourceLabel}
           </span>
-          <span className="tag">{activeSymbol}</span>
+          <span className="tag">{activeSymbolLabel}</span>
           <span className="tag">{timeframe}</span>
         </div>
       </section>
@@ -150,7 +161,7 @@ export function MarketView({
             description="看选中标的在这段时间里的价格变化。"
           >
             <CandlestickChart
-              title={activeSymbol}
+              title={activeSymbolLabel}
               subtitle={`${timeframe} 价格走势${usingLiveBars ? "" : "（示例补位）"}`}
               bars={bars}
             />
@@ -190,8 +201,8 @@ export function MarketView({
                     ? `${formatDateTime(runtimeSeenBar.event_time)} / ${formatDecimal(runtimeSeenBar.close, 2)}`
                     : "暂无匹配流",
                   hint: runtimeSeenBar
-                    ? `${runtimeSeenBar.symbol} · ${runtimeSeenBar.timeframe} · ${runtimeSeenBar.source_kind ?? "unknown"}`
-                    : `当前筛选 ${selectedSymbol} / ${selectedTimeframe} 还没有落盘记录。`,
+                    ? `${formatSymbolLabel(runtimeSeenBar.symbol, symbolNames)} · ${runtimeSeenBar.timeframe} · ${runtimeSeenBar.source_kind ?? "unknown"}`
+                    : `当前筛选 ${formatSymbolLabel(selectedSymbol, symbolNames)} / ${selectedTimeframe} 还没有落盘记录。`,
                 },
                 {
                   label: "最近用于决策",
@@ -199,7 +210,7 @@ export function MarketView({
                     ? `${formatDateTime(runtimeStrategyBar.event_time)} / ${formatDecimal(runtimeStrategyBar.close, 2)}`
                     : "还没进入策略",
                   hint: runtimeStrategyBar
-                    ? `${runtimeStrategyBar.symbol} · ${runtimeStrategyBar.timeframe} · 真正送入策略的最新价格`
+                    ? `${formatSymbolLabel(runtimeStrategyBar.symbol, symbolNames)} · ${runtimeStrategyBar.timeframe} · 真正送入策略的最新价格`
                     : "如果系统看到了价格，但还没真正拿去做策略判断，这里会保持为空。",
                 },
                 {
@@ -207,7 +218,10 @@ export function MarketView({
                   value:
                     runtimeAudit.available_streams.length > 0
                       ? runtimeAudit.available_streams
-                          .map((stream) => `${stream.symbol}/${stream.timeframe}`)
+                          .map(
+                            (stream) =>
+                              `${formatSymbolLabel(stream.symbol, symbolNames)}/${stream.timeframe}`,
+                          )
                           .join(", ")
                       : "暂无",
                   hint: "这里展示系统最近记录过的品种和周期，可快速判断页面筛选是否和真实消费流一致。",

@@ -147,6 +147,7 @@ class ApiControlPlaneService:
                 "execution_mode": self._settings.execution_mode,
                 "exchange": self._settings.exchange,
                 "symbols": self._settings.symbols,
+                "symbol_names": self._settings.symbol_names,
             }
         )
         return payload

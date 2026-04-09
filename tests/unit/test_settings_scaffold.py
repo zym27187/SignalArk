@@ -50,6 +50,44 @@ def test_fixture_market_data_source_is_allowed() -> None:
     assert settings.market_data_source == "fixture"
 
 
+def test_settings_allow_configuring_custom_supported_symbols_with_names() -> None:
+    settings = Settings(
+        supported_symbols=["600519.SH", "000333.SZ"],
+        symbols=["600519.SH", "000333.SZ"],
+        symbol_names={
+            "600519.SH": "贵州茅台",
+            "000333.SZ": "美的集团",
+        },
+        symbol_rules={
+            "600519.SH": {
+                "lot_size": "100",
+                "qty_step": "100",
+                "price_tick": "0.01",
+                "min_qty": "100",
+                "allow_odd_lot_sell": True,
+                "t_plus_one_sell": True,
+                "price_limit_pct": "0.10",
+            },
+            "000333.SZ": {
+                "lot_size": "100",
+                "qty_step": "100",
+                "price_tick": "0.01",
+                "min_qty": "100",
+                "allow_odd_lot_sell": True,
+                "t_plus_one_sell": True,
+                "price_limit_pct": "0.10",
+            },
+        },
+    )
+
+    assert settings.supported_symbols == ["600519.SH", "000333.SZ"]
+    assert settings.symbols == ["600519.SH", "000333.SZ"]
+    assert settings.symbol_names == {
+        "600519.SH": "贵州茅台",
+        "000333.SZ": "美的集团",
+    }
+
+
 def test_lease_heartbeat_must_be_shorter_than_ttl() -> None:
     with pytest.raises(ValueError, match="smaller than lease TTL"):
         Settings(lease_ttl_seconds=10, lease_heartbeat_interval_seconds=10)
@@ -84,6 +122,7 @@ def test_load_settings_applies_yaml_dotenv_and_process_env_precedence(
     assert settings.market_data_source == "eastmoney"
     assert settings.log_level == "WARNING"
     assert settings.api_port == 9100
+    assert settings.symbol_names["600036.SH"] == "招商银行"
     assert settings.api_cors_allowed_origins == [
         "http://127.0.0.1:5173",
         "http://localhost:5173",

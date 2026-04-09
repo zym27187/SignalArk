@@ -1,12 +1,19 @@
-import { compactId, formatDateTime, summarizePayload, titleCase } from "../lib/format";
-import type { ReplayEvent } from "../types/api";
+import {
+  compactId,
+  formatDateTime,
+  formatSymbolLabel,
+  summarizePayload,
+  titleCase,
+} from "../lib/format";
+import type { ReplayEvent, SymbolNameMap } from "../types/api";
 
 interface EventTimelineProps {
   events: ReplayEvent[];
+  symbolNames: SymbolNameMap;
   error?: string;
 }
 
-export function EventTimeline({ events, error }: EventTimelineProps) {
+export function EventTimeline({ events, symbolNames, error }: EventTimelineProps) {
   return (
     <div className="event-timeline">
       {error ? <p className="section-error">事件读取失败：{error}</p> : null}
@@ -30,7 +37,7 @@ export function EventTimeline({ events, error }: EventTimelineProps) {
                 <span>{formatDateTime(event.event_time)}</span>
               </div>
               <p className="event-list__meta">
-                来源 {event.source} · {event.symbol ?? "账户"} · 批次 {compactId(event.trader_run_id)}
+                来源 {event.source} · {formatSymbolLabel(event.symbol, symbolNames, "账户")} · 批次 {compactId(event.trader_run_id)}
               </p>
               <p className="event-list__payload">{summarizePayload(event.payload_json)}</p>
             </li>

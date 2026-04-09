@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { titleCase } from "../lib/format";
-import type { DashboardActivityFilters } from "../types/api";
+import { formatSymbolLabel, titleCase } from "../lib/format";
+import type { DashboardActivityFilters, SymbolNameMap } from "../types/api";
 
 const LIMIT_OPTIONS = [12, 25, 50, 100];
 const ORDER_STATUS_OPTIONS = [
@@ -16,6 +16,7 @@ const ORDER_STATUS_OPTIONS = [
 interface ActivityFiltersPanelProps {
   filters: DashboardActivityFilters;
   availableSymbols: string[];
+  symbolNames: SymbolNameMap;
   isRefreshing: boolean;
   onApply: (filters: DashboardActivityFilters) => Promise<void> | void;
   onReset: () => Promise<void> | void;
@@ -24,6 +25,7 @@ interface ActivityFiltersPanelProps {
 export function ActivityFiltersPanel({
   filters,
   availableSymbols,
+  symbolNames,
   isRefreshing,
   onApply,
   onReset,
@@ -60,7 +62,7 @@ export function ActivityFiltersPanel({
                 key={symbol}
                 value={symbol}
               >
-                {symbol}
+                {formatSymbolLabel(symbol, symbolNames)}
               </option>
             ))}
           </select>

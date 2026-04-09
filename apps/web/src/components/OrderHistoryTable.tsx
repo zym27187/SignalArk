@@ -1,12 +1,19 @@
-import { compactId, formatDateTime, formatDecimal, titleCase } from "../lib/format";
-import type { HistoryOrder } from "../types/api";
+import {
+  compactId,
+  formatDateTime,
+  formatDecimal,
+  formatSymbolLabel,
+  titleCase,
+} from "../lib/format";
+import type { HistoryOrder, SymbolNameMap } from "../types/api";
 
 interface OrderHistoryTableProps {
   orders: HistoryOrder[];
+  symbolNames: SymbolNameMap;
   error?: string;
 }
 
-export function OrderHistoryTable({ orders, error }: OrderHistoryTableProps) {
+export function OrderHistoryTable({ orders, symbolNames, error }: OrderHistoryTableProps) {
   return (
     <div className="table-shell">
       {error ? <p className="section-error">历史订单读取失败：{error}</p> : null}
@@ -39,7 +46,7 @@ export function OrderHistoryTable({ orders, error }: OrderHistoryTableProps) {
             {orders.map((order) => (
               <tr key={order.order_id}>
                 <td title={order.order_id}>{compactId(order.order_id)}</td>
-                <td>{order.symbol}</td>
+                <td>{formatSymbolLabel(order.symbol, symbolNames)}</td>
                 <td>{titleCase(order.side)}</td>
                 <td>{titleCase(order.order_type)}</td>
                 <td>{formatDecimal(order.qty, 0)}</td>

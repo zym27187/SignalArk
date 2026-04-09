@@ -5,11 +5,19 @@ import { DefinitionGrid } from "../DefinitionGrid";
 import { MetricCard } from "../MetricCard";
 import { SectionCard } from "../SectionCard";
 import type { ResearchDataState } from "../../hooks/use-research-data";
-import { formatDateTime, formatDecimal, formatSignedMoney } from "../../lib/format";
+import {
+  formatDateTime,
+  formatDecimal,
+  formatSignedMoney,
+  formatSymbolLabel,
+  formatSymbolList,
+} from "../../lib/format";
+import type { SymbolNameMap } from "../../types/api";
 
 interface ResearchViewProps {
   researchData: ResearchDataState;
   availableSymbols: string[];
+  symbolNames: SymbolNameMap;
   availableTimeframes: string[];
   selectedSymbol: string;
   selectedTimeframe: string;
@@ -20,6 +28,7 @@ interface ResearchViewProps {
 export function ResearchView({
   researchData,
   availableSymbols,
+  symbolNames,
   availableTimeframes,
   selectedSymbol,
   selectedTimeframe,
@@ -53,7 +62,7 @@ export function ResearchView({
         },
         {
           label: "账户与标的",
-          value: `${manifest.accountId} / ${manifest.symbols.join(", ")}`,
+          value: `${manifest.accountId} / ${formatSymbolList(manifest.symbols, symbolNames)}`,
           hint: `${manifest.handlerName} · ${manifest.timeframe}`,
         },
         {
@@ -88,7 +97,10 @@ export function ResearchView({
             这里会按你选中的标的和周期，直接生成一份回测结果，帮助快速看清这套策略在这段时间里赚了多少、回撤多大、为什么买卖。
           </p>
           <DatasetSwitcher
-            symbolOptions={availableSymbols.map((value) => ({ value }))}
+            symbolOptions={availableSymbols.map((value) => ({
+              value,
+              label: formatSymbolLabel(value, symbolNames),
+            }))}
             timeframeOptions={availableTimeframes.map((value) => ({ value }))}
             symbol={selectedSymbol}
             timeframe={selectedTimeframe}
@@ -98,6 +110,7 @@ export function ResearchView({
         </div>
         <div className="page-hero__chips">
           <span className={`tag${sourceIsFixture ? " tag--fixture" : ""}`}>{sourceLabel}</span>
+          <span className="tag">{formatSymbolLabel(selectedSymbol, symbolNames)}</span>
           <span className="tag">{manifest?.strategyId ?? "baseline_momentum_v1"}</span>
           <span className="tag">{manifest?.timeframe ?? selectedTimeframe}</span>
         </div>
@@ -157,7 +170,7 @@ export function ResearchView({
             {equityCurve.length > 0 && manifest ? (
               <AreaChart
                 title="回测资金"
-                subtitle={`${manifest.symbols.join(", ")} · ${manifest.timeframe} · ${manifest.barCount} 根 K 线`}
+                subtitle={`${formatSymbolList(manifest.symbols, symbolNames)} · ${manifest.timeframe} · ${manifest.barCount} 根 K 线`}
                 points={equityCurve}
                 accent="red"
                 formatAsMoney

@@ -1,12 +1,19 @@
-import { compactId, formatDateTime, formatDecimal, titleCase } from "../lib/format";
-import type { FillHistoryEntry } from "../types/api";
+import {
+  compactId,
+  formatDateTime,
+  formatDecimal,
+  formatSymbolLabel,
+  titleCase,
+} from "../lib/format";
+import type { FillHistoryEntry, SymbolNameMap } from "../types/api";
 
 interface FillHistoryTableProps {
   fills: FillHistoryEntry[];
+  symbolNames: SymbolNameMap;
   error?: string;
 }
 
-export function FillHistoryTable({ fills, error }: FillHistoryTableProps) {
+export function FillHistoryTable({ fills, symbolNames, error }: FillHistoryTableProps) {
   return (
     <div className="table-shell">
       {error ? <p className="section-error">历史成交读取失败：{error}</p> : null}
@@ -37,7 +44,7 @@ export function FillHistoryTable({ fills, error }: FillHistoryTableProps) {
             {fills.map((fill) => (
               <tr key={fill.fill_id}>
                 <td title={fill.order_id}>{compactId(fill.order_id)}</td>
-                <td>{fill.symbol}</td>
+                <td>{formatSymbolLabel(fill.symbol, symbolNames)}</td>
                 <td>{titleCase(fill.side)}</td>
                 <td>{formatDecimal(fill.qty, 0)}</td>
                 <td>{formatDecimal(fill.price, 2)}</td>

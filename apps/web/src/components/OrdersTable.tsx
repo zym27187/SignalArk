@@ -1,12 +1,13 @@
-import { formatDateTime, formatDecimal, titleCase } from "../lib/format";
-import type { ActiveOrder } from "../types/api";
+import { formatDateTime, formatDecimal, formatSymbolLabel, titleCase } from "../lib/format";
+import type { ActiveOrder, SymbolNameMap } from "../types/api";
 
 interface OrdersTableProps {
   orders: ActiveOrder[];
+  symbolNames: SymbolNameMap;
   error?: string;
 }
 
-export function OrdersTable({ orders, error }: OrdersTableProps) {
+export function OrdersTable({ orders, symbolNames, error }: OrdersTableProps) {
   return (
     <div className="table-shell">
       {error ? <p className="section-error">订单读取失败：{error}</p> : null}
@@ -35,7 +36,7 @@ export function OrdersTable({ orders, error }: OrdersTableProps) {
           <tbody>
             {orders.map((order) => (
               <tr key={order.order_id}>
-                <td>{order.symbol}</td>
+                <td>{formatSymbolLabel(order.symbol, symbolNames)}</td>
                 <td>{titleCase(order.side)}</td>
                 <td>{titleCase(order.order_type)}</td>
                 <td>{formatDecimal(order.qty, 0)}</td>

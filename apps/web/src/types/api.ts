@@ -1,5 +1,7 @@
 import type { CandleBar, CurvePoint } from "./research";
 
+export type SymbolNameMap = Record<string, string>;
+
 export interface StatusPayload {
   trader_run_id: string | null;
   instance_id: string | null;
@@ -29,6 +31,7 @@ export interface StatusPayload {
   execution_mode?: string;
   exchange?: string;
   symbols?: string[];
+  symbol_names?: SymbolNameMap;
 }
 
 export interface Position {

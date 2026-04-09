@@ -128,6 +128,7 @@ def test_api_read_endpoints_return_empty_payloads_before_core_tables_exist(
             "execution_mode": settings.execution_mode,
             "exchange": settings.exchange,
             "symbols": settings.symbols,
+            "symbol_names": settings.symbol_names,
         }
 
         assert positions.status_code == 200

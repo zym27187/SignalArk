@@ -66,6 +66,7 @@ def create_app(
             "env": settings.env,
             "execution_mode": settings.execution_mode,
             "symbols": settings.symbols,
+            "symbol_names": settings.symbol_names,
             "status": "control_plane_ready",
         }
 

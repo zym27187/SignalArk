@@ -1,12 +1,19 @@
-import { formatDateTime, formatDecimal, formatSignedMoney, titleCase } from "../lib/format";
-import type { Position } from "../types/api";
+import {
+  formatDateTime,
+  formatDecimal,
+  formatSignedMoney,
+  formatSymbolLabel,
+  titleCase,
+} from "../lib/format";
+import type { Position, SymbolNameMap } from "../types/api";
 
 interface PositionsTableProps {
   positions: Position[];
+  symbolNames: SymbolNameMap;
   error?: string;
 }
 
-export function PositionsTable({ positions, error }: PositionsTableProps) {
+export function PositionsTable({ positions, symbolNames, error }: PositionsTableProps) {
   return (
     <div className="table-shell">
       {error ? <p className="section-error">持仓数据异常：{error}</p> : null}
@@ -36,7 +43,7 @@ export function PositionsTable({ positions, error }: PositionsTableProps) {
           <tbody>
             {positions.map((position) => (
               <tr key={position.symbol}>
-                <td>{position.symbol}</td>
+                <td>{formatSymbolLabel(position.symbol, symbolNames)}</td>
                 <td>{formatDecimal(position.qty, 0)}</td>
                 <td>{formatDecimal(position.sellable_qty, 0)}</td>
                 <td>{formatDecimal(position.avg_entry_price, 2)}</td>

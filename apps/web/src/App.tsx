@@ -9,8 +9,13 @@ import { useDashboardData } from "./hooks/use-dashboard-data";
 import { useMarketData } from "./hooks/use-market-data";
 import { useResearchData } from "./hooks/use-research-data";
 import { formatDateTime } from "./lib/format";
+import type { SymbolNameMap } from "./types/api";
 
-const DEFAULT_SYMBOL_OPTIONS = ["600036.SH", "000001.SZ"];
+const DEFAULT_SYMBOL_NAMES: SymbolNameMap = {
+  "600036.SH": "招商银行",
+  "000001.SZ": "平安银行",
+};
+const DEFAULT_SYMBOL_OPTIONS = Object.keys(DEFAULT_SYMBOL_NAMES);
 const MARKET_TIMEFRAME_OPTIONS = ["15m", "1h"];
 const RESEARCH_TIMEFRAME_OPTIONS = ["15m", "1h"];
 
@@ -21,6 +26,10 @@ export default function App() {
     dashboard.snapshot.status?.symbols && dashboard.snapshot.status.symbols.length > 0
       ? dashboard.snapshot.status.symbols
       : DEFAULT_SYMBOL_OPTIONS;
+  const symbolNames = {
+    ...DEFAULT_SYMBOL_NAMES,
+    ...(dashboard.snapshot.status?.symbol_names ?? {}),
+  };
   const [selectedSymbol, setSelectedSymbol] = useState<string>(
     availableSymbols[0] ?? DEFAULT_SYMBOL_OPTIONS[0],
   );
@@ -79,6 +88,7 @@ export default function App() {
             status={dashboard.snapshot.status}
             marketData={marketData}
             availableSymbols={availableSymbols}
+            symbolNames={symbolNames}
             availableTimeframes={MARKET_TIMEFRAME_OPTIONS}
             selectedSymbol={selectedSymbol}
             selectedTimeframe={selectedMarketTimeframe}
@@ -91,6 +101,7 @@ export default function App() {
           <ResearchView
             researchData={researchData}
             availableSymbols={availableSymbols}
+            symbolNames={symbolNames}
             availableTimeframes={RESEARCH_TIMEFRAME_OPTIONS}
             selectedSymbol={selectedSymbol}
             selectedTimeframe={selectedResearchTimeframe}
@@ -100,7 +111,12 @@ export default function App() {
         );
       case "operations":
       default:
-        return <OperationsView dashboard={dashboard} />;
+        return (
+          <OperationsView
+            dashboard={dashboard}
+            symbolNames={symbolNames}
+          />
+        );
     }
   }
 

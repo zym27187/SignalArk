@@ -12,6 +12,7 @@ import { SectionCard } from "../SectionCard";
 import { StatusHero } from "../StatusHero";
 import { compactId, titleCase } from "../../lib/format";
 import type { DashboardDataState } from "../../hooks/use-dashboard-data";
+import type { SymbolNameMap } from "../../types/api";
 
 function controlTone(
   controlState: string | undefined,
@@ -29,9 +30,10 @@ function controlTone(
 
 interface OperationsViewProps {
   dashboard: DashboardDataState;
+  symbolNames: SymbolNameMap;
 }
 
-export function OperationsView({ dashboard }: OperationsViewProps) {
+export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) {
   const deferredEvents = useDeferredValue(dashboard.snapshot.events);
   const status = dashboard.snapshot.status;
   const availableSymbols = status?.symbols ?? [];
@@ -79,6 +81,7 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         >
           <PositionsTable
             positions={dashboard.snapshot.positions}
+            symbolNames={symbolNames}
             error={dashboard.snapshot.sectionErrors.positions}
           />
         </SectionCard>
@@ -90,6 +93,7 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         >
           <OrdersTable
             orders={dashboard.snapshot.orders}
+            symbolNames={symbolNames}
             error={dashboard.snapshot.sectionErrors.orders}
           />
         </SectionCard>
@@ -101,6 +105,7 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         >
           <OrderHistoryTable
             orders={dashboard.snapshot.orderHistory}
+            symbolNames={symbolNames}
             error={dashboard.snapshot.sectionErrors.orderHistory}
           />
         </SectionCard>
@@ -112,6 +117,7 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         >
           <FillHistoryTable
             fills={dashboard.snapshot.fills}
+            symbolNames={symbolNames}
             error={dashboard.snapshot.sectionErrors.fillHistory}
           />
         </SectionCard>
@@ -139,6 +145,7 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
           <ActivityFiltersPanel
             filters={dashboard.activityFilters}
             availableSymbols={availableSymbols}
+            symbolNames={symbolNames}
             isRefreshing={dashboard.isRefreshing}
             onApply={dashboard.applyActivityFilters}
             onReset={dashboard.resetActivityFilters}
@@ -152,6 +159,7 @@ export function OperationsView({ dashboard }: OperationsViewProps) {
         >
           <EventTimeline
             events={deferredEvents}
+            symbolNames={symbolNames}
             error={dashboard.snapshot.sectionErrors.events}
           />
         </SectionCard>

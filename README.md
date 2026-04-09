@@ -66,8 +66,9 @@ Eastmoney bars
 ## 运行边界与默认约束
 
 - 仅支持 A 股 `paper trading`，不包含真实券商接入。
-- 支持标的固定为 `600036.SH` 和 `000001.SZ`。
-- 运行时 `SIGNALARK_SYMBOLS` 只能是上述标的的 1 到 2 个子集。
+- 默认配置包含 `600036.SH` 和 `000001.SZ`，可通过配置扩展更多标的。
+- 运行时 `SIGNALARK_SYMBOLS` 必须是 `supported_symbols` 的非空子集。
+- `symbol_names` 用于给前端和状态接口提供更直观的股票名称展示。
 - `symbol_rules` 和 `paper cost model` 固定从 `configs/base.yaml` 加载，并允许被更高优先级配置覆盖。
 - 运行时唯一可恢复事实源是本地持久化状态，不依赖进程内内存态或 adapter 内部态。
 - 控制面与 trader 都依赖数据库；默认 runtime 要求显式提供 `SIGNALARK_POSTGRES_DSN`。

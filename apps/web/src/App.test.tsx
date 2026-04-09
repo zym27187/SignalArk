@@ -48,6 +48,10 @@ describe("App", () => {
           last_heartbeat_at: "2026-04-02T10:00:05+08:00",
           fencing_token: 3,
           symbols: ["600036.SH", "000001.SZ"],
+          symbol_names: {
+            "600036.SH": "招商银行",
+            "000001.SZ": "平安银行",
+          },
         },
         positions: [],
         orders: [],
@@ -192,7 +196,7 @@ describe("App", () => {
       timeframe: "15m",
     });
 
-    fireEvent.click(screen.getByRole("tab", { name: "000001.SZ" }));
+    fireEvent.click(screen.getByRole("tab", { name: "平安银行 (000001.SZ)" }));
 
     await waitFor(() => {
       expect(mockedUseMarketData).toHaveBeenLastCalledWith({
@@ -222,6 +226,6 @@ describe("App", () => {
       symbol: "000001.SZ",
       timeframe: "15m",
     });
-    expect(screen.getByText(/paper_account_001 \/ 000001\.SZ/)).toBeInTheDocument();
+    expect(screen.getByText(/paper_account_001 \/ 平安银行 \(000001\.SZ\)/)).toBeInTheDocument();
   });
 });

@@ -86,6 +86,15 @@ const DISPLAY_MESSAGE_MAP: Record<string, string> = {
   "Strategy resumed.": "策略已恢复。",
 };
 
+function normalizeSymbol(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim().toUpperCase();
+  return normalized || null;
+}
+
 export function compactId(value: string | null | undefined): string {
   if (!value) {
     return "不可用";
@@ -145,6 +154,31 @@ export function formatSignedMoney(value: string | number | null | undefined): st
 
   const sign = numeric > 0 ? "+" : "";
   return `${sign}${formatDecimal(numeric, 2)}`;
+}
+
+export function formatSymbolLabel(
+  symbol: string | null | undefined,
+  symbolNames?: Record<string, string> | null,
+  fallbackLabel = "未知标的",
+): string {
+  const normalized = normalizeSymbol(symbol);
+  if (!normalized) {
+    return fallbackLabel;
+  }
+
+  const displayName = symbolNames?.[normalized];
+  return displayName ? `${displayName} (${normalized})` : normalized;
+}
+
+export function formatSymbolList(
+  symbols: string[] | null | undefined,
+  symbolNames?: Record<string, string> | null,
+): string {
+  if (!symbols || symbols.length === 0) {
+    return "暂无标的";
+  }
+
+  return symbols.map((symbol) => formatSymbolLabel(symbol, symbolNames)).join(", ");
 }
 
 export function summarizePayload(payload: Record<string, unknown> | null | undefined): string {
