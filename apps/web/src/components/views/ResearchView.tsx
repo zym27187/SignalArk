@@ -10,6 +10,8 @@ import { useAiResearchData } from "../../hooks/use-ai-research-data";
 import { useAiResearchSettings } from "../../hooks/use-ai-research-settings";
 import type { ResearchDataState } from "../../hooks/use-research-data";
 import {
+  DEFAULT_RESEARCH_EVALUATION_LIMIT,
+  DEFAULT_RESEARCH_PREVIEW_LIMIT,
   DEFAULT_AI_RESEARCH_PREVIEW_LIMIT,
 } from "../../lib/api";
 import {
@@ -20,7 +22,11 @@ import {
   formatSymbolList,
 } from "../../lib/format";
 import type { SymbolNameMap } from "../../types/api";
-import type { ResearchAiProvider, ResearchSnapshot } from "../../types/research";
+import type {
+  ResearchAiProvider,
+  ResearchSamplePurpose,
+  ResearchSnapshot,
+} from "../../types/research";
 
 interface ResearchViewProps {
   researchData: ResearchDataState;
@@ -29,8 +35,10 @@ interface ResearchViewProps {
   availableTimeframes: string[];
   selectedSymbol: string;
   selectedTimeframe: string;
+  selectedSamplePurpose: ResearchSamplePurpose;
   onSymbolChange: (symbol: string) => void;
   onTimeframeChange: (timeframe: string) => void;
+  onSamplePurposeChange: (purpose: ResearchSamplePurpose) => void;
 }
 
 interface SnapshotSectionOptions {
@@ -67,6 +75,7 @@ function buildMetadataItems(
   },
 ) {
   const manifest = snapshot?.manifest;
+  const sample = snapshot?.sample;
   if (manifest === undefined) {
     return [
       {
@@ -78,6 +87,17 @@ function buildMetadataItems(
   }
 
   return [
+    {
+      label: "样本用途",
+      value:
+        sample === undefined || sample === null
+          ? "等待回测样本"
+          : `${sample.label} / ${sample.actualBarCount} 根 K 线`,
+      hint:
+        sample === undefined || sample === null
+          ? "返回结果后，这里会说明当前样本用于快速预览还是正式评估。"
+          : sample.warning ?? sample.description,
+    },
     {
       label: "本次回测编号",
       value: manifest.runId,
@@ -108,6 +128,21 @@ function buildMetadataItems(
   ];
 }
 
+function formatRatioMetric(value: number | null | undefined): string {
+  return value === null || value === undefined ? "--" : formatDecimal(value, 4);
+}
+
+function formatAverageHoldingBars(value: number | null | undefined): string {
+  return value === null || value === undefined ? "--" : `${formatDecimal(value, 2)} 根`;
+}
+
+function buildSamplePurposeCopy(samplePurpose: ResearchSamplePurpose): string {
+  if (samplePurpose === "preview") {
+    return `快速预览最近 ${DEFAULT_RESEARCH_PREVIEW_LIMIT} 根 K 线，更适合先看信号和审计。`;
+  }
+  return `默认使用 ${DEFAULT_RESEARCH_EVALUATION_LIMIT} 根 K 线的评估样本，并尽量补充分段验证。`;
+}
+
 export function ResearchView({
   researchData,
   availableSymbols,
@@ -115,8 +150,10 @@ export function ResearchView({
   availableTimeframes,
   selectedSymbol,
   selectedTimeframe,
+  selectedSamplePurpose,
   onSymbolChange,
   onTimeframeChange,
+  onSamplePurposeChange,
 }: ResearchViewProps) {
   const aiResearchData = useAiResearchData();
   const aiSettings = useAiResearchSettings({ enabled: true });
@@ -144,6 +181,7 @@ export function ResearchView({
 
   const snapshot = researchData.snapshot;
   const manifest = snapshot?.manifest;
+  const sample = snapshot?.sample;
   const sourceLabel = snapshot
     ? snapshot.sourceMode === "fixture"
       ? snapshot.sourceLabel
@@ -224,8 +262,10 @@ export function ResearchView({
     const performance = nextSnapshot?.performance;
     const equityCurve = nextSnapshot?.equityCurve ?? [];
     const decisions = nextSnapshot?.decisions ?? [];
+    const segments = nextSnapshot?.segments ?? [];
     const notes = nextSnapshot?.notes ?? [];
     const nextManifest = nextSnapshot?.manifest;
+    const sampleInfo = nextSnapshot?.sample;
 
     return (
       <>
@@ -265,6 +305,53 @@ export function ResearchView({
                 : "等待回测结果。"
             }
             tone="default"
+          />
+        </section>
+
+        <section className="metric-grid">
+          <MetricCard
+            label={`${options.labelPrefix}Sharpe`}
+            value={formatRatioMetric(performance?.sharpeRatio)}
+            hint={
+              performance?.sharpeRatio !== undefined
+                ? "按 bar 收益波动调整后的收益表现，越高越稳。"
+                : "等待回测结果。"
+            }
+            tone="default"
+          />
+          <MetricCard
+            label={`${options.labelPrefix}收益回撤比`}
+            value={formatRatioMetric(performance?.returnToDrawdownRatio)}
+            hint={
+              performance?.returnToDrawdownRatio !== undefined
+                ? "同样的收益如果伴随更小回撤，这个值会更高。"
+                : "等待回测结果。"
+            }
+            tone="default"
+          />
+          <MetricCard
+            label={`${options.labelPrefix}平均持有周期`}
+            value={formatAverageHoldingBars(performance?.avgHoldingBars)}
+            hint={
+              performance?.avgHoldingBars !== undefined
+                ? "按已完成卖出数量折算的平均持仓 bar 数。"
+                : "等待回测结果。"
+            }
+            tone="default"
+          />
+          <MetricCard
+            label={`${options.labelPrefix}平均单笔盈亏`}
+            value={formatSignedMoney(performance?.avgTradePnl)}
+            hint={
+              performance?.avgTradePnl !== undefined
+                ? `盈利均值 ${formatSignedMoney(performance?.avgWinningTradePnl)} / 亏损均值 ${formatSignedMoney(performance?.avgLosingTradePnl)}`
+                : "等待回测结果。"
+            }
+            tone={
+              performance?.avgTradePnl !== undefined && performance.avgTradePnl > 0
+                ? "positive"
+                : "default"
+            }
           />
         </section>
 
@@ -308,6 +395,46 @@ export function ResearchView({
                   <p className="empty-state__title">还没有决策记录</p>
                   <p className="empty-state__copy">
                     生成回测结果后，这里会展示每一步的信号和下单计划。
+                  </p>
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard
+              eyebrow="时间分段"
+              title={`${options.labelPrefix}不同阶段表现对比`}
+              description="把当前样本按时间切成多段，观察策略是否只在某一小段行情里偶然有效。"
+            >
+              {segments.length > 0 ? (
+                <div className="definition-grid">
+                  {segments.map((segment) => (
+                    <div
+                      key={`${segment.label}-${segment.startTime}`}
+                      className="definition-grid__item"
+                    >
+                      <strong>
+                        {segment.label} · {segment.marketRegimeLabel}
+                      </strong>
+                      <p>
+                        {formatDateTime(segment.startTime)} 至 {formatDateTime(segment.endTime)}
+                      </p>
+                      <p>
+                        {segment.barCount} 根 K 线 / 价格变化 {formatDecimal(segment.priceChangePct, 4)}%
+                      </p>
+                      <p>
+                        收益 {formatSignedMoney(segment.performance.netPnl)} / 最大回撤{" "}
+                        {formatDecimal(segment.performance.maxDrawdownPct, 4)}% / 交易{" "}
+                        {segment.performance.tradeCount} 次
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <p className="empty-state__title">当前还没有时间分段对比</p>
+                  <p className="empty-state__copy">
+                    {sampleInfo?.warning ??
+                      "切到评估样本后，这里会展示不同时间窗口的收益、回撤和交易次数差异。"}
                   </p>
                 </div>
               )}
@@ -369,9 +496,37 @@ export function ResearchView({
             onSymbolChange={onSymbolChange}
             onTimeframeChange={onTimeframeChange}
           />
+
+          <div className="dataset-switcher__group">
+            <p className="dataset-switcher__label">样本模式</p>
+            <div className="dataset-switcher__options">
+              <button
+                type="button"
+                className={`dataset-switcher__button${
+                  selectedSamplePurpose === "evaluation" ? " dataset-switcher__button--active" : ""
+                }`}
+                onClick={() => onSamplePurposeChange("evaluation")}
+              >
+                评估样本 {DEFAULT_RESEARCH_EVALUATION_LIMIT} 根
+              </button>
+              <button
+                type="button"
+                className={`dataset-switcher__button${
+                  selectedSamplePurpose === "preview" ? " dataset-switcher__button--active" : ""
+                }`}
+                onClick={() => onSamplePurposeChange("preview")}
+              >
+                快速预览 {DEFAULT_RESEARCH_PREVIEW_LIMIT} 根
+              </button>
+            </div>
+            <p className="field__hint">{buildSamplePurposeCopy(selectedSamplePurpose)}</p>
+          </div>
         </div>
         <div className="page-hero__chips">
           <span className={`tag${sourceIsFixture ? " tag--fixture" : ""}`}>{sourceLabel}</span>
+          {sample !== undefined && sample !== null ? (
+            <span className="tag">{`${sample.label} · ${sample.actualBarCount} 根`}</span>
+          ) : null}
           <span className="tag">{formatSymbolLabel(selectedSymbol, symbolNames)}</span>
           <span className="tag">{manifest?.strategyId ?? "baseline_momentum_v1"}</span>
           <span className="tag">{manifest?.timeframe ?? selectedTimeframe}</span>

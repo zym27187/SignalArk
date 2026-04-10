@@ -14,11 +14,14 @@ import type {
   ResearchAiSettings,
   ResearchAiSettingsUpdateRequest,
   ResearchAiSnapshotRequest,
+  ResearchSamplePurpose,
   ResearchSnapshot,
 } from "../types/research";
 import { localizeMessage } from "./format";
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
+export const DEFAULT_RESEARCH_PREVIEW_LIMIT = 96;
+export const DEFAULT_RESEARCH_EVALUATION_LIMIT = 240;
 export const DEFAULT_AI_RESEARCH_PREVIEW_LIMIT = 24;
 export const DEFAULT_AI_RESEARCH_LOOKBACK_BARS = 12;
 export const AI_RESEARCH_REQUEST_TIMEOUT_MS = 30_000;
@@ -239,6 +242,7 @@ export async function fetchResearchSnapshot(params?: {
   symbol?: string;
   timeframe?: string;
   limit?: number;
+  mode?: ResearchSamplePurpose;
 }): Promise<ResearchSnapshot> {
   const query = new URLSearchParams();
   if (params?.symbol) {
@@ -248,6 +252,9 @@ export async function fetchResearchSnapshot(params?: {
     query.set("timeframe", params.timeframe);
   }
   query.set("limit", String(params?.limit ?? 96));
+  if (params?.mode) {
+    query.set("mode", params.mode);
+  }
   return requestJson<ResearchSnapshot>(`/v1/research/snapshot?${query.toString()}`);
 }
 

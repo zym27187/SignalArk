@@ -216,13 +216,15 @@ def create_app(
     async def research_snapshot(
         symbol: str | None = None,
         timeframe: str | None = None,
-        limit: int = Query(default=96, ge=1, le=500),
+        limit: int | None = Query(default=None, ge=1, le=500),
+        mode: Literal["preview", "evaluation"] = Query(default="evaluation"),
     ) -> dict[str, object]:
         try:
             return await service.research_snapshot_payload(
                 symbol=symbol,
                 timeframe=timeframe,
                 limit=limit,
+                mode=mode,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

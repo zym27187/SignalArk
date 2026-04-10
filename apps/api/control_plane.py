@@ -35,6 +35,12 @@ from src.infra.observability import SignalArkObservability, build_observability
 from src.shared.types import SHANGHAI_TIMEZONE, shanghai_now
 
 from apps.research import build_default_backtest_runner
+from apps.research.analysis import (
+    ResearchSamplePurpose,
+    build_sample_metadata,
+    build_segment_analyses,
+    resolve_sample_bar_limit,
+)
 from apps.research.snapshot import build_web_snapshot_payload
 from apps.trader.control_plane import (
     MissingControlPlaneSchemaError,
@@ -555,14 +561,19 @@ class ApiControlPlaneService:
         *,
         symbol: str | None = None,
         timeframe: str | None = None,
-        limit: int = 96,
+        limit: int | None = None,
+        mode: ResearchSamplePurpose = "evaluation",
     ) -> dict[str, object]:
         resolved_symbol = self._resolve_symbol(symbol)
         resolved_timeframe = self._resolve_timeframe(timeframe)
+        resolved_limit = resolve_sample_bar_limit(
+            sample_purpose=mode,
+            requested_limit=limit,
+        )
         bars = await self._fetch_historical_bars(
             symbol=resolved_symbol,
             timeframe=resolved_timeframe,
-            limit=limit,
+            limit=resolved_limit,
         )
         backtest_bars = _build_research_backtest_bars(bars)
         if not backtest_bars:
@@ -574,16 +585,43 @@ class ApiControlPlaneService:
             slippage_bps=DEFAULT_RESEARCH_SLIPPAGE_BPS,
         )
         result = await runner.run(backtest_bars)
+        sample_metadata = build_sample_metadata(
+            sample_purpose=mode,
+            requested_bar_count=resolved_limit,
+            actual_bar_count=len(backtest_bars),
+        )
+
+        async def run_segment_backtest(segment_bars) -> object:
+            return await build_default_backtest_runner(
+                self._settings,
+                initial_cash=DEFAULT_RESEARCH_INITIAL_CASH,
+                slippage_bps=DEFAULT_RESEARCH_SLIPPAGE_BPS,
+            ).run(segment_bars)
+
+        segment_analyses = await build_segment_analyses(
+            bars=backtest_bars,
+            run_backtest=run_segment_backtest,
+            sample_purpose=mode,
+        )
+        notes = [
+            "该快照由 `/v1/research/snapshot` 基于真实历史 K 线即时生成。",
+            "当前 research 页已直接消费后端回测结果，不再固定停留在本地 fixture 页面。",
+            "research snapshot 统一返回 `equityCurve`，仅表示回测权益曲线。",
+        ]
+        if sample_metadata["warning"] is not None:
+            notes.append(str(sample_metadata["warning"]))
+        if segment_analyses:
+            notes.append(
+                f"时间分段评估会把样本按时间切成 {len(segment_analyses)} 段，并在同一起始资金下分别比较阶段表现。"
+            )
         return build_web_snapshot_payload(
             result=result,
             bars=backtest_bars,
             source_label="由 research API 生成的真实回测结果",
             source_mode="live",
-            notes=(
-                "该快照由 `/v1/research/snapshot` 基于真实历史 K 线即时生成。",
-                "当前 research 页已直接消费后端回测结果，不再固定停留在本地 fixture 页面。",
-                "research snapshot 统一返回 `equityCurve`，仅表示回测权益曲线。",
-            ),
+            notes=tuple(notes),
+            sample=sample_metadata,
+            segments=segment_analyses,
         )
 
     def research_ai_settings_payload(self) -> dict[str, object]:
@@ -650,6 +688,11 @@ class ApiControlPlaneService:
             initial_cash=DEFAULT_RESEARCH_INITIAL_CASH,
             slippage_bps=DEFAULT_RESEARCH_SLIPPAGE_BPS,
         ).run(backtest_bars)
+        sample_metadata = build_sample_metadata(
+            sample_purpose="preview",
+            requested_bar_count=limit,
+            actual_bar_count=len(backtest_bars),
+        )
         notes = [
             (
                 "本次 AI 快照通过 OpenAI-compatible Chat Completions 生成，"
@@ -664,12 +707,15 @@ class ApiControlPlaneService:
                 "execution 与 portfolio ledger 语义。"
             ),
         ]
+        if sample_metadata["warning"] is not None:
+            notes.append(str(sample_metadata["warning"]))
         return build_web_snapshot_payload(
             result=result,
             bars=backtest_bars,
             source_label="由 research API 生成的 AI 回测结果",
             source_mode="live",
             notes=notes,
+            sample=sample_metadata,
         )
 
     def _build_research_ai_strategy(

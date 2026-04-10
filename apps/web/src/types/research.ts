@@ -53,6 +53,13 @@ export interface BacktestPerformanceSnapshot {
   unrealizedPnl: number;
   turnover: number;
   winRatePct: number | null;
+  sharpeRatio?: number | null;
+  returnToDrawdownRatio?: number | null;
+  profitFactor?: number | null;
+  avgTradePnl?: number | null;
+  avgWinningTradePnl?: number | null;
+  avgLosingTradePnl?: number | null;
+  avgHoldingBars?: number | null;
 }
 
 export interface BacktestDecisionSnapshot {
@@ -100,6 +107,29 @@ export interface ResearchAiSettingsUpdateRequest {
 }
 
 export type ResearchSnapshotSourceMode = "fixture" | "imported" | "live";
+export type ResearchSamplePurpose = "preview" | "evaluation";
+
+export interface ResearchSampleSnapshot {
+  purpose: ResearchSamplePurpose;
+  label: string;
+  requestedBarCount: number;
+  actualBarCount: number;
+  supportsTimeSegmentation: boolean;
+  segmentCount: number;
+  description: string;
+  warning: string | null;
+}
+
+export interface ResearchSegmentSnapshot {
+  label: string;
+  marketRegime: "uptrend" | "sideways" | "downtrend";
+  marketRegimeLabel: string;
+  startTime: string;
+  endTime: string;
+  barCount: number;
+  priceChangePct: number;
+  performance: BacktestPerformanceSnapshot;
+}
 
 export interface ResearchSnapshot {
   datasetName: string;
@@ -110,6 +140,8 @@ export interface ResearchSnapshot {
   manifest: BacktestManifestSnapshot;
   performance: BacktestPerformanceSnapshot;
   decisions: BacktestDecisionSnapshot[];
+  sample?: ResearchSampleSnapshot | null;
+  segments?: ResearchSegmentSnapshot[];
   notes: string[];
 }
 

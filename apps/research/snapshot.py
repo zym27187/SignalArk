@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Literal
 
+from apps.research.analysis import ResearchSegmentAnalysis
 from src.domain.events import BarEvent
 from src.services.backtest import BacktestDecisionRecord, BacktestRunResult
 
@@ -18,6 +19,8 @@ def build_web_snapshot_payload(
     source_label: str,
     source_mode: ResearchSnapshotSourceMode,
     notes: Sequence[str],
+    sample: dict[str, Any] | None = None,
+    segments: Sequence[ResearchSegmentAnalysis] = (),
 ) -> dict[str, Any]:
     """Serialize a backtest result into the research page snapshot contract."""
     dataset = result.manifest.dataset
@@ -69,29 +72,11 @@ def build_web_snapshot_payload(
             "manifestFingerprint": result.manifest.manifest_fingerprint,
         },
         "performance": {
-            "barCount": performance.bar_count,
-            "signalCount": performance.signal_count,
-            "orderCount": performance.order_count,
-            "tradeCount": performance.trade_count,
-            "fillCount": performance.fill_count,
-            "winningTradeCount": performance.winning_trade_count,
-            "losingTradeCount": performance.losing_trade_count,
-            "startingCash": float(performance.starting_cash),
-            "endingCash": float(performance.ending_cash),
-            "endingMarketValue": float(performance.ending_market_value),
-            "startingEquity": float(performance.starting_equity),
-            "endingEquity": float(performance.ending_equity),
-            "netPnl": float(performance.net_pnl),
-            "totalReturnPct": float(performance.total_return_pct),
-            "maxDrawdownPct": float(performance.max_drawdown_pct),
-            "realizedPnl": float(performance.realized_pnl),
-            "unrealizedPnl": float(performance.unrealized_pnl),
-            "turnover": float(performance.turnover),
-            "winRatePct": (
-                None if performance.win_rate_pct is None else float(performance.win_rate_pct)
-            ),
+            **_serialize_performance(performance),
         },
         "decisions": [_serialize_decision(decision) for decision in result.decisions],
+        "sample": sample,
+        "segments": [_serialize_segment(segment) for segment in segments],
         "notes": list(notes),
     }
 
@@ -127,4 +112,64 @@ def _serialize_decision(decision: BacktestDecisionRecord) -> dict[str, Any]:
         "skipReason": decision.skip_reason,
         "fillCount": decision.fill_count,
         "orderPlanSide": None if order_plan_side is None else str(order_plan_side),
+    }
+
+
+def _serialize_performance(performance) -> dict[str, Any]:
+    return {
+        "barCount": performance.bar_count,
+        "signalCount": performance.signal_count,
+        "orderCount": performance.order_count,
+        "tradeCount": performance.trade_count,
+        "fillCount": performance.fill_count,
+        "winningTradeCount": performance.winning_trade_count,
+        "losingTradeCount": performance.losing_trade_count,
+        "startingCash": float(performance.starting_cash),
+        "endingCash": float(performance.ending_cash),
+        "endingMarketValue": float(performance.ending_market_value),
+        "startingEquity": float(performance.starting_equity),
+        "endingEquity": float(performance.ending_equity),
+        "netPnl": float(performance.net_pnl),
+        "totalReturnPct": float(performance.total_return_pct),
+        "maxDrawdownPct": float(performance.max_drawdown_pct),
+        "realizedPnl": float(performance.realized_pnl),
+        "unrealizedPnl": float(performance.unrealized_pnl),
+        "turnover": float(performance.turnover),
+        "winRatePct": None if performance.win_rate_pct is None else float(performance.win_rate_pct),
+        "sharpeRatio": None if performance.sharpe_ratio is None else float(performance.sharpe_ratio),
+        "returnToDrawdownRatio": (
+            None
+            if performance.return_to_drawdown_ratio is None
+            else float(performance.return_to_drawdown_ratio)
+        ),
+        "profitFactor": (
+            None if performance.profit_factor is None else float(performance.profit_factor)
+        ),
+        "avgTradePnl": None if performance.avg_trade_pnl is None else float(performance.avg_trade_pnl),
+        "avgWinningTradePnl": (
+            None
+            if performance.avg_winning_trade_pnl is None
+            else float(performance.avg_winning_trade_pnl)
+        ),
+        "avgLosingTradePnl": (
+            None
+            if performance.avg_losing_trade_pnl is None
+            else float(performance.avg_losing_trade_pnl)
+        ),
+        "avgHoldingBars": (
+            None if performance.avg_holding_bars is None else float(performance.avg_holding_bars)
+        ),
+    }
+
+
+def _serialize_segment(segment: ResearchSegmentAnalysis) -> dict[str, Any]:
+    return {
+        "label": segment.label,
+        "marketRegime": segment.market_regime,
+        "marketRegimeLabel": segment.market_regime_label,
+        "startTime": segment.start_time.isoformat(),
+        "endTime": segment.end_time.isoformat(),
+        "barCount": segment.bar_count,
+        "priceChangePct": float(segment.price_change_pct),
+        "performance": _serialize_performance(segment.performance),
     }

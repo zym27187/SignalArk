@@ -1,13 +1,18 @@
 import { startTransition, useEffect, useRef, useState } from "react";
 
-import { fetchResearchSnapshot } from "../lib/api";
+import {
+  DEFAULT_RESEARCH_EVALUATION_LIMIT,
+  DEFAULT_RESEARCH_PREVIEW_LIMIT,
+  fetchResearchSnapshot,
+} from "../lib/api";
 import { localizeMessage } from "../lib/format";
-import type { ResearchSnapshot } from "../types/research";
+import type { ResearchSamplePurpose, ResearchSnapshot } from "../types/research";
 
 interface UseResearchDataOptions {
   enabled: boolean;
   symbol?: string | null;
   timeframe?: string | null;
+  samplePurpose: ResearchSamplePurpose;
 }
 
 function toErrorMessage(error: unknown): string {
@@ -18,7 +23,12 @@ function toErrorMessage(error: unknown): string {
   return localizeMessage("Request failed.");
 }
 
-export function useResearchData({ enabled, symbol, timeframe }: UseResearchDataOptions) {
+export function useResearchData({
+  enabled,
+  symbol,
+  timeframe,
+  samplePurpose,
+}: UseResearchDataOptions) {
   const [snapshot, setSnapshot] = useState<ResearchSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
@@ -27,6 +37,10 @@ export function useResearchData({ enabled, symbol, timeframe }: UseResearchDataO
 
   const hasLoadedRef = useRef(false);
   const mountedRef = useRef(false);
+  const limit =
+    samplePurpose === "preview"
+      ? DEFAULT_RESEARCH_PREVIEW_LIMIT
+      : DEFAULT_RESEARCH_EVALUATION_LIMIT;
 
   async function refresh() {
     const isInitialLoad = !hasLoadedRef.current;
@@ -41,7 +55,8 @@ export function useResearchData({ enabled, symbol, timeframe }: UseResearchDataO
       const nextSnapshot = await fetchResearchSnapshot({
         symbol: symbol ?? undefined,
         timeframe: timeframe ?? undefined,
-        limit: 96,
+        limit,
+        mode: samplePurpose,
       });
       if (!mountedRef.current) {
         return;
@@ -87,7 +102,7 @@ export function useResearchData({ enabled, symbol, timeframe }: UseResearchDataO
     return () => {
       mountedRef.current = false;
     };
-  }, [enabled, symbol, timeframe]);
+  }, [enabled, symbol, timeframe, samplePurpose]);
 
   return {
     snapshot,

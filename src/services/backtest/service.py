@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from bisect import bisect_right
+from collections import deque
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -39,6 +41,7 @@ from src.services.backtest.models import (
 )
 
 PERCENT_QUANTUM = Decimal("0.0001")
+RATIO_QUANTUM = Decimal("0.0001")
 SLIPPAGE_SCALE = Decimal("10000")
 
 
@@ -62,6 +65,12 @@ class _MutableClock:
 
     def now(self) -> datetime:
         return self.value
+
+
+@dataclass(slots=True)
+class _OpenLot:
+    qty: Decimal
+    entry_bar_index: int
 
 
 class BacktestService:
@@ -573,6 +582,7 @@ def _build_performance_summary(
     total_return_ratio = Decimal("0")
     if initial_cash > 0:
         total_return_ratio = (last_point.equity - initial_cash) / initial_cash
+    total_return_pct = _to_pct(total_return_ratio)
 
     winning_trade_count = sum(1 for pnl in realized_trade_outcomes if pnl > 0)
     losing_trade_count = sum(1 for pnl in realized_trade_outcomes if pnl < 0)
@@ -582,6 +592,24 @@ def _build_performance_summary(
         win_rate_pct = _to_pct(
             Decimal(winning_trade_count) / Decimal(len(realized_trade_outcomes))
         )
+    max_drawdown_pct = max((point.drawdown_pct for point in equity_curve), default=Decimal("0"))
+    sharpe_ratio = _compute_sharpe_ratio(equity_curve)
+    return_to_drawdown_ratio = _compute_return_to_drawdown_ratio(
+        total_return_pct=total_return_pct,
+        max_drawdown_pct=max_drawdown_pct,
+    )
+    profit_factor = _compute_profit_factor(realized_trade_outcomes)
+    avg_trade_pnl = _compute_average(realized_trade_outcomes)
+    avg_winning_trade_pnl = _compute_average(
+        [pnl for pnl in realized_trade_outcomes if pnl > 0]
+    )
+    avg_losing_trade_pnl = _compute_average(
+        [pnl for pnl in realized_trade_outcomes if pnl < 0]
+    )
+    avg_holding_bars = _compute_average_holding_bars(
+        fill_events=fill_events,
+        equity_curve=equity_curve,
+    )
 
     return BacktestPerformanceSummary(
         bar_count=len(equity_curve),
@@ -597,12 +625,19 @@ def _build_performance_summary(
         starting_equity=initial_cash,
         ending_equity=last_point.equity,
         net_pnl=last_point.equity - initial_cash,
-        total_return_pct=_to_pct(total_return_ratio),
-        max_drawdown_pct=max((point.drawdown_pct for point in equity_curve), default=Decimal("0")),
+        total_return_pct=total_return_pct,
+        max_drawdown_pct=max_drawdown_pct,
         realized_pnl=last_point.realized_pnl,
         unrealized_pnl=last_point.unrealized_pnl,
         turnover=turnover,
         win_rate_pct=win_rate_pct,
+        sharpe_ratio=sharpe_ratio,
+        return_to_drawdown_ratio=return_to_drawdown_ratio,
+        profit_factor=profit_factor,
+        avg_trade_pnl=avg_trade_pnl,
+        avg_winning_trade_pnl=avg_winning_trade_pnl,
+        avg_losing_trade_pnl=avg_losing_trade_pnl,
+        avg_holding_bars=avg_holding_bars,
     )
 
 
@@ -644,3 +679,117 @@ def _round_price_to_tick(
 
 def _to_pct(ratio: Decimal) -> Decimal:
     return (ratio * Decimal("100")).quantize(PERCENT_QUANTUM)
+
+
+def _quantize_ratio(value: Decimal) -> Decimal:
+    return value.quantize(RATIO_QUANTUM)
+
+
+def _compute_sharpe_ratio(equity_curve: list[BacktestEquityPoint]) -> Decimal | None:
+    if len(equity_curve) < 3:
+        return None
+
+    bar_returns: list[Decimal] = []
+    previous_equity = equity_curve[0].equity
+    for point in equity_curve[1:]:
+        if previous_equity > 0:
+            bar_returns.append((point.equity - previous_equity) / previous_equity)
+        previous_equity = point.equity
+
+    if len(bar_returns) < 2:
+        return None
+
+    sample_size = Decimal(len(bar_returns))
+    mean_return = sum(bar_returns, Decimal("0")) / sample_size
+    variance = sum(
+        ((bar_return - mean_return) ** 2 for bar_return in bar_returns),
+        Decimal("0"),
+    ) / Decimal(len(bar_returns) - 1)
+    if variance <= 0:
+        return None
+
+    volatility = variance.sqrt()
+    if volatility == 0:
+        return None
+    return _quantize_ratio((mean_return / volatility) * sample_size.sqrt())
+
+
+def _compute_return_to_drawdown_ratio(
+    *,
+    total_return_pct: Decimal,
+    max_drawdown_pct: Decimal,
+) -> Decimal | None:
+    if max_drawdown_pct <= 0:
+        return None
+    return _quantize_ratio(total_return_pct / max_drawdown_pct)
+
+
+def _compute_profit_factor(realized_trade_outcomes: list[Decimal]) -> Decimal | None:
+    if not realized_trade_outcomes:
+        return None
+
+    gross_profit = sum((pnl for pnl in realized_trade_outcomes if pnl > 0), Decimal("0"))
+    gross_loss = -sum((pnl for pnl in realized_trade_outcomes if pnl < 0), Decimal("0"))
+    if gross_loss == 0:
+        if gross_profit == 0:
+            return Decimal("0").quantize(RATIO_QUANTUM)
+        return None
+    return _quantize_ratio(gross_profit / gross_loss)
+
+
+def _compute_average(values: list[Decimal]) -> Decimal | None:
+    if not values:
+        return None
+    return _quantize_ratio(sum(values, Decimal("0")) / Decimal(len(values)))
+
+
+def _compute_average_holding_bars(
+    *,
+    fill_events: list,
+    equity_curve: list[BacktestEquityPoint],
+) -> Decimal | None:
+    if not fill_events or not equity_curve:
+        return None
+
+    bar_index_by_time: dict[datetime, int] = {}
+    for index, point in enumerate(equity_curve):
+        bar_index_by_time.setdefault(point.event_time, index)
+    equity_times = [point.event_time for point in equity_curve]
+
+    lots_by_symbol: dict[str, deque[_OpenLot]] = {}
+    weighted_holding_bars = Decimal("0")
+    closed_qty = Decimal("0")
+
+    for fill_event in fill_events:
+        bar_index = bar_index_by_time.get(fill_event.event_time)
+        if bar_index is None:
+            resolved_index = bisect_right(equity_times, fill_event.event_time) - 1
+            if resolved_index >= 0:
+                bar_index = resolved_index
+        if bar_index is None:
+            continue
+
+        queue = lots_by_symbol.setdefault(fill_event.symbol, deque())
+        fill = fill_event.fill
+        if fill.side is OrderSide.BUY:
+            queue.append(_OpenLot(qty=fill.qty, entry_bar_index=bar_index))
+            continue
+
+        remaining_qty = fill.qty
+        while remaining_qty > 0 and queue:
+            lot = queue[0]
+            matched_qty = min(lot.qty, remaining_qty)
+            weighted_holding_bars += Decimal(max(bar_index - lot.entry_bar_index, 0)) * matched_qty
+            closed_qty += matched_qty
+            remaining_qty -= matched_qty
+            if matched_qty == lot.qty:
+                queue.popleft()
+            else:
+                queue[0] = _OpenLot(
+                    qty=lot.qty - matched_qty,
+                    entry_bar_index=lot.entry_bar_index,
+                )
+
+    if closed_qty == 0:
+        return None
+    return _quantize_ratio(weighted_holding_bars / closed_qty)

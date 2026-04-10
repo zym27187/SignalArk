@@ -3,8 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useResearchData } from "./use-research-data";
 import { fetchResearchSnapshot } from "../lib/api";
+import { DEFAULT_RESEARCH_EVALUATION_LIMIT } from "../lib/api";
 
 vi.mock("../lib/api", () => ({
+  DEFAULT_RESEARCH_PREVIEW_LIMIT: 96,
+  DEFAULT_RESEARCH_EVALUATION_LIMIT: 240,
   fetchResearchSnapshot: vi.fn(),
 }));
 
@@ -89,6 +92,7 @@ describe("useResearchData", () => {
         enabled: true,
         symbol: "600036.SH",
         timeframe: "15m",
+        samplePurpose: "evaluation",
       }),
     );
 
@@ -96,6 +100,12 @@ describe("useResearchData", () => {
       expect(result.current.isLoading).toBe(false);
     });
 
+    expect(mockedFetchResearchSnapshot).toHaveBeenCalledWith({
+      symbol: "600036.SH",
+      timeframe: "15m",
+      limit: DEFAULT_RESEARCH_EVALUATION_LIMIT,
+      mode: "evaluation",
+    });
     expect(result.current.snapshot).toEqual(initialSnapshot);
     expect(result.current.error).toBeNull();
 
@@ -117,6 +127,7 @@ describe("useResearchData", () => {
         enabled: false,
         symbol: "600036.SH",
         timeframe: "15m",
+        samplePurpose: "evaluation",
       }),
     );
 

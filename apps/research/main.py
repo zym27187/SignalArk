@@ -13,6 +13,7 @@ from src.config import load_settings
 from src.domain.events import BarEvent
 
 from apps.research import build_default_backtest_runner
+from apps.research.analysis import build_sample_metadata, build_segment_analyses
 from apps.research.snapshot import build_web_snapshot_payload
 
 BAR_EVENT_FIELD_NAMES = frozenset(BarEvent.model_fields)
@@ -44,17 +45,44 @@ async def _run(args: argparse.Namespace) -> None:
 
     if args.web_snapshot_output is not None:
         snapshot_path = Path(args.web_snapshot_output)
+        sample_metadata = build_sample_metadata(
+            sample_purpose=args.sample_purpose,
+            requested_bar_count=len(bars),
+            actual_bar_count=len(bars),
+        )
+
+        async def run_segment_backtest(segment_bars: list[BarEvent]) -> object:
+            return await build_default_backtest_runner(
+                settings,
+                initial_cash=args.initial_cash,
+                slippage_bps=args.slippage_bps,
+            ).run(segment_bars)
+
+        segment_analyses = await build_segment_analyses(
+            bars=bars,
+            run_backtest=run_segment_backtest,
+            sample_purpose=args.sample_purpose,
+        )
+        snapshot_notes = [
+            "该文件由 `python -m apps.research` 生成，可作为真实回测导出结果留档。",
+            "该导出来源会显式标记为 imported，而不是继续混用 fixture 语义。",
+            "该导出会统一使用 `equityCurve` 表示 research 回测权益曲线。",
+            "前端与 HTTP research snapshot 会复用同一份研究快照契约。",
+        ]
+        if sample_metadata["warning"] is not None:
+            snapshot_notes.append(str(sample_metadata["warning"]))
+        if segment_analyses:
+            snapshot_notes.append(
+                f"时间分段评估会把样本按时间切成 {len(segment_analyses)} 段，并在同一起始资金下分别比较阶段表现。"
+            )
         snapshot_payload = build_web_snapshot_payload(
             result=result,
             bars=bars,
             source_label="由 research CLI 导出的真实回测结果",
             source_mode="imported",
-            notes=(
-                "该文件由 `python -m apps.research` 生成，可作为真实回测导出结果留档。",
-                "该导出来源会显式标记为 imported，而不是继续混用 fixture 语义。",
-                "该导出会统一使用 `equityCurve` 表示 research 回测权益曲线。",
-                "前端与 HTTP research snapshot 会复用同一份研究快照契约。",
-            ),
+            notes=tuple(snapshot_notes),
+            sample=sample_metadata,
+            segments=segment_analyses,
         )
         _write_json(snapshot_path, snapshot_payload)
         print(f"Web snapshot written to {snapshot_path}")
@@ -109,6 +137,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Optional DSN override used only to satisfy shared settings validation. "
             "Defaults to sqlite+pysqlite:///:memory: when omitted."
+        ),
+    )
+    parser.add_argument(
+        "--sample-purpose",
+        choices=("preview", "evaluation"),
+        default="evaluation",
+        help=(
+            "How the frontend-oriented web snapshot should label this sample. "
+            "Defaults to evaluation."
         ),
     )
     return parser

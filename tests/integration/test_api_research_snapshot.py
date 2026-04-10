@@ -152,6 +152,12 @@ def test_api_research_snapshot_returns_live_backtest_payload(
     assert payload["manifest"]["symbols"] == ["600036.SH"]
     assert payload["performance"]["tradeCount"] == 3
     assert payload["performance"]["fillCount"] == 3
+    assert payload["performance"]["sharpeRatio"] is not None
+    assert payload["performance"]["avgHoldingBars"] == 1.5
+    assert payload["sample"]["purpose"] == "evaluation"
+    assert payload["sample"]["actualBarCount"] == 5
+    assert payload["sample"]["supportsTimeSegmentation"] is False
+    assert payload["segments"] == []
     assert len(payload["klineBars"]) == 5
     assert len(payload["equityCurve"]) == 5
     assert "runtimePnlCurve" not in payload
@@ -161,6 +167,107 @@ def test_api_research_snapshot_returns_live_backtest_payload(
     assert payload["decisions"][2]["orderPlanSide"] == "BUY"
     assert payload["decisions"][3]["orderPlanSide"] == "BUY"
     assert payload["decisions"][4]["orderPlanSide"] == "SELL"
+
+
+def test_api_research_snapshot_supports_preview_and_segmented_evaluation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("SIGNALARK_POSTGRES_DSN", database_url)
+    from src.config import get_settings
+
+    get_settings.cache_clear()
+    from apps.api.main import create_app
+
+    closes = [
+        Decimal("39.50"),
+        Decimal("39.58"),
+        Decimal("39.66"),
+        Decimal("39.74"),
+        Decimal("39.88"),
+        Decimal("40.22"),
+        Decimal("40.21"),
+        Decimal("40.19"),
+        Decimal("40.20"),
+        Decimal("40.18"),
+        Decimal("40.19"),
+        Decimal("40.17"),
+        Decimal("40.05"),
+        Decimal("39.92"),
+        Decimal("39.78"),
+        Decimal("39.62"),
+        Decimal("39.46"),
+        Decimal("39.24"),
+    ]
+    previous_close = Decimal("39.47")
+    bars: list[NormalizedBar] = []
+    for index, close in enumerate(closes):
+        bars.append(
+            _bar(
+                index=index,
+                close=str(close),
+                previous_close=str(previous_close),
+            )
+        )
+        previous_close = close
+
+    settings = _settings(database_url)
+    upgrade_database(database_url)
+    engine = create_database_engine(database_url)
+    session_factory = create_session_factory(engine)
+    control_store = TraderControlPlaneStore(session_factory)
+    service = ApiControlPlaneService(
+        settings=settings,
+        session_factory=session_factory,
+        control_store=control_store,
+        market_gateway_factory=lambda: FakeHistoricalBarGateway(bars),
+    )
+    app = create_app(settings=settings, control_plane_service=service)
+
+    try:
+        with TestClient(app) as client:
+            preview_response = client.get(
+                "/v1/research/snapshot",
+                params={
+                    "symbol": "600036.SH",
+                    "timeframe": "15m",
+                    "limit": 18,
+                    "mode": "preview",
+                },
+            )
+            evaluation_response = client.get(
+                "/v1/research/snapshot",
+                params={
+                    "symbol": "600036.SH",
+                    "timeframe": "15m",
+                    "limit": 18,
+                    "mode": "evaluation",
+                },
+            )
+    finally:
+        engine.dispose()
+
+    assert preview_response.status_code == 200
+    preview_payload = preview_response.json()
+    assert preview_payload["sample"]["purpose"] == "preview"
+    assert preview_payload["segments"] == []
+
+    assert evaluation_response.status_code == 200
+    evaluation_payload = evaluation_response.json()
+    assert evaluation_payload["sample"]["purpose"] == "evaluation"
+    assert evaluation_payload["sample"]["actualBarCount"] == 18
+    assert evaluation_payload["sample"]["supportsTimeSegmentation"] is True
+    assert len(evaluation_payload["segments"]) == 3
+    assert [segment["marketRegime"] for segment in evaluation_payload["segments"]] == [
+        "uptrend",
+        "sideways",
+        "downtrend",
+    ]
+    assert (
+        evaluation_payload["segments"][0]["performance"]["netPnl"]
+        != evaluation_payload["segments"][2]["performance"]["netPnl"]
+    )
 
 
 def test_api_ai_research_snapshot_returns_live_ai_backtest_payload(

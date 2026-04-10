@@ -123,6 +123,13 @@ class BacktestPerformanceSummary(DomainModel):
     unrealized_pnl: Decimal
     turnover: NonNegativeDecimal = Decimal("0")
     win_rate_pct: NonNegativeDecimal | None = None
+    sharpe_ratio: Decimal | None = None
+    return_to_drawdown_ratio: Decimal | None = None
+    profit_factor: Decimal | None = None
+    avg_trade_pnl: Decimal | None = None
+    avg_winning_trade_pnl: Decimal | None = None
+    avg_losing_trade_pnl: Decimal | None = None
+    avg_holding_bars: Decimal | None = None
 
 
 class BacktestRunResult(DomainModel):

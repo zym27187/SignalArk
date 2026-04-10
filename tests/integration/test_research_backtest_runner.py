@@ -116,6 +116,11 @@ async def test_research_backtest_runner_executes_minimal_event_driven_flow_with_
     assert result.performance.order_count == 3
     assert result.performance.trade_count == 3
     assert result.performance.fill_count == 3
+    assert result.performance.sharpe_ratio is not None
+    assert result.performance.return_to_drawdown_ratio is not None
+    assert result.performance.avg_holding_bars == Decimal("1.5000")
+    assert result.performance.avg_trade_pnl is not None
+    assert result.performance.avg_losing_trade_pnl is not None
 
     assert result.fill_events[0].fill.price == Decimal("39.52")
     assert result.fill_events[0].fill.qty == Decimal("200")

@@ -265,9 +265,38 @@ describe("App", () => {
       enabled: true,
       symbol: "000001.SZ",
       timeframe: "15m",
+      samplePurpose: "evaluation",
     });
     expect(screen.getByText(/paper_account_001 \/ 平安银行 \(000001\.SZ\)/)).toBeInTheDocument();
     expect(screen.getByText("模型实验台")).toBeInTheDocument();
+  });
+
+  it("switches baseline research between evaluation and preview modes", async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /研究/ }));
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#research");
+    });
+
+    expect(mockedUseResearchData).toHaveBeenLastCalledWith({
+      enabled: true,
+      symbol: "600036.SH",
+      timeframe: "15m",
+      samplePurpose: "evaluation",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /快速预览/i }));
+
+    await waitFor(() => {
+      expect(mockedUseResearchData).toHaveBeenLastCalledWith({
+        enabled: true,
+        symbol: "600036.SH",
+        timeframe: "15m",
+        samplePurpose: "preview",
+      });
+    });
   });
 
   it("runs AI research with the fast preview limit from the research view", async () => {

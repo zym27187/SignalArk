@@ -252,10 +252,11 @@ describe("api helpers", () => {
       symbol: "600036.SH",
       timeframe: "15m",
       limit: 48,
+      mode: "evaluation",
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8000/v1/research/snapshot?symbol=600036.SH&timeframe=15m&limit=48",
+      "http://127.0.0.1:8000/v1/research/snapshot?symbol=600036.SH&timeframe=15m&limit=48&mode=evaluation",
       expect.objectContaining({
         headers: {
           Accept: "application/json",

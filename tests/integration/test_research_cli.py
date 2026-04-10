@@ -111,6 +111,8 @@ def test_research_cli_runs_backtest_and_exports_result_files(tmp_path: Path) -> 
             str(output_path),
             "--web-snapshot-output",
             str(snapshot_path),
+            "--sample-purpose",
+            "evaluation",
             "--initial-cash",
             "100000",
             "--slippage-bps",
@@ -141,6 +143,11 @@ def test_research_cli_runs_backtest_and_exports_result_files(tmp_path: Path) -> 
     assert snapshot_payload["sourceMode"] == "imported"
     assert snapshot_payload["manifest"]["strategyId"] == "baseline_momentum_v1"
     assert snapshot_payload["performance"]["tradeCount"] == 3
+    assert snapshot_payload["performance"]["sharpeRatio"] is not None
+    assert snapshot_payload["performance"]["avgHoldingBars"] == 1.5
+    assert snapshot_payload["sample"]["purpose"] == "evaluation"
+    assert snapshot_payload["sample"]["actualBarCount"] == 5
+    assert snapshot_payload["segments"] == []
     assert len(snapshot_payload["klineBars"]) == 5
     assert len(snapshot_payload["equityCurve"]) == 5
     assert "runtimePnlCurve" not in snapshot_payload
