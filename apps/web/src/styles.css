@@ -969,6 +969,27 @@ select {
   font-size: 0.9rem;
 }
 
+.decision-pagination {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-top: 6px;
+}
+
+.decision-pagination__summary {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.92rem;
+}
+
+.decision-pagination__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .note-list {
   display: grid;
   gap: 12px;
@@ -1174,5 +1195,13 @@ select {
   .data-table td {
     padding: 6px 0;
     border-bottom: 0;
+  }
+
+  .decision-pagination {
+    align-items: start;
+  }
+
+  .decision-pagination__actions {
+    width: 100%;
   }
 }

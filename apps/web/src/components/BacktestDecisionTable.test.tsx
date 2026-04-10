@@ -1,12 +1,13 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { BacktestDecisionTable } from "./BacktestDecisionTable";
 
 describe("BacktestDecisionTable", () => {
-  it("renders strategy actions separately from execution plans", () => {
+  it("renders strategy actions separately from execution plans and paginates long lists", () => {
     render(
       <BacktestDecisionTable
+        pageSize={1}
         decisions={[
           {
             barKey: "600036.SH:15m:2026-04-10T09:45:00+08:00",
@@ -39,6 +40,8 @@ describe("BacktestDecisionTable", () => {
     );
 
     expect(screen.getByRole("columnheader", { name: "策略动作" })).toBeInTheDocument();
+    expect(screen.getByText("第 1 / 2 页 · 显示第 1-1 条，共 2 条")).toBeInTheDocument();
+    expect(screen.queryByText("突破阈值后调到目标仓位。")).not.toBeInTheDocument();
 
     const holdRow = screen.getByText("盘整区间太窄，先观望。").closest("tr");
     expect(holdRow).not.toBeNull();
@@ -47,6 +50,11 @@ describe("BacktestDecisionTable", () => {
     expect(
       within(holdRow as HTMLElement).getByText("跳过原因：模型选择观望"),
     ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(screen.getByText("第 2 / 2 页 · 显示第 2-2 条，共 2 条")).toBeInTheDocument();
+    expect(screen.queryByText("盘整区间太窄，先观望。")).not.toBeInTheDocument();
 
     const rebalanceRow = screen.getByText("突破阈值后调到目标仓位。").closest("tr");
     expect(rebalanceRow).not.toBeNull();
