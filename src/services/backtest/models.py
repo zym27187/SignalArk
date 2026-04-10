@@ -44,7 +44,7 @@ class BacktestDatasetMetadata(DomainModel):
 
 
 class BacktestCostAssumptions(DomainModel):
-    """Cost and slippage assumptions applied by the minimal backtester."""
+    """Cost and execution assumptions applied by the minimal backtester."""
 
     commission: NonNegativeDecimal
     transfer_fee: NonNegativeDecimal
@@ -52,6 +52,9 @@ class BacktestCostAssumptions(DomainModel):
     slippage_bps: NonNegativeDecimal = Decimal("0")
     fee_model: NonEmptyStr = "ashare_paper_cost_model"
     slippage_model: NonEmptyStr = "bar_close_bps"
+    partial_fill_model: NonEmptyStr = "full_fill_only"
+    unfilled_qty_handling: NonEmptyStr = "not_applicable_full_fill"
+    execution_constraints: tuple[NonEmptyStr, ...] = ()
 
 
 class BacktestRunManifest(DomainModel):

@@ -163,3 +163,37 @@ async def test_ai_backtest_preserves_non_signal_skip_reasons() -> None:
     assert "1/2 bars collected" in result.decisions[0].reason_summary
     assert result.decisions[1].skip_reason == "ai_decision_hold"
     assert result.decisions[1].reason_summary == "market regime is mixed"
+
+
+@pytest.mark.asyncio
+async def test_backtest_runner_supports_directional_tiered_slippage(
+) -> None:
+    fixed_runner = build_default_backtest_runner(
+        _settings(),
+        initial_cash=Decimal("100000"),
+        slippage_bps=Decimal("5"),
+        slippage_model="bar_close_bps",
+    )
+    tiered_runner = build_default_backtest_runner(
+        _settings(),
+        initial_cash=Decimal("100000"),
+        slippage_bps=Decimal("5"),
+        slippage_model="directional_close_tiered_bps",
+    )
+    bars = (
+        _bar_event(close=Decimal("39.72")),
+        _bar_event(event_time=BASE_TIME + timedelta(minutes=15), close=Decimal("39.96")),
+        _bar_event(event_time=BASE_TIME + timedelta(minutes=30), close=Decimal("40.28")),
+    )
+
+    fixed_result = await fixed_runner.run(bars)
+    tiered_result = await tiered_runner.run(bars)
+
+    assert fixed_result.fill_events
+    assert tiered_result.fill_events
+    assert tiered_result.fill_events[0].fill.price > fixed_result.fill_events[0].fill.price
+    assert tiered_result.manifest.cost_assumptions.slippage_model == "directional_close_tiered_bps"
+    assert tiered_result.manifest.cost_assumptions.partial_fill_model == "full_fill_only"
+    assert "partial fills" in " ".join(
+        tiered_result.manifest.cost_assumptions.execution_constraints
+    )

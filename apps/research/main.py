@@ -32,6 +32,7 @@ async def _run(args: argparse.Namespace) -> None:
         settings,
         initial_cash=args.initial_cash,
         slippage_bps=args.slippage_bps,
+        slippage_model=args.slippage_model,
     )
     result = await runner.run(bars)
 
@@ -56,6 +57,7 @@ async def _run(args: argparse.Namespace) -> None:
                 settings,
                 initial_cash=args.initial_cash,
                 slippage_bps=args.slippage_bps,
+                slippage_model=args.slippage_model,
             ).run(segment_bars)
 
         segment_analyses = await build_segment_analyses(
@@ -68,12 +70,19 @@ async def _run(args: argparse.Namespace) -> None:
             "该导出来源会显式标记为 imported，而不是继续混用 fixture 语义。",
             "该导出会统一使用 `equityCurve` 表示 research 回测权益曲线。",
             "前端与 HTTP research snapshot 会复用同一份研究快照契约。",
+            (
+                "当前 backtest 仍保持整笔成交，不模拟部分成交和成交失败；"
+                "剩余执行差异会写入 manifest.executionConstraints。"
+            ),
         ]
         if sample_metadata["warning"] is not None:
             snapshot_notes.append(str(sample_metadata["warning"]))
         if segment_analyses:
             snapshot_notes.append(
-                f"时间分段评估会把样本按时间切成 {len(segment_analyses)} 段，并在同一起始资金下分别比较阶段表现。"
+                
+                    f"时间分段评估会把样本按时间切成 {len(segment_analyses)} 段，"
+                    "并在同一起始资金下分别比较阶段表现。"
+                
             )
         snapshot_payload = build_web_snapshot_payload(
             result=result,
@@ -120,6 +129,15 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Decimal,
         default=Decimal("5"),
         help="Slippage in basis points applied by the paper execution model. Defaults to 5.",
+    )
+    parser.add_argument(
+        "--slippage-model",
+        choices=("bar_close_bps", "directional_close_tiered_bps"),
+        default="bar_close_bps",
+        help=(
+            "Slippage model used by the backtest runner. "
+            "Defaults to fixed bar_close_bps."
+        ),
     )
     parser.add_argument(
         "--config-profile",

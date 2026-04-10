@@ -21,6 +21,7 @@ class ResearchBacktestRunner:
         strategy: object | None = None,
         initial_cash: Decimal = Decimal("100000"),
         slippage_bps: Decimal = Decimal("5"),
+        slippage_model: str = "bar_close_bps",
     ) -> None:
         self._settings = settings
         self._strategy = strategy or build_strategy(
@@ -34,6 +35,7 @@ class ResearchBacktestRunner:
             cost_model=settings.paper_cost_model,
             initial_cash=initial_cash,
             slippage_bps=slippage_bps,
+            slippage_model=slippage_model,
         )
 
     @property
@@ -52,6 +54,7 @@ def build_default_backtest_runner(
     strategy: object | None = None,
     initial_cash: Decimal = Decimal("100000"),
     slippage_bps: Decimal = Decimal("5"),
+    slippage_model: str = "bar_close_bps",
 ) -> ResearchBacktestRunner:
     """Mirror trader wiring while keeping research-only concerns minimal."""
     return ResearchBacktestRunner(
@@ -59,4 +62,5 @@ def build_default_backtest_runner(
         strategy=strategy,
         initial_cash=initial_cash,
         slippage_bps=slippage_bps,
+        slippage_model=slippage_model,
     )

@@ -218,6 +218,9 @@ def create_app(
         timeframe: str | None = None,
         limit: int | None = Query(default=None, ge=1, le=500),
         mode: Literal["preview", "evaluation"] = Query(default="evaluation"),
+        slippage_model: Literal["bar_close_bps", "directional_close_tiered_bps"] = Query(
+            default="bar_close_bps"
+        ),
     ) -> dict[str, object]:
         try:
             return await service.research_snapshot_payload(
@@ -225,6 +228,7 @@ def create_app(
                 timeframe=timeframe,
                 limit=limit,
                 mode=mode,
+                slippage_model=slippage_model,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

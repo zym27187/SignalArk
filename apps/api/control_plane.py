@@ -563,6 +563,7 @@ class ApiControlPlaneService:
         timeframe: str | None = None,
         limit: int | None = None,
         mode: ResearchSamplePurpose = "evaluation",
+        slippage_model: str = "bar_close_bps",
     ) -> dict[str, object]:
         resolved_symbol = self._resolve_symbol(symbol)
         resolved_timeframe = self._resolve_timeframe(timeframe)
@@ -583,6 +584,7 @@ class ApiControlPlaneService:
             self._settings,
             initial_cash=DEFAULT_RESEARCH_INITIAL_CASH,
             slippage_bps=DEFAULT_RESEARCH_SLIPPAGE_BPS,
+            slippage_model=slippage_model,
         )
         result = await runner.run(backtest_bars)
         sample_metadata = build_sample_metadata(
@@ -596,6 +598,7 @@ class ApiControlPlaneService:
                 self._settings,
                 initial_cash=DEFAULT_RESEARCH_INITIAL_CASH,
                 slippage_bps=DEFAULT_RESEARCH_SLIPPAGE_BPS,
+                slippage_model=slippage_model,
             ).run(segment_bars)
 
         segment_analyses = await build_segment_analyses(
@@ -607,12 +610,19 @@ class ApiControlPlaneService:
             "该快照由 `/v1/research/snapshot` 基于真实历史 K 线即时生成。",
             "当前 research 页已直接消费后端回测结果，不再固定停留在本地 fixture 页面。",
             "research snapshot 统一返回 `equityCurve`，仅表示回测权益曲线。",
+            (
+                "当前 backtest 仍保持整笔成交，不模拟部分成交和成交失败；"
+                "剩余执行差异已写入 manifest.executionConstraints。"
+            ),
         ]
         if sample_metadata["warning"] is not None:
             notes.append(str(sample_metadata["warning"]))
         if segment_analyses:
             notes.append(
-                f"时间分段评估会把样本按时间切成 {len(segment_analyses)} 段，并在同一起始资金下分别比较阶段表现。"
+                
+                    f"时间分段评估会把样本按时间切成 {len(segment_analyses)} 段，"
+                    "并在同一起始资金下分别比较阶段表现。"
+                
             )
         return build_web_snapshot_payload(
             result=result,
@@ -706,6 +716,7 @@ class ApiControlPlaneService:
                 "AI research snapshot 同样复用了 strategy、order plan、paper "
                 "execution 与 portfolio ledger 语义。"
             ),
+            "当前 AI backtest 同样默认整笔成交，不额外模拟部分成交和成交失败。",
         ]
         if sample_metadata["warning"] is not None:
             notes.append(str(sample_metadata["warning"]))

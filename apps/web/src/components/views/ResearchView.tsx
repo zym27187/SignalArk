@@ -115,7 +115,20 @@ function buildMetadataItems(
     {
       label: "交易成本假设",
       value: `滑点 ${formatDecimal(manifest.slippageBps, 0)} bps`,
-      hint: `${manifest.feeModel} + ${manifest.slippageModel}`,
+      hint: [
+        manifest.feeModel,
+        manifest.slippageModel,
+        manifest.partialFillModel,
+      ]
+        .filter(Boolean)
+        .join(" + "),
+    },
+    {
+      label: "执行约束",
+      value: manifest.unfilledQtyHandling ?? "not_applicable_full_fill",
+      hint:
+        manifest.executionConstraints?.join(" / ") ??
+        "返回结果后，这里会列出当前 backtest 与 paper/live 在执行层的剩余差异。",
     },
     {
       label: "数据版本标识",
@@ -348,7 +361,9 @@ export function ResearchView({
                 : "等待回测结果。"
             }
             tone={
-              performance?.avgTradePnl !== undefined && performance.avgTradePnl > 0
+              performance?.avgTradePnl !== undefined &&
+              performance?.avgTradePnl !== null &&
+              performance.avgTradePnl > 0
                 ? "positive"
                 : "default"
             }

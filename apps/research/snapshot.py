@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Literal
 
-from apps.research.analysis import ResearchSegmentAnalysis
 from src.domain.events import BarEvent
 from src.services.backtest import BacktestDecisionRecord, BacktestRunResult
+
+from apps.research.analysis import ResearchSegmentAnalysis
 
 ResearchSnapshotSourceMode = Literal["fixture", "imported", "live"]
 
@@ -68,6 +69,9 @@ def build_web_snapshot_payload(
             "slippageBps": float(cost_assumptions.slippage_bps),
             "feeModel": cost_assumptions.fee_model,
             "slippageModel": cost_assumptions.slippage_model,
+            "partialFillModel": cost_assumptions.partial_fill_model,
+            "unfilledQtyHandling": cost_assumptions.unfilled_qty_handling,
+            "executionConstraints": list(cost_assumptions.execution_constraints),
             "dataFingerprint": dataset.data_fingerprint,
             "manifestFingerprint": result.manifest.manifest_fingerprint,
         },
@@ -135,8 +139,12 @@ def _serialize_performance(performance) -> dict[str, Any]:
         "realizedPnl": float(performance.realized_pnl),
         "unrealizedPnl": float(performance.unrealized_pnl),
         "turnover": float(performance.turnover),
-        "winRatePct": None if performance.win_rate_pct is None else float(performance.win_rate_pct),
-        "sharpeRatio": None if performance.sharpe_ratio is None else float(performance.sharpe_ratio),
+        "winRatePct": (
+            None if performance.win_rate_pct is None else float(performance.win_rate_pct)
+        ),
+        "sharpeRatio": (
+            None if performance.sharpe_ratio is None else float(performance.sharpe_ratio)
+        ),
         "returnToDrawdownRatio": (
             None
             if performance.return_to_drawdown_ratio is None
@@ -145,7 +153,9 @@ def _serialize_performance(performance) -> dict[str, Any]:
         "profitFactor": (
             None if performance.profit_factor is None else float(performance.profit_factor)
         ),
-        "avgTradePnl": None if performance.avg_trade_pnl is None else float(performance.avg_trade_pnl),
+        "avgTradePnl": (
+            None if performance.avg_trade_pnl is None else float(performance.avg_trade_pnl)
+        ),
         "avgWinningTradePnl": (
             None
             if performance.avg_winning_trade_pnl is None

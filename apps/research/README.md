@@ -58,6 +58,7 @@ CLI 支持这些常用参数：
 - `--web-snapshot-output`：可选，导出前端研究页可直接消费的快照 JSON；真实导出会显式标记 `sourceMode=imported`
 - `--initial-cash`：可选，默认 `100000`
 - `--slippage-bps`：可选，默认 `5`
+- `--slippage-model`：可选，支持 `bar_close_bps` 和 `directional_close_tiered_bps`
 - `--config-profile` / `--config-file`：可选，允许显式切换配置层
 - `--postgres-dsn`：可选，仅用于满足共享 settings 校验；不传时 CLI 会回退到内存 SQLite
 
@@ -118,6 +119,25 @@ result = await runner.run(bars)
 - `equity_curve`
 - `positions`
 - `balance`
+
+## 当前执行假设
+
+当前 research/backtest 在执行层已经显式区分并记录这些假设：
+
+- 固定滑点基线：`bar_close_bps`
+- 更保守的分层滑点：`directional_close_tiered_bps`
+  会根据 `decision_price` 相对 `previous_close` 的不利方向偏移放大滑点
+- 部分成交 / 成交失败：当前结论仍是先保持 `full_fill_only`
+  也就是说，回测一旦接受订单，仍按整笔成交处理，不额外模拟部分成交和 missed fill
+
+manifest 和 web snapshot 里现在会同时给出：
+
+- `slippageModel`
+- `partialFillModel`
+- `unfilledQtyHandling`
+- `executionConstraints`
+
+这样在比较策略收益时，可以更清楚地区分哪些结果来自 alpha，哪些仍来自当前执行假设的简化。
 
 ## 当前范围
 

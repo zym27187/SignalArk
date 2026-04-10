@@ -29,6 +29,9 @@ export interface BacktestManifestSnapshot {
   slippageBps: number;
   feeModel: string;
   slippageModel: string;
+  partialFillModel?: string;
+  unfilledQtyHandling?: string;
+  executionConstraints?: string[];
   dataFingerprint: string;
   manifestFingerprint: string;
 }

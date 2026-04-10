@@ -270,6 +270,58 @@ def test_api_research_snapshot_supports_preview_and_segmented_evaluation(
     )
 
 
+def test_api_research_snapshot_exposes_execution_assumption_manifest_fields(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("SIGNALARK_POSTGRES_DSN", database_url)
+    from src.config import get_settings
+
+    get_settings.cache_clear()
+    from apps.api.main import create_app
+
+    settings = _settings(database_url)
+    upgrade_database(database_url)
+    engine = create_database_engine(database_url)
+    session_factory = create_session_factory(engine)
+    control_store = TraderControlPlaneStore(session_factory)
+    service = ApiControlPlaneService(
+        settings=settings,
+        session_factory=session_factory,
+        control_store=control_store,
+        market_gateway_factory=lambda: FakeHistoricalBarGateway(
+            [
+                _bar(index=0, close="39.72", previous_close="39.47"),
+                _bar(index=1, close="39.96", previous_close="39.47"),
+                _bar(index=2, close="40.28", previous_close="39.47"),
+            ]
+        ),
+    )
+    app = create_app(settings=settings, control_plane_service=service)
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/v1/research/snapshot",
+                params={
+                    "symbol": "600036.SH",
+                    "timeframe": "15m",
+                    "limit": 3,
+                    "slippage_model": "directional_close_tiered_bps",
+                },
+            )
+    finally:
+        engine.dispose()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["manifest"]["slippageModel"] == "directional_close_tiered_bps"
+    assert payload["manifest"]["partialFillModel"] == "full_fill_only"
+    assert payload["manifest"]["unfilledQtyHandling"] == "not_applicable_full_fill"
+    assert "partial fills" in " ".join(payload["manifest"]["executionConstraints"])
+
+
 def test_api_ai_research_snapshot_returns_live_ai_backtest_payload(
     tmp_path: Path,
     monkeypatch,

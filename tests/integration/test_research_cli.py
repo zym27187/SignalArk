@@ -117,6 +117,8 @@ def test_research_cli_runs_backtest_and_exports_result_files(tmp_path: Path) -> 
             "100000",
             "--slippage-bps",
             "5",
+            "--slippage-model",
+            "directional_close_tiered_bps",
         ],
         cwd=ROOT_DIR,
         env=env,
@@ -133,6 +135,9 @@ def test_research_cli_runs_backtest_and_exports_result_files(tmp_path: Path) -> 
 
     assert result_payload["performance"]["trade_count"] == 3
     assert result_payload["performance"]["fill_count"] == 3
+    assert result_payload["manifest"]["cost_assumptions"]["slippage_model"] == (
+        "directional_close_tiered_bps"
+    )
     assert len(result_payload["decisions"]) == 5
     assert len(result_payload["equity_curve"]) == 5
     assert result_payload["decisions"][0]["skip_reason"] == "baseline_trend_warmup"
@@ -142,6 +147,9 @@ def test_research_cli_runs_backtest_and_exports_result_files(tmp_path: Path) -> 
     assert snapshot_payload["sourceLabel"] == "由 research CLI 导出的真实回测结果"
     assert snapshot_payload["sourceMode"] == "imported"
     assert snapshot_payload["manifest"]["strategyId"] == "baseline_momentum_v1"
+    assert snapshot_payload["manifest"]["slippageModel"] == "directional_close_tiered_bps"
+    assert snapshot_payload["manifest"]["partialFillModel"] == "full_fill_only"
+    assert "partial fills" in " ".join(snapshot_payload["manifest"]["executionConstraints"])
     assert snapshot_payload["performance"]["tradeCount"] == 3
     assert snapshot_payload["performance"]["sharpeRatio"] is not None
     assert snapshot_payload["performance"]["avgHoldingBars"] == 1.5

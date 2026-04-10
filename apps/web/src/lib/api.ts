@@ -243,6 +243,7 @@ export async function fetchResearchSnapshot(params?: {
   timeframe?: string;
   limit?: number;
   mode?: ResearchSamplePurpose;
+  slippageModel?: "bar_close_bps" | "directional_close_tiered_bps";
 }): Promise<ResearchSnapshot> {
   const query = new URLSearchParams();
   if (params?.symbol) {
@@ -254,6 +255,9 @@ export async function fetchResearchSnapshot(params?: {
   query.set("limit", String(params?.limit ?? 96));
   if (params?.mode) {
     query.set("mode", params.mode);
+  }
+  if (params?.slippageModel) {
+    query.set("slippage_model", params.slippageModel);
   }
   return requestJson<ResearchSnapshot>(`/v1/research/snapshot?${query.toString()}`);
 }

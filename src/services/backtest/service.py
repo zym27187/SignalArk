@@ -43,6 +43,14 @@ from src.services.backtest.models import (
 PERCENT_QUANTUM = Decimal("0.0001")
 RATIO_QUANTUM = Decimal("0.0001")
 SLIPPAGE_SCALE = Decimal("10000")
+FIXED_BPS_SLIPPAGE_MODEL = "bar_close_bps"
+DIRECTIONAL_TIERED_SLIPPAGE_MODEL = "directional_close_tiered_bps"
+SUPPORTED_SLIPPAGE_MODELS = frozenset(
+    {
+        FIXED_BPS_SLIPPAGE_MODEL,
+        DIRECTIONAL_TIERED_SLIPPAGE_MODEL,
+    }
+)
 
 
 class BacktestStrategyPort(Protocol):
@@ -85,17 +93,21 @@ class BacktestService:
         cost_model: PaperCostModel,
         initial_cash: Decimal,
         slippage_bps: Decimal = Decimal("0"),
+        slippage_model: str = FIXED_BPS_SLIPPAGE_MODEL,
     ) -> None:
         if initial_cash <= 0:
             raise ValueError("initial_cash must be positive")
         if slippage_bps < 0:
             raise ValueError("slippage_bps cannot be negative")
+        if slippage_model not in SUPPORTED_SLIPPAGE_MODELS:
+            raise ValueError(f"Unsupported slippage_model: {slippage_model}")
 
         self._account_id = account_id
         self._strategy = strategy
         self._cost_model = cost_model
         self._initial_cash = initial_cash
         self._slippage_bps = slippage_bps
+        self._slippage_model = slippage_model
         self._symbol_rules = {
             str(symbol).strip().upper(): rule for symbol, rule in symbol_rules.items()
         }
@@ -113,6 +125,8 @@ class BacktestService:
             transfer_fee=self._cost_model.transfer_fee,
             stamp_duty_sell=self._cost_model.stamp_duty_sell,
             slippage_bps=self._slippage_bps,
+            slippage_model=self._slippage_model,
+            execution_constraints=_build_execution_constraints(self._slippage_model),
         )
         manifest = self._build_manifest(
             dataset=dataset,
@@ -359,6 +373,8 @@ class BacktestService:
             side=order.side,
             reference_price=reference_price,
             slippage_bps=self._slippage_bps,
+            slippage_model=self._slippage_model,
+            previous_close=market_state.previous_close,
             price_tick=symbol_rule.price_tick,
             upper_limit_price=market_state.upper_limit_price,
             lower_limit_price=market_state.lower_limit_price,
@@ -646,16 +662,25 @@ def _apply_simple_slippage(
     side: OrderSide,
     reference_price: Decimal,
     slippage_bps: Decimal,
+    slippage_model: str,
+    previous_close: Decimal,
     price_tick: Decimal,
     upper_limit_price: Decimal,
     lower_limit_price: Decimal,
 ) -> Decimal:
-    if slippage_bps == 0:
+    effective_slippage_bps = _resolve_effective_slippage_bps(
+        side=side,
+        reference_price=reference_price,
+        previous_close=previous_close,
+        base_slippage_bps=slippage_bps,
+        slippage_model=slippage_model,
+    )
+    if effective_slippage_bps == 0:
         slipped_price = reference_price
     else:
         direction = Decimal("1") if side is OrderSide.BUY else Decimal("-1")
         slipped_price = reference_price * (
-            Decimal("1") + ((slippage_bps / SLIPPAGE_SCALE) * direction)
+            Decimal("1") + ((effective_slippage_bps / SLIPPAGE_SCALE) * direction)
         )
 
     bounded_price = min(max(slipped_price, lower_limit_price), upper_limit_price)
@@ -679,6 +704,55 @@ def _round_price_to_tick(
 
 def _to_pct(ratio: Decimal) -> Decimal:
     return (ratio * Decimal("100")).quantize(PERCENT_QUANTUM)
+
+
+def _resolve_effective_slippage_bps(
+    *,
+    side: OrderSide,
+    reference_price: Decimal,
+    previous_close: Decimal,
+    base_slippage_bps: Decimal,
+    slippage_model: str,
+) -> Decimal:
+    if base_slippage_bps == 0 or slippage_model == FIXED_BPS_SLIPPAGE_MODEL:
+        return base_slippage_bps
+
+    if previous_close <= 0:
+        return base_slippage_bps
+
+    move_ratio = (reference_price - previous_close) / previous_close
+    adverse_move_ratio = Decimal("0")
+    if side is OrderSide.BUY and move_ratio > 0:
+        adverse_move_ratio = move_ratio
+    elif side is OrderSide.SELL and move_ratio < 0:
+        adverse_move_ratio = -move_ratio
+
+    if adverse_move_ratio >= Decimal("0.015"):
+        return base_slippage_bps * Decimal("3")
+    if adverse_move_ratio >= Decimal("0.008"):
+        return base_slippage_bps * Decimal("2")
+    if adverse_move_ratio >= Decimal("0.003"):
+        return base_slippage_bps * Decimal("1.5")
+    return base_slippage_bps
+
+
+def _build_execution_constraints(slippage_model: str) -> tuple[str, ...]:
+    slippage_note = (
+        "Slippage uses fixed bar-close bps against the decision price."
+        if slippage_model == FIXED_BPS_SLIPPAGE_MODEL
+        else "Slippage uses directional close tiers against previous_close and decision_price."
+    )
+    return (
+        slippage_note,
+        (
+            "Backtest still assumes full fills once an order is accepted; "
+            "partial fills and fill failures are not simulated."
+        ),
+        (
+            "There is no resting order-book queue, intrabar path reconstruction, "
+            "or latency competition in current backtest execution."
+        ),
+    )
 
 
 def _quantize_ratio(value: Decimal) -> Decimal:
