@@ -990,6 +990,37 @@ select {
   flex-wrap: wrap;
 }
 
+.decision-pagination__jump {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.decision-pagination__jump-label {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--ink-muted);
+  font-size: 0.92rem;
+}
+
+.decision-pagination__jump-input {
+  width: 72px;
+  padding: 9px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(18, 40, 61, 0.12);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--ink);
+  text-align: center;
+}
+
+.decision-pagination__jump-input:focus {
+  outline: none;
+  border-color: rgba(12, 143, 120, 0.42);
+  box-shadow: 0 0 0 4px rgba(12, 143, 120, 0.12);
+}
+
 .note-list {
   display: grid;
   gap: 12px;
@@ -1202,6 +1233,10 @@ select {
   }
 
   .decision-pagination__actions {
+    width: 100%;
+  }
+
+  .decision-pagination__jump {
     width: 100%;
   }
 }

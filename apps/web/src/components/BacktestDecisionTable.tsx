@@ -17,6 +17,7 @@ export function BacktestDecisionTable({
   const normalizedPageSize = Math.max(1, Math.floor(pageSize));
   const pageCount = Math.max(1, Math.ceil(decisions.length / normalizedPageSize));
   const [page, setPage] = useState(0);
+  const [pageInput, setPageInput] = useState("1");
   const decisionSignature =
     decisions.length === 0
       ? "empty"
@@ -28,6 +29,23 @@ export function BacktestDecisionTable({
   useEffect(() => {
     setPage(0);
   }, [decisionSignature]);
+
+  useEffect(() => {
+    setPageInput(String(page + 1));
+  }, [page]);
+
+  function jumpToPage() {
+    const nextPage = Number.parseInt(pageInput, 10);
+
+    if (!Number.isFinite(nextPage)) {
+      setPageInput(String(page + 1));
+      return;
+    }
+
+    const normalizedPage = Math.min(pageCount, Math.max(1, nextPage));
+    setPage(normalizedPage - 1);
+    setPageInput(String(normalizedPage));
+  }
 
   return (
     <div className="table-shell">
@@ -91,6 +109,36 @@ export function BacktestDecisionTable({
               下一页
             </button>
           </div>
+          <form
+            className="decision-pagination__jump"
+            onSubmit={(event) => {
+              event.preventDefault();
+              jumpToPage();
+            }}
+          >
+            <label className="decision-pagination__jump-label">
+              跳到第
+              <input
+                type="number"
+                min={1}
+                max={pageCount}
+                step={1}
+                inputMode="numeric"
+                className="decision-pagination__jump-input"
+                aria-label="跳到第几页"
+                value={pageInput}
+                onChange={(event) => setPageInput(event.target.value)}
+              />
+              页
+            </label>
+            <button
+              type="submit"
+              className="secondary-button"
+              disabled={pageInput.trim().length === 0}
+            >
+              跳转
+            </button>
+          </form>
         </div>
       ) : null}
     </div>

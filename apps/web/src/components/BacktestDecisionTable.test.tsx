@@ -35,13 +35,27 @@ describe("BacktestDecisionTable", () => {
             fillCount: 1,
             orderPlanSide: "BUY",
           },
+          {
+            barKey: "600036.SH:15m:2026-04-10T10:15:00+08:00",
+            eventTime: "2026-04-10T10:15:00+08:00",
+            symbol: "600036.SH",
+            signalType: "EXIT",
+            action: "EXIT",
+            executionAction: "SELL",
+            targetPosition: 0,
+            reasonSummary: "跌破阈值后执行止盈离场。",
+            skipReason: null,
+            fillCount: 1,
+            orderPlanSide: "SELL",
+          },
         ]}
       />,
     );
 
     expect(screen.getByRole("columnheader", { name: "策略动作" })).toBeInTheDocument();
-    expect(screen.getByText("第 1 / 2 页 · 显示第 1-1 条，共 2 条")).toBeInTheDocument();
+    expect(screen.getByText("第 1 / 3 页 · 显示第 1-1 条，共 3 条")).toBeInTheDocument();
     expect(screen.queryByText("突破阈值后调到目标仓位。")).not.toBeInTheDocument();
+    expect(screen.queryByText("跌破阈值后执行止盈离场。")).not.toBeInTheDocument();
 
     const holdRow = screen.getByText("盘整区间太窄，先观望。").closest("tr");
     expect(holdRow).not.toBeNull();
@@ -53,12 +67,25 @@ describe("BacktestDecisionTable", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
 
-    expect(screen.getByText("第 2 / 2 页 · 显示第 2-2 条，共 2 条")).toBeInTheDocument();
+    expect(screen.getByText("第 2 / 3 页 · 显示第 2-2 条，共 3 条")).toBeInTheDocument();
     expect(screen.queryByText("盘整区间太窄，先观望。")).not.toBeInTheDocument();
 
     const rebalanceRow = screen.getByText("突破阈值后调到目标仓位。").closest("tr");
     expect(rebalanceRow).not.toBeNull();
     expect(within(rebalanceRow as HTMLElement).getAllByText("再平衡")).toHaveLength(2);
     expect(within(rebalanceRow as HTMLElement).getByText("下单计划：买入")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("spinbutton", { name: "跳到第几页" }), {
+      target: { value: "3" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "跳转" }));
+
+    expect(screen.getByText("第 3 / 3 页 · 显示第 3-3 条，共 3 条")).toBeInTheDocument();
+    expect(screen.queryByText("突破阈值后调到目标仓位。")).not.toBeInTheDocument();
+
+    const exitRow = screen.getByText("跌破阈值后执行止盈离场。").closest("tr");
+    expect(exitRow).not.toBeNull();
+    expect(within(exitRow as HTMLElement).getAllByText("平仓")).toHaveLength(2);
+    expect(within(exitRow as HTMLElement).getByText("下单计划：卖出")).toBeInTheDocument();
   });
 });
