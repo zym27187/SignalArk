@@ -60,6 +60,22 @@ interface SnapshotSectionOptions {
   emptyCopy: string;
 }
 
+interface ResearchDecisionDiff {
+  barKey: string;
+  eventTime: string;
+  baselineAction: string;
+  aiAction: string;
+  baselineReason: string;
+  aiReason: string;
+}
+
+interface ResearchComparisonSummary {
+  netPnlDelta: number;
+  maxDrawdownDeltaPct: number;
+  tradeCountDelta: number;
+  decisionDiffs: ResearchDecisionDiff[];
+}
+
 function buildMetadataItems(
   snapshot: ResearchSnapshot | null,
   {
@@ -156,6 +172,56 @@ function buildSamplePurposeCopy(samplePurpose: ResearchSamplePurpose): string {
   return `默认使用 ${DEFAULT_RESEARCH_EVALUATION_LIMIT} 根 K 线的评估样本，并尽量补充分段验证。`;
 }
 
+function formatSignedCount(value: number): string {
+  if (value > 0) {
+    return `+${value}`;
+  }
+  return String(value);
+}
+
+function buildResearchComparison(
+  baselineSnapshot: ResearchSnapshot | null,
+  aiSnapshot: ResearchSnapshot | null,
+): ResearchComparisonSummary | null {
+  if (baselineSnapshot === null || aiSnapshot === null) {
+    return null;
+  }
+
+  const baselinePerformance = baselineSnapshot.performance;
+  const aiPerformance = aiSnapshot.performance;
+  const aiDecisionByBarKey = new Map(
+    aiSnapshot.decisions.map((decision) => [decision.barKey, decision]),
+  );
+  const decisionDiffs: ResearchDecisionDiff[] = [];
+
+  for (const baselineDecision of baselineSnapshot.decisions) {
+    const aiDecision = aiDecisionByBarKey.get(baselineDecision.barKey);
+    if (
+      aiDecision === undefined ||
+      (aiDecision.action === baselineDecision.action &&
+        aiDecision.executionAction === baselineDecision.executionAction &&
+        aiDecision.orderPlanSide === baselineDecision.orderPlanSide)
+    ) {
+      continue;
+    }
+    decisionDiffs.push({
+      barKey: baselineDecision.barKey,
+      eventTime: baselineDecision.eventTime,
+      baselineAction: baselineDecision.action,
+      aiAction: aiDecision.action,
+      baselineReason: baselineDecision.reasonSummary,
+      aiReason: aiDecision.reasonSummary,
+    });
+  }
+
+  return {
+    netPnlDelta: aiPerformance.netPnl - baselinePerformance.netPnl,
+    maxDrawdownDeltaPct: aiPerformance.maxDrawdownPct - baselinePerformance.maxDrawdownPct,
+    tradeCountDelta: aiPerformance.tradeCount - baselinePerformance.tradeCount,
+    decisionDiffs,
+  };
+}
+
 export function ResearchView({
   researchData,
   availableSymbols,
@@ -195,6 +261,7 @@ export function ResearchView({
   const snapshot = researchData.snapshot;
   const manifest = snapshot?.manifest;
   const sample = snapshot?.sample;
+  const comparison = buildResearchComparison(snapshot, aiResearchData.snapshot);
   const sourceLabel = snapshot
     ? snapshot.sourceMode === "fixture"
       ? snapshot.sourceLabel
@@ -571,6 +638,61 @@ export function ResearchView({
           emptyCopy: "切换到这里后，页面会基于真实历史价格即时生成一份回测结果。",
         },
       })}
+
+      {comparison !== null ? (
+        <SectionCard
+          eyebrow="标准化对照"
+          title="Baseline vs AI"
+          description="把 baseline 与 AI 放在同一套样本和指标下比较，减少来回切换和人工抄数。"
+        >
+          <section className="metric-grid">
+            <MetricCard
+              label="AI 相对基线收益"
+              value={formatSignedMoney(comparison.netPnlDelta)}
+              hint="正值表示 AI 这次比 baseline 更赚钱。"
+              tone={comparison.netPnlDelta >= 0 ? "positive" : "warning"}
+            />
+            <MetricCard
+              label="AI 相对基线回撤"
+              value={`${formatDecimal(comparison.maxDrawdownDeltaPct, 4)}%`}
+              hint="负值表示 AI 的最大回撤更小。"
+              tone={comparison.maxDrawdownDeltaPct <= 0 ? "positive" : "warning"}
+            />
+            <MetricCard
+              label="AI 相对基线交易数"
+              value={formatSignedCount(comparison.tradeCountDelta)}
+              hint="帮助判断收益变化是否只是更频繁交易带来的。"
+              tone="default"
+            />
+            <MetricCard
+              label="关键决策差异"
+              value={comparison.decisionDiffs.length}
+              hint="按同一 barKey 比较动作和执行方向是否不同。"
+              tone="default"
+            />
+          </section>
+
+          {comparison.decisionDiffs.length > 0 ? (
+            <div className="definition-grid">
+              {comparison.decisionDiffs.slice(0, 6).map((diff) => (
+                <div key={diff.barKey} className="definition-grid__item">
+                  <strong>{formatDateTime(diff.eventTime)}</strong>
+                  <p>{`Baseline ${diff.baselineAction} / AI ${diff.aiAction}`}</p>
+                  <p>{`Baseline: ${diff.baselineReason || "无"}`}</p>
+                  <p>{`AI: ${diff.aiReason || "无"}`}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <p className="empty-state__title">当前还没有明显决策分歧</p>
+              <p className="empty-state__copy">
+                当 baseline 和 AI 在同一根 K 线上的动作不同，这里会列出关键差异。
+              </p>
+            </div>
+          )}
+        </SectionCard>
+      ) : null}
 
       <SectionCard
         eyebrow="AI 回测"

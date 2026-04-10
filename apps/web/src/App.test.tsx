@@ -364,4 +364,173 @@ describe("App", () => {
       });
     });
   });
+
+  it("shows a standardized baseline-vs-ai comparison when both snapshots exist", async () => {
+    mockedUseAiResearchData.mockReturnValue({
+      snapshot: {
+        datasetName: "cn_equity / 000001.SZ / 15m",
+        sourceLabel: "由 research API 生成的 AI 回测结果",
+        sourceMode: "live",
+        klineBars: [],
+        equityCurve: [
+          {
+            time: "2026-04-02T10:00:00+08:00",
+            value: 100120,
+            baseline: 100000,
+          },
+        ],
+        manifest: {
+          runId: "run-ai-001",
+          accountId: "paper_account_001",
+          strategyId: "ai_bar_judge_v1",
+          handlerName: "AiBarJudgeStrategy",
+          description: "ai snapshot",
+          symbols: ["000001.SZ"],
+          timeframe: "15m",
+          barCount: 1,
+          startTime: "2026-04-02T10:00:00+08:00",
+          endTime: "2026-04-02T10:00:00+08:00",
+          initialCash: 100000,
+          slippageBps: 5,
+          feeModel: "ashare_paper_cost_model",
+          slippageModel: "bar_close_bps",
+          dataFingerprint: "bars:000001.SZ:15m:ai",
+          manifestFingerprint: "manifest:run-ai-001",
+        },
+        performance: {
+          barCount: 1,
+          signalCount: 1,
+          orderCount: 1,
+          tradeCount: 2,
+          fillCount: 2,
+          winningTradeCount: 1,
+          losingTradeCount: 0,
+          startingCash: 100000,
+          endingCash: 99980,
+          endingMarketValue: 140,
+          startingEquity: 100000,
+          endingEquity: 100120,
+          netPnl: 120,
+          totalReturnPct: 0.12,
+          maxDrawdownPct: 0.02,
+          realizedPnl: 20,
+          unrealizedPnl: 100,
+          turnover: 4000,
+          winRatePct: 100,
+        },
+        decisions: [
+          {
+            barKey: "000001.SZ:15m:2026-04-02T10:00:00+08:00",
+            eventTime: "2026-04-02T10:00:00+08:00",
+            symbol: "000001.SZ",
+            signalType: "REBALANCE",
+            action: "REBALANCE",
+            executionAction: "BUY",
+            targetPosition: 400,
+            reasonSummary: "ai entered",
+            skipReason: null,
+            fillCount: 1,
+            orderPlanSide: "BUY",
+          },
+        ],
+        notes: ["ai note"],
+      },
+      error: null,
+      fetchedAt: "2026-04-02T10:00:00+08:00",
+      isLoading: false,
+      isRefreshing: false,
+      lastRequest: null,
+      run: vi.fn(),
+      refresh: vi.fn(),
+      reset: vi.fn(),
+    });
+    mockedUseResearchData.mockImplementation(() => ({
+      snapshot: {
+        datasetName: "cn_equity / 000001.SZ / 15m",
+        sourceLabel: "由 research API 生成的真实回测结果",
+        sourceMode: "live",
+        klineBars: [],
+        equityCurve: [
+          {
+            time: "2026-04-02T10:00:00+08:00",
+            value: 100000,
+            baseline: 100000,
+          },
+        ],
+        manifest: {
+          runId: "run-001",
+          accountId: "paper_account_001",
+          strategyId: "baseline_momentum_v1",
+          handlerName: "BaselineMomentumStrategy",
+          description: "research snapshot",
+          symbols: ["000001.SZ"],
+          timeframe: "15m",
+          barCount: 1,
+          startTime: "2026-04-02T10:00:00+08:00",
+          endTime: "2026-04-02T10:00:00+08:00",
+          initialCash: 100000,
+          slippageBps: 5,
+          feeModel: "ashare_paper_cost_model",
+          slippageModel: "bar_close_bps",
+          dataFingerprint: "bars:000001.SZ:15m",
+          manifestFingerprint: "manifest:run-001",
+        },
+        performance: {
+          barCount: 1,
+          signalCount: 1,
+          orderCount: 1,
+          tradeCount: 1,
+          fillCount: 1,
+          winningTradeCount: 1,
+          losingTradeCount: 0,
+          startingCash: 100000,
+          endingCash: 99999,
+          endingMarketValue: 100,
+          startingEquity: 100000,
+          endingEquity: 100099,
+          netPnl: 99,
+          totalReturnPct: 0.099,
+          maxDrawdownPct: 0,
+          realizedPnl: 0,
+          unrealizedPnl: 99,
+          turnover: 3950,
+          winRatePct: 100,
+        },
+        decisions: [
+          {
+            barKey: "000001.SZ:15m:2026-04-02T10:00:00+08:00",
+            eventTime: "2026-04-02T10:00:00+08:00",
+            symbol: "000001.SZ",
+            signalType: "SKIP",
+            action: "SKIP",
+            executionAction: "SKIP",
+            targetPosition: null,
+            reasonSummary: "baseline skipped",
+            skipReason: "warmup",
+            fillCount: 0,
+            orderPlanSide: null,
+          },
+        ],
+        notes: ["research API note"],
+      },
+      error: null,
+      fetchedAt: "2026-04-02T10:00:00+08:00",
+      isLoading: false,
+      isRefreshing: false,
+      refresh: vi.fn(),
+    }));
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /研究/ }));
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#research");
+    });
+
+    expect(screen.getByText("Baseline vs AI")).toBeInTheDocument();
+    expect(screen.getByText("关键决策差异")).toBeInTheDocument();
+    expect(screen.getByText("AI: ai entered")).toBeInTheDocument();
+    expect(screen.getByText("Baseline: baseline skipped")).toBeInTheDocument();
+  });
 });

@@ -51,14 +51,29 @@ make research ARGS="--input ./bars.json --output ./artifacts/backtest-result.jso
 --web-snapshot-output ./artifacts/research-snapshot.json
 ```
 
+如果你想把参数扫描和滚动评估结果也一起导出来，可以再加一份实验报告：
+
+```bash
+.venv/bin/python -m apps.research \
+  --input ./bars.json \
+  --experiment-output ./artifacts/research-experiments.json \
+  --baseline-sweep-grid ./baseline-grid.json \
+  --walk-forward-window-bars 96 \
+  --walk-forward-step-bars 48
+```
+
 CLI 支持这些常用参数：
 
 - `--input`：必填，输入 JSON 文件路径
 - `--output`：可选，导出 `BacktestRunResult` JSON；不传时打印到 stdout
 - `--web-snapshot-output`：可选，导出前端研究页可直接消费的快照 JSON；真实导出会显式标记 `sourceMode=imported`
+- `--experiment-output`：可选，导出参数扫描 / walk-forward 研究报告
 - `--initial-cash`：可选，默认 `100000`
 - `--slippage-bps`：可选，默认 `5`
 - `--slippage-model`：可选，支持 `bar_close_bps` 和 `directional_close_tiered_bps`
+- `--baseline-sweep-grid`：可选，JSON/YAML 参数网格文件，用于 baseline 批量参数扫描
+- `--walk-forward-window-bars`：可选，滚动评估窗口 bar 数
+- `--walk-forward-step-bars`：可选，滚动评估步长；默认等于窗口大小
 - `--config-profile` / `--config-file`：可选，允许显式切换配置层
 - `--postgres-dsn`：可选，仅用于满足共享 settings 校验；不传时 CLI 会回退到内存 SQLite
 
@@ -119,6 +134,13 @@ result = await runner.run(bars)
 - `equity_curve`
 - `positions`
 - `balance`
+
+如果你传了 `--experiment-output`，CLI 还会额外生成一份 `ResearchExperimentReport`，其中至少可能包含：
+
+- `parameter_sweep`：baseline 参数组合的批量回测摘要，支持按同一指标排序比较
+- `walk_forward`：按固定窗口和步长滚动得到的阶段结果
+
+研究页现在也会在 baseline 与 AI 两块结果都存在时，补一个标准化对照区，直接比较收益、回撤、交易数和关键决策差异。
 
 ## 当前执行假设
 

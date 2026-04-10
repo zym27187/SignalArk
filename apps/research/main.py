@@ -14,6 +14,12 @@ from src.domain.events import BarEvent
 
 from apps.research import build_default_backtest_runner
 from apps.research.analysis import build_sample_metadata, build_segment_analyses
+from apps.research.experiments import (
+    ResearchExperimentReport,
+    load_baseline_sweep_grid,
+    run_baseline_parameter_sweep,
+    run_walk_forward_evaluation,
+)
 from apps.research.snapshot import build_web_snapshot_payload
 
 BAR_EVENT_FIELD_NAMES = frozenset(BarEvent.model_fields)
@@ -79,10 +85,8 @@ async def _run(args: argparse.Namespace) -> None:
             snapshot_notes.append(str(sample_metadata["warning"]))
         if segment_analyses:
             snapshot_notes.append(
-                
-                    f"时间分段评估会把样本按时间切成 {len(segment_analyses)} 段，"
-                    "并在同一起始资金下分别比较阶段表现。"
-                
+                f"时间分段评估会把样本按时间切成 {len(segment_analyses)} 段，"
+                "并在同一起始资金下分别比较阶段表现。"
             )
         snapshot_payload = build_web_snapshot_payload(
             result=result,
@@ -95,6 +99,45 @@ async def _run(args: argparse.Namespace) -> None:
         )
         _write_json(snapshot_path, snapshot_payload)
         print(f"Web snapshot written to {snapshot_path}")
+
+    if args.experiment_output is not None:
+        if args.baseline_sweep_grid is None and args.walk_forward_window_bars is None:
+            raise ValueError(
+                "experiment output requires --baseline-sweep-grid and/or "
+                "--walk-forward-window-bars"
+            )
+
+        parameter_sweep = None
+        if args.baseline_sweep_grid is not None:
+            parameter_sweep = await run_baseline_parameter_sweep(
+                settings=settings,
+                bars=bars,
+                parameter_grid=load_baseline_sweep_grid(Path(args.baseline_sweep_grid)),
+                initial_cash=args.initial_cash,
+                slippage_bps=args.slippage_bps,
+                slippage_model=args.slippage_model,
+            )
+
+        walk_forward = None
+        if args.walk_forward_window_bars is not None:
+            walk_forward = await run_walk_forward_evaluation(
+                settings=settings,
+                bars=bars,
+                window_bars=args.walk_forward_window_bars,
+                step_bars=args.walk_forward_step_bars,
+                initial_cash=args.initial_cash,
+                slippage_bps=args.slippage_bps,
+                slippage_model=args.slippage_model,
+            )
+
+        experiment_output_path = Path(args.experiment_output)
+        experiment_payload = ResearchExperimentReport(
+            dataset_bar_count=len(bars),
+            parameter_sweep=parameter_sweep,
+            walk_forward=walk_forward,
+        ).model_dump(mode="json")
+        _write_json(experiment_output_path, experiment_payload)
+        print(f"Experiment report written to {experiment_output_path}")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -117,6 +160,10 @@ def _build_parser() -> argparse.ArgumentParser:
             "Optional path for a frontend-friendly research snapshot JSON aligned with "
             "apps/web/src/lib/research-fixtures.ts."
         ),
+    )
+    parser.add_argument(
+        "--experiment-output",
+        help="Optional path for a parameter sweep / walk-forward experiment report JSON.",
     )
     parser.add_argument(
         "--initial-cash",
@@ -164,6 +211,29 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "How the frontend-oriented web snapshot should label this sample. "
             "Defaults to evaluation."
+        ),
+    )
+    parser.add_argument(
+        "--baseline-sweep-grid",
+        help=(
+            "Optional JSON/YAML file describing baseline parameter lists to sweep. "
+            "Used together with --experiment-output."
+        ),
+    )
+    parser.add_argument(
+        "--walk-forward-window-bars",
+        type=int,
+        help=(
+            "Optional rolling-evaluation window size in bars. "
+            "Used together with --experiment-output."
+        ),
+    )
+    parser.add_argument(
+        "--walk-forward-step-bars",
+        type=int,
+        help=(
+            "Optional rolling-evaluation step size in bars. "
+            "Defaults to the same value as --walk-forward-window-bars."
         ),
     )
     return parser
