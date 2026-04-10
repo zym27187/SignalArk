@@ -117,12 +117,14 @@ def test_api_research_snapshot_returns_live_backtest_payload(
         control_store=control_store,
         market_gateway_factory=lambda: FakeHistoricalBarGateway(
                 [
-                    _bar(index=0, close="39.50", previous_close="39.47"),
-                    _bar(index=1, close="39.40", previous_close="39.47"),
+                    _bar(index=0, close="39.48", previous_close="39.47"),
+                    _bar(index=1, close="39.49", previous_close="39.47"),
+                    _bar(index=2, close="39.50", previous_close="39.47"),
+                    _bar(index=3, close="39.52", previous_close="39.47"),
                     _bar(
-                        event_time=BASE_TIME + timedelta(days=1),
-                        close="39.40",
-                        previous_close="39.60",
+                        event_time=BASE_TIME + timedelta(days=1, minutes=45),
+                        close="39.10",
+                        previous_close="39.52",
                     ),
                 ]
             ),
@@ -136,7 +138,7 @@ def test_api_research_snapshot_returns_live_backtest_payload(
                 params={
                     "symbol": "600036.SH",
                     "timeframe": "15m",
-                    "limit": 3,
+                    "limit": 5,
                 },
             )
     finally:
@@ -148,15 +150,17 @@ def test_api_research_snapshot_returns_live_backtest_payload(
     assert payload["sourceMode"] == "live"
     assert payload["manifest"]["strategyId"] == "baseline_momentum_v1"
     assert payload["manifest"]["symbols"] == ["600036.SH"]
-    assert payload["performance"]["tradeCount"] == 2
-    assert payload["performance"]["fillCount"] == 2
-    assert payload["performance"]["endingEquity"] == 99926.3404
-    assert len(payload["klineBars"]) == 3
-    assert len(payload["equityCurve"]) == 3
+    assert payload["performance"]["tradeCount"] == 3
+    assert payload["performance"]["fillCount"] == 3
+    assert len(payload["klineBars"]) == 5
+    assert len(payload["equityCurve"]) == 5
     assert "runtimePnlCurve" not in payload
     assert "backtestEquityCurve" not in payload
-    assert len(payload["decisions"]) == 3
-    assert payload["decisions"][1]["skipReason"] == "sellable_qty_exhausted"
+    assert len(payload["decisions"]) == 5
+    assert payload["decisions"][0]["skipReason"] == "baseline_trend_warmup"
+    assert payload["decisions"][2]["orderPlanSide"] == "BUY"
+    assert payload["decisions"][3]["orderPlanSide"] == "BUY"
+    assert payload["decisions"][4]["orderPlanSide"] == "SELL"
 
 
 def test_api_ai_research_snapshot_returns_live_ai_backtest_payload(

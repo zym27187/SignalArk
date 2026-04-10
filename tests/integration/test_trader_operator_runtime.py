@@ -96,6 +96,15 @@ def _bar_event(
     )
 
 
+def _baseline_entry_sequence() -> tuple[BarEvent, ...]:
+    return (
+        _bar_event(event_time=BASE_TIME, close=Decimal("39.48")),
+        _bar_event(event_time=BASE_TIME + timedelta(seconds=1), close=Decimal("39.48")),
+        _bar_event(event_time=BASE_TIME + timedelta(seconds=2), close=Decimal("39.49")),
+        _bar_event(event_time=BASE_TIME + timedelta(seconds=3), close=Decimal("39.52")),
+    )
+
+
 class SequenceEventSource:
     def __init__(self, events: Sequence[object]) -> None:
         self._events = list(events)
@@ -448,7 +457,7 @@ async def test_trader_runtime_routes_baseline_strategy_signal_into_oms_pipeline(
         execution_gateway=NoFillExecutionGateway(),
     )
     trader = TraderService(
-        SequenceEventSource((_bar_event(),)),
+        SequenceEventSource(_baseline_entry_sequence()),
         runtime_state=TraderRuntimeState(instance_id="instance-A"),
         pipeline=TraderPipelinePorts(
             strategy=BaselineMomentumStrategy(account_id=settings.account_id),
@@ -499,11 +508,11 @@ async def test_trader_runtime_runs_baseline_strategy_through_paper_execution(
         observability=observability,
         execution_gateway=PaperExecutionAdapter(
             cost_model=settings.paper_cost_model,
-            clock=lambda: clock.now() + timedelta(seconds=3),
+            clock=lambda: clock.now() + timedelta(seconds=10),
         ),
     )
     trader = TraderService(
-        SequenceEventSource((_bar_event(close=Decimal("39.50")),)),
+        SequenceEventSource(_baseline_entry_sequence()),
         runtime_state=TraderRuntimeState(instance_id="instance-A"),
         pipeline=TraderPipelinePorts(
             strategy=BaselineMomentumStrategy(account_id=settings.account_id),
@@ -551,23 +560,24 @@ async def test_trader_runtime_runs_baseline_strategy_through_paper_execution(
 
     assert snapshot["last_strategy_id"] == "baseline_momentum_v1"
     assert snapshot["last_strategy_input_snapshot"]["entry_threshold_pct"] == "0.0500"
-    assert snapshot["last_strategy_input_snapshot"]["momentum_pct"] == "0.0760"
+    assert snapshot["last_strategy_input_snapshot"]["momentum_pct"] == "0.1267"
+    assert snapshot["last_strategy_input_snapshot"]["position_tier"] == "full"
     assert snapshot["last_strategy_signal_snapshot"]["signal_type"] == "REBALANCE"
     assert snapshot["last_strategy_signal_snapshot"]["target_position"] == "400"
     assert snapshot["last_strategy_reason_summary"] is not None
-    assert "rebalance to 400" in snapshot["last_strategy_reason_summary"]
+    assert "position_tier full" in snapshot["last_strategy_reason_summary"]
     assert signal_record.reason_summary == snapshot["last_strategy_reason_summary"]
     assert order_record.status == "FILLED"
     assert fill_record.qty == Decimal("400")
     assert order_intent_payload is not None
-    assert order_intent_payload["strategy_input_snapshot"]["momentum_pct"] == "0.0760"
+    assert order_intent_payload["strategy_input_snapshot"]["momentum_pct"] == "0.1267"
     assert order_intent_payload["strategy_signal_snapshot"]["signal_type"] == "REBALANCE"
     assert order_intent_payload["reason_summary"] == snapshot["last_strategy_reason_summary"]
     assert position is not None
     assert position.qty == Decimal("400")
     assert position.sellable_qty == Decimal("0")
-    assert latest_balance.available == Decimal("84195.1020")
-    assert latest_balance.total == Decimal("84195.1020")
+    assert latest_balance.available == Decimal("84187.0995000000")
+    assert latest_balance.total == Decimal("84187.0995000000")
     assert len(event_types) == 8
     assert event_types.count("oms.order_intent_persisted") == 1
     assert event_types.count("oms.order_persisted") == 1

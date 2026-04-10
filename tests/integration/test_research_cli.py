@@ -68,18 +68,28 @@ def test_research_cli_runs_backtest_and_exports_result_files(tmp_path: Path) -> 
     bars = [
         _bar_event(
             event_time=DAY_ONE,
-            close=Decimal("39.50"),
+            close=Decimal("39.48"),
             previous_close=Decimal("39.47"),
         ),
         _bar_event(
             event_time=DAY_ONE + timedelta(minutes=15),
-            close=Decimal("39.40"),
+            close=Decimal("39.49"),
+            previous_close=Decimal("39.47"),
+        ),
+        _bar_event(
+            event_time=DAY_ONE + timedelta(minutes=30),
+            close=Decimal("39.50"),
+            previous_close=Decimal("39.47"),
+        ),
+        _bar_event(
+            event_time=DAY_ONE + timedelta(minutes=45),
+            close=Decimal("39.52"),
             previous_close=Decimal("39.47"),
         ),
         _bar_event(
             event_time=DAY_TWO,
-            close=Decimal("39.40"),
-            previous_close=Decimal("39.60"),
+            close=Decimal("39.10"),
+            previous_close=Decimal("39.52"),
         ),
     ]
     input_path.write_text(
@@ -119,23 +129,27 @@ def test_research_cli_runs_backtest_and_exports_result_files(tmp_path: Path) -> 
     assert "Backtest result written" in completed.stdout
     assert "Web snapshot written" in completed.stdout
 
-    assert result_payload["performance"]["trade_count"] == 2
-    assert result_payload["performance"]["fill_count"] == 2
-    assert result_payload["performance"]["ending_equity"] == "99926.3404"
-    assert len(result_payload["decisions"]) == 3
-    assert len(result_payload["equity_curve"]) == 3
+    assert result_payload["performance"]["trade_count"] == 3
+    assert result_payload["performance"]["fill_count"] == 3
+    assert len(result_payload["decisions"]) == 5
+    assert len(result_payload["equity_curve"]) == 5
+    assert result_payload["decisions"][0]["skip_reason"] == "baseline_trend_warmup"
+    assert Decimal(result_payload["decisions"][2]["signal"]["target_position"]) == Decimal("200")
+    assert result_payload["decisions"][4]["order_plan"]["side"] == "SELL"
 
     assert snapshot_payload["sourceLabel"] == "由 research CLI 导出的真实回测结果"
     assert snapshot_payload["sourceMode"] == "imported"
     assert snapshot_payload["manifest"]["strategyId"] == "baseline_momentum_v1"
-    assert snapshot_payload["performance"]["tradeCount"] == 2
-    assert snapshot_payload["performance"]["endingEquity"] == 99926.3404
-    assert len(snapshot_payload["klineBars"]) == 3
-    assert len(snapshot_payload["equityCurve"]) == 3
+    assert snapshot_payload["performance"]["tradeCount"] == 3
+    assert len(snapshot_payload["klineBars"]) == 5
+    assert len(snapshot_payload["equityCurve"]) == 5
     assert "runtimePnlCurve" not in snapshot_payload
     assert "backtestEquityCurve" not in snapshot_payload
-    assert snapshot_payload["decisions"][1]["action"] == "EXIT"
-    assert snapshot_payload["decisions"][1]["executionAction"] == "SKIP"
-    assert snapshot_payload["decisions"][2]["orderPlanSide"] == "SELL"
-    assert snapshot_payload["decisions"][2]["action"] == "EXIT"
-    assert snapshot_payload["decisions"][2]["executionAction"] == "SELL"
+    assert snapshot_payload["decisions"][0]["executionAction"] == "SKIP"
+    assert snapshot_payload["decisions"][0]["skipReason"] == "baseline_trend_warmup"
+    assert snapshot_payload["decisions"][2]["action"] == "REBALANCE"
+    assert snapshot_payload["decisions"][2]["orderPlanSide"] == "BUY"
+    assert snapshot_payload["decisions"][3]["orderPlanSide"] == "BUY"
+    assert snapshot_payload["decisions"][4]["orderPlanSide"] == "SELL"
+    assert snapshot_payload["decisions"][4]["action"] == "EXIT"
+    assert snapshot_payload["decisions"][4]["executionAction"] == "SELL"

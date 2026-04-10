@@ -277,7 +277,7 @@ def _build_harness(
         observability=observability,
         execution_gateway=PaperExecutionAdapter(
             cost_model=settings.paper_cost_model,
-            clock=lambda: clock.now() + timedelta(seconds=3),
+            clock=lambda: clock.now() + timedelta(seconds=10),
         ),
     )
     reconciliation_runtime = None
@@ -291,7 +291,7 @@ def _build_harness(
                 observability=observability,
                 execution_gateway=PaperExecutionAdapter(
                     cost_model=settings.paper_cost_model,
-                    clock=lambda: clock.now() + timedelta(seconds=3),
+                    clock=lambda: clock.now() + timedelta(seconds=10),
                 ),
             ),
             control_store=control_store,
@@ -474,15 +474,33 @@ async def _wait_until(predicate, *, timeout: float = 2.0) -> None:
     raise AssertionError("timed out waiting for test condition")
 
 
+async def _publish_baseline_entry_sequence(
+    harness: E2EHarness,
+    *,
+    closes: tuple[Decimal, Decimal, Decimal, Decimal] = (
+        Decimal("39.48"),
+        Decimal("39.48"),
+        Decimal("39.49"),
+        Decimal("39.52"),
+    ),
+) -> None:
+    base_event_time = harness.clock.now()
+    for index, close in enumerate(closes):
+        await harness.source.publish(
+            _bar_event(
+                event_time=base_event_time + timedelta(seconds=index),
+                close=close,
+            )
+        )
+
+
 @pytest.mark.asyncio
 async def test_e2e_baseline_strategy_executes_full_paper_trading_loop(tmp_path: Path) -> None:
     harness = _build_harness(tmp_path, database_name="e2e_full_loop.sqlite3")
 
     try:
         run_task = asyncio.create_task(harness.trader.run())
-        await harness.source.publish(
-            _bar_event(event_time=harness.clock.now(), close=Decimal("39.50"))
-        )
+        await _publish_baseline_entry_sequence(harness)
         await harness.source.finish()
         await run_task
 
@@ -530,10 +548,7 @@ async def test_e2e_api_kill_switch_blocks_new_opening_orders(tmp_path: Path) -> 
             run_task = asyncio.create_task(harness.trader.run())
 
             await harness.source.publish(
-                _bar_event(
-                    event_time=harness.clock.now(),
-                    close=MARKET_STATE.previous_close,
-                )
+                _bar_event(event_time=harness.clock.now(), close=Decimal("39.48"))
             )
             await _wait_until(lambda: harness.trader.readiness_payload()["status"] == "ready")
 
@@ -541,9 +556,23 @@ async def test_e2e_api_kill_switch_blocks_new_opening_orders(tmp_path: Path) -> 
             assert enable_kill_switch.status_code == 200
             assert enable_kill_switch.json()["control_state"] == "kill_switch"
 
-            harness.clock.advance(timedelta(seconds=5))
             await harness.source.publish(
-                _bar_event(event_time=harness.clock.now(), close=Decimal("39.50"))
+                _bar_event(
+                    event_time=harness.clock.now() + timedelta(seconds=1),
+                    close=Decimal("39.48"),
+                )
+            )
+            await harness.source.publish(
+                _bar_event(
+                    event_time=harness.clock.now() + timedelta(seconds=2),
+                    close=Decimal("39.49"),
+                )
+            )
+            await harness.source.publish(
+                _bar_event(
+                    event_time=harness.clock.now() + timedelta(seconds=3),
+                    close=Decimal("39.52"),
+                )
             )
             await harness.source.finish()
             await run_task
@@ -600,10 +629,7 @@ async def test_e2e_reconciliation_drift_engages_protection_mode_and_blocks_reent
             assert len(active_orders.json()["orders"]) == 1
             assert active_orders.json()["orders"][0]["reduce_only"] is True
 
-            harness.clock.advance(timedelta(seconds=5))
-            await harness.source.publish(
-                _bar_event(event_time=harness.clock.now(), close=Decimal("39.50"))
-            )
+            await _publish_baseline_entry_sequence(harness)
             await harness.source.finish()
             await run_task
 

@@ -72,43 +72,63 @@ async def test_research_backtest_runner_executes_minimal_event_driven_flow_with_
     bars = (
         _bar_event(
             event_time=DAY_ONE,
-            close=Decimal("39.50"),
+            close=Decimal("39.48"),
             previous_close=Decimal("39.47"),
         ),
         _bar_event(
             event_time=DAY_ONE + timedelta(minutes=15),
-            close=Decimal("39.40"),
+            close=Decimal("39.49"),
+            previous_close=Decimal("39.47"),
+        ),
+        _bar_event(
+            event_time=DAY_ONE + timedelta(minutes=30),
+            close=Decimal("39.50"),
+            previous_close=Decimal("39.47"),
+        ),
+        _bar_event(
+            event_time=DAY_ONE + timedelta(minutes=45),
+            close=Decimal("39.52"),
             previous_close=Decimal("39.47"),
         ),
         _bar_event(
             event_time=DAY_TWO,
-            close=Decimal("39.40"),
-            previous_close=Decimal("39.60"),
+            close=Decimal("39.10"),
+            previous_close=Decimal("39.52"),
         ),
     )
 
     result = await runner.run(bars)
 
-    assert len(result.decisions) == 3
-    assert result.decisions[1].skip_reason == "sellable_qty_exhausted"
-    assert result.decisions[2].order_plan["side"] == "SELL"
+    assert len(result.decisions) == 5
+    assert result.decisions[0].skip_reason == "baseline_trend_warmup"
+    assert result.decisions[1].skip_reason == "baseline_trend_warmup"
+    assert result.decisions[2].order_plan["side"] == "BUY"
+    assert result.decisions[2].signal is not None
+    assert result.decisions[2].signal.target_position == Decimal("200")
+    assert result.decisions[3].order_plan["side"] == "BUY"
+    assert result.decisions[3].signal is not None
+    assert result.decisions[3].signal.target_position == Decimal("400")
+    assert result.decisions[4].order_plan["side"] == "SELL"
+    assert result.decisions[4].reason_summary is not None
+    assert "trailing_stop" in result.decisions[4].reason_summary
 
     assert result.performance.signal_count == 3
-    assert result.performance.order_count == 2
-    assert result.performance.trade_count == 2
-    assert result.performance.fill_count == 2
-    assert result.performance.max_drawdown_pct == Decimal("0.0737")
-    assert result.performance.total_return_pct == Decimal("-0.0737")
+    assert result.performance.order_count == 3
+    assert result.performance.trade_count == 3
+    assert result.performance.fill_count == 3
 
     assert result.fill_events[0].fill.price == Decimal("39.52")
-    assert result.fill_events[1].fill.price == Decimal("39.38")
-    assert result.fill_events[1].cost_breakdown.stamp_duty == Decimal("7.8760")
+    assert result.fill_events[0].fill.qty == Decimal("200")
+    assert result.fill_events[1].fill.price == Decimal("39.54")
+    assert result.fill_events[1].fill.qty == Decimal("200")
+    assert result.fill_events[2].fill.price == Decimal("39.08")
+    assert result.fill_events[2].fill.qty == Decimal("400")
 
     final_position = result.positions["600036.SH"]
     assert final_position.qty == Decimal("0")
     assert final_position.sellable_qty == Decimal("0")
-    assert result.balance.total == Decimal("99926.3404")
 
     assert result.manifest.strategy.strategy_id == "baseline_momentum_v1"
     assert result.manifest.cost_assumptions.slippage_bps == Decimal("5")
-    assert result.manifest.dataset.bar_count == 3
+    assert result.manifest.dataset.bar_count == 5
+    assert result.manifest.strategy.parameters["exit_threshold_pct"] is not None

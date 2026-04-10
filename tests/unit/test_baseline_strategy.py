@@ -41,16 +41,25 @@ def _context() -> TraderEventContext:
 
 
 def _bar_event(
-    *, close: Decimal, market_state: MarketStateSnapshot | None = MARKET_STATE
+    *,
+    close: Decimal,
+    offset: int = 0,
+    previous_close: Decimal | None = None,
+    market_state: MarketStateSnapshot | None = MARKET_STATE,
 ) -> BarEvent:
+    event_time = BASE_TIME + timedelta(minutes=15 * offset)
+    resolved_market_state = market_state
+    if market_state is not None and previous_close is not None:
+        resolved_market_state = market_state.model_copy(update={"previous_close": previous_close})
+
     return BarEvent(
         exchange="cn_equity",
         symbol="600036.SH",
         timeframe="15m",
-        bar_start_time=BASE_TIME - timedelta(minutes=15),
-        bar_end_time=BASE_TIME,
-        event_time=BASE_TIME,
-        ingest_time=BASE_TIME + timedelta(seconds=1),
+        bar_start_time=event_time - timedelta(minutes=15),
+        bar_end_time=event_time,
+        event_time=event_time,
+        ingest_time=event_time + timedelta(seconds=1),
         open=Decimal("39.40"),
         high=max(close, Decimal("39.55")),
         low=min(close, Decimal("39.38")),
@@ -59,36 +68,104 @@ def _bar_event(
         closed=True,
         final=True,
         source_kind="realtime",
-        market_state=market_state,
+        market_state=resolved_market_state,
     )
 
 
 @pytest.mark.asyncio
-async def test_baseline_momentum_strategy_targets_long_position_on_positive_momentum() -> None:
-    strategy = BaselineMomentumStrategy(account_id="paper_account_001")
+async def test_baseline_momentum_strategy_waits_for_trend_confirmation_before_entry() -> None:
+    strategy = BaselineMomentumStrategy(
+        account_id="paper_account_001",
+        trend_lookback_bars=3,
+        min_trend_up_bars=2,
+    )
 
-    signal = await strategy.on_bar(_bar_event(close=Decimal("39.50")), _context())
+    first = await strategy.on_bar(_bar_event(close=Decimal("39.48"), offset=0), _context())
+    second = await strategy.on_bar(_bar_event(close=Decimal("39.49"), offset=1), _context())
+    third = await strategy.on_bar(_bar_event(close=Decimal("39.50"), offset=2), _context())
 
-    assert signal is not None
-    assert signal.strategy_id == BASELINE_MOMENTUM_V1
-    assert signal.signal_type is SignalType.REBALANCE
-    assert signal.target_position == Decimal("400")
-    assert signal.reason_summary is not None
-    assert "previous_close" in signal.reason_summary
-    assert "threshold_pct" in signal.reason_summary
+    assert first is None
+    assert second is None
+    assert third is not None
+    assert third.strategy_id == BASELINE_MOMENTUM_V1
+    assert third.signal_type is SignalType.REBALANCE
+    assert third.target_position == Decimal("200")
+
+    warmup = strategy.build_non_signal_decision(_bar_event(close=Decimal("39.49"), offset=1))
+    assert warmup is not None
+    assert warmup.skip_reason == "baseline_trend_warmup"
+    assert warmup.audit.input_snapshot["trend_lookback_bars_required"] == "3"
 
 
 @pytest.mark.asyncio
-async def test_baseline_momentum_strategy_flattens_on_non_positive_momentum() -> None:
-    strategy = BaselineMomentumStrategy(account_id="paper_account_001")
+async def test_baseline_momentum_strategy_uses_hysteresis_to_hold_until_exit_threshold_breaks(
+) -> None:
+    strategy = BaselineMomentumStrategy(
+        account_id="paper_account_001",
+        trend_lookback_bars=3,
+        min_trend_up_bars=2,
+    )
 
-    signal = await strategy.on_bar(_bar_event(close=Decimal("39.47")), _context())
+    await strategy.on_bar(_bar_event(close=Decimal("39.48"), offset=0), _context())
+    await strategy.on_bar(_bar_event(close=Decimal("39.49"), offset=1), _context())
+    entry_signal = await strategy.on_bar(_bar_event(close=Decimal("39.50"), offset=2), _context())
+    hold_signal = await strategy.on_bar(_bar_event(close=Decimal("39.48"), offset=3), _context())
 
-    assert signal is not None
-    assert signal.signal_type is SignalType.EXIT
-    assert signal.target_position == Decimal("0")
-    assert signal.reason_summary is not None
-    assert "flatten" in signal.reason_summary
+    assert entry_signal is not None
+    assert hold_signal is not None
+    assert hold_signal.signal_type is SignalType.REBALANCE
+    assert hold_signal.target_position == Decimal("200")
+    assert hold_signal.reason_summary is not None
+    assert "hold current target" in hold_signal.reason_summary
+
+
+@pytest.mark.asyncio
+async def test_baseline_momentum_strategy_scales_up_position_on_stronger_confirmed_momentum(
+) -> None:
+    strategy = BaselineMomentumStrategy(
+        account_id="paper_account_001",
+        trend_lookback_bars=3,
+        min_trend_up_bars=2,
+    )
+
+    await strategy.on_bar(_bar_event(close=Decimal("39.48"), offset=0), _context())
+    await strategy.on_bar(_bar_event(close=Decimal("39.49"), offset=1), _context())
+    reduced_signal = await strategy.on_bar(_bar_event(close=Decimal("39.50"), offset=2), _context())
+    full_signal = await strategy.on_bar(_bar_event(close=Decimal("39.52"), offset=3), _context())
+
+    assert reduced_signal is not None
+    assert reduced_signal.target_position == Decimal("200")
+    assert full_signal is not None
+    assert full_signal.signal_type is SignalType.REBALANCE
+    assert full_signal.target_position == Decimal("400")
+    assert full_signal.reason_summary is not None
+    assert "position_tier full" in full_signal.reason_summary
+
+
+@pytest.mark.asyncio
+async def test_baseline_momentum_strategy_exits_on_trailing_stop() -> None:
+    strategy = BaselineMomentumStrategy(
+        account_id="paper_account_001",
+        trend_lookback_bars=3,
+        min_trend_up_bars=2,
+        exit_threshold_pct=Decimal("-0.0500"),
+        trailing_stop_pct=Decimal("0.0100"),
+    )
+
+    await strategy.on_bar(_bar_event(close=Decimal("39.48"), offset=0), _context())
+    await strategy.on_bar(_bar_event(close=Decimal("39.49"), offset=1), _context())
+    await strategy.on_bar(_bar_event(close=Decimal("39.50"), offset=2), _context())
+    await strategy.on_bar(_bar_event(close=Decimal("39.70"), offset=3), _context())
+    exit_signal = await strategy.on_bar(
+        _bar_event(close=Decimal("39.30"), offset=4, previous_close=Decimal("39.70")),
+        _context(),
+    )
+
+    assert exit_signal is not None
+    assert exit_signal.signal_type is SignalType.EXIT
+    assert exit_signal.target_position == Decimal("0")
+    assert exit_signal.reason_summary is not None
+    assert "trailing_stop" in exit_signal.reason_summary
 
 
 @pytest.mark.asyncio
@@ -118,14 +195,19 @@ async def test_build_strategy_loads_repo_local_strategy_configuration() -> None:
         strategy_id=BASELINE_MOMENTUM_V1,
         account_id="paper_account_001",
     )
-    event = _bar_event(close=Decimal("39.50"))
+    await strategy.on_bar(_bar_event(close=Decimal("39.48"), offset=0), _context())
+    await strategy.on_bar(_bar_event(close=Decimal("39.49"), offset=1), _context())
+    event = _bar_event(close=Decimal("39.50"), offset=2)
     signal = await strategy.on_bar(event, _context())
 
     assert config.target_position == Decimal("400")
     assert config.entry_threshold_pct == Decimal("0.0005")
+    assert config.exit_threshold_pct < config.entry_threshold_pct
     assert signal is not None
     audit = strategy.build_decision_audit(event, signal)
     assert audit.input_snapshot["entry_threshold_pct"] == "0.0500"
+    assert audit.input_snapshot["exit_threshold_pct"] is not None
+    assert audit.input_snapshot["position_tier"] == "reduced"
     assert audit.signal_snapshot["signal_type"] == "REBALANCE"
 
 

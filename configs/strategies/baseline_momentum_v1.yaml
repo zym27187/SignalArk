@@ -2,3 +2,9 @@ strategy_id: baseline_momentum_v1
 description: Long-only threshold momentum against previous close.
 target_position: 400
 entry_threshold_pct: 0.0005
+exit_threshold_pct: 0.0
+trend_lookback_bars: 3
+min_trend_up_bars: 2
+strong_entry_threshold_pct: 0.0012
+reduced_target_ratio: 0.5
+trailing_stop_pct: 0.01

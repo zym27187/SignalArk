@@ -81,16 +81,24 @@ class HoldOnlyAiProvider:
 
 @pytest.mark.asyncio
 async def test_baseline_strategy_accepts_backtest_context_with_same_signal_semantics() -> None:
-    strategy = BaselineMomentumStrategy(account_id="paper_account_001")
-    event = _bar_event()
+    trader_strategy = BaselineMomentumStrategy(account_id="paper_account_001")
+    backtest_strategy = BaselineMomentumStrategy(account_id="paper_account_001")
     trader_context = _trader_context()
     backtest_context = BacktestStrategyContext(
         trader_run_uuid=trader_context.trader_run_uuid,
         received_at=trader_context.received_at,
     )
+    events = (
+        _bar_event(close=Decimal("39.48")),
+        _bar_event(event_time=BASE_TIME + timedelta(minutes=15), close=Decimal("39.49")),
+        _bar_event(event_time=BASE_TIME + timedelta(minutes=30), close=Decimal("39.52")),
+    )
 
-    trader_signal = await strategy.on_bar(event, trader_context)
-    backtest_signal = await strategy.on_bar(event, backtest_context)
+    trader_signal = None
+    backtest_signal = None
+    for event in events:
+        trader_signal = await trader_strategy.on_bar(event, trader_context)
+        backtest_signal = await backtest_strategy.on_bar(event, backtest_context)
 
     assert trader_signal is not None
     assert backtest_signal is not None
