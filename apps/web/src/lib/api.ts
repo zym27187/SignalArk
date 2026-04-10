@@ -19,6 +19,10 @@ import type {
 import { localizeMessage } from "./format";
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
+export const DEFAULT_AI_RESEARCH_PREVIEW_LIMIT = 24;
+export const DEFAULT_AI_RESEARCH_LOOKBACK_BARS = 12;
+export const AI_RESEARCH_REQUEST_TIMEOUT_MS = 30_000;
+export const AI_RESEARCH_REQUEST_TIMEOUT_PER_DECISION_MS = 15_000;
 
 export const API_BASE_URL = (
   import.meta.env.VITE_SIGNALARK_API_BASE_URL ?? DEFAULT_API_BASE_URL
@@ -44,6 +48,21 @@ export class ApiError extends Error {
     this.status = status;
     this.details = details;
   }
+}
+
+export function resolveAiResearchRequestTimeoutMs(limit?: number): number {
+  const resolvedLimit = Math.max(
+    1,
+    Math.trunc(limit ?? DEFAULT_AI_RESEARCH_PREVIEW_LIMIT),
+  );
+  const decisionCount = Math.max(
+    1,
+    resolvedLimit - DEFAULT_AI_RESEARCH_LOOKBACK_BARS + 1,
+  );
+  return Math.max(
+    AI_RESEARCH_REQUEST_TIMEOUT_MS,
+    10_000 + decisionCount * AI_RESEARCH_REQUEST_TIMEOUT_PER_DECISION_MS,
+  );
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -235,21 +254,38 @@ export async function fetchResearchSnapshot(params?: {
 export async function postResearchAiSnapshot(
   params: ResearchAiSnapshotRequest,
 ): Promise<ResearchSnapshot> {
-  return requestJson<ResearchSnapshot>("/v1/research/ai-snapshot", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      symbol: params.symbol,
-      timeframe: params.timeframe,
-      limit: params.limit ?? 96,
-      provider: params.provider,
-      model: params.model,
-      baseUrl: params.baseUrl,
-      apiKey: params.apiKey,
-    }),
-  });
+  const resolvedLimit = params.limit ?? DEFAULT_AI_RESEARCH_PREVIEW_LIMIT;
+  const timeoutMs = resolveAiResearchRequestTimeoutMs(resolvedLimit);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await requestJson<ResearchSnapshot>("/v1/research/ai-snapshot", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        symbol: params.symbol,
+        timeframe: params.timeframe,
+        limit: resolvedLimit,
+        provider: params.provider,
+        model: params.model,
+        baseUrl: params.baseUrl,
+        apiKey: params.apiKey,
+      }),
+      signal: controller.signal,
+    });
+  } catch (requestError) {
+    if (requestError instanceof DOMException && requestError.name === "AbortError") {
+      throw new Error("AI research request timed out.");
+    }
+    throw requestError;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export async function fetchResearchAiSettings(): Promise<ResearchAiSettings> {

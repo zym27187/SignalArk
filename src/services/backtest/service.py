@@ -178,7 +178,7 @@ class BacktestService:
                 received_at=received_at,
             )
             signal = await self._strategy.on_bar(event, context)
-            input_snapshot, signal_snapshot, reason_summary = _resolve_strategy_audit(
+            input_snapshot, signal_snapshot, reason_summary, skip_reason = _resolve_strategy_audit(
                 strategy=self._strategy,
                 event=event,
                 signal=signal,
@@ -188,10 +188,8 @@ class BacktestService:
             persisted_order_intent = None
             final_order = None
             fill_count = 0
-            skip_reason: str | None = None
-
             if signal is None:
-                skip_reason = "strategy_returned_none"
+                skip_reason = skip_reason or "strategy_returned_none"
             else:
                 signals.append(signal)
                 symbol_rule = self._symbol_rules.get(signal.symbol)
@@ -423,13 +421,22 @@ def _resolve_strategy_audit(
     strategy: object,
     event: BarEvent,
     signal: Signal | None,
-) -> tuple[dict[str, str | None], dict[str, str] | None, str | None]:
+) -> tuple[dict[str, str | None], dict[str, str] | None, str | None, str | None]:
     input_snapshot = _default_strategy_input_snapshot(event)
     signal_snapshot = None if signal is None else _default_signal_snapshot(signal)
     reason_summary = None if signal is None else signal.reason_summary
+    skip_reason = None
 
     if signal is None:
-        return input_snapshot, signal_snapshot, reason_summary
+        non_signal_builder = getattr(strategy, "build_non_signal_decision", None)
+        if callable(non_signal_builder):
+            non_signal_decision = non_signal_builder(event)
+            if non_signal_decision is not None:
+                input_snapshot = dict(non_signal_decision.audit.input_snapshot)
+                signal_snapshot = dict(non_signal_decision.audit.signal_snapshot)
+                reason_summary = non_signal_decision.audit.reason_summary
+                skip_reason = non_signal_decision.skip_reason
+        return input_snapshot, signal_snapshot, reason_summary, skip_reason
 
     audit_builder = getattr(strategy, "build_decision_audit", None)
     if callable(audit_builder):
@@ -437,7 +444,7 @@ def _resolve_strategy_audit(
         input_snapshot = dict(audit.input_snapshot)
         signal_snapshot = dict(audit.signal_snapshot)
         reason_summary = audit.reason_summary
-    return input_snapshot, signal_snapshot, reason_summary
+    return input_snapshot, signal_snapshot, reason_summary, skip_reason
 
 
 def _default_strategy_input_snapshot(event: BarEvent) -> dict[str, str | None]:

@@ -28,7 +28,12 @@ const DISPLAY_VALUE_MAP: Record<string, string> = {
   filled: "已成交",
   fresh: "最新",
   healthy: "健康",
+  hold: "观望",
   initializing: "初始化中",
+  ai_decision_below_min_confidence: "置信度不足",
+  ai_decision_hold: "模型选择观望",
+  ai_lookback_warmup: "等待策略预热",
+  ai_provider_error_suppressed: "模型请求失败已忽略",
   kill_switch: "已紧急暂停",
   limit: "限价",
   live: "实盘交易",
@@ -53,6 +58,7 @@ const DISPLAY_VALUE_MAP: Record<string, string> = {
   protection_mode: "风险保护中",
   ready: "已就绪",
   rebalance: "再平衡",
+  reduce: "减仓",
   rejected: "已拒绝",
   replay: "回放",
   reserved: "已保留",
@@ -67,6 +73,7 @@ const DISPLAY_VALUE_MAP: Record<string, string> = {
   stopped: "已停止",
   stopping: "停止中",
   strategy_paused: "已手动暂停",
+  strategy_returned_none: "策略未产出信号",
   submitted: "已提交",
   suspended: "停牌",
   taker: "主动成交",
@@ -76,6 +83,7 @@ const DISPLAY_VALUE_MAP: Record<string, string> = {
 };
 
 const DISPLAY_MESSAGE_MAP: Record<string, string> = {
+  "AI research request timed out.": "AI 回测请求超时，请稍后重试或缩短回放窗口。",
   "Cancel-all request applied to active orders.": "全撤请求已应用到当前活动订单。",
   "Kill switch disabled; protection mode, if active, is unchanged.":
     "熔断开关已关闭；若保护模式当前生效，其状态保持不变。",
@@ -227,6 +235,27 @@ export function localizeMessage(message: string | null | undefined): string {
   const requestFailedMatch = message.match(/^Request failed with status (\d+)\.$/);
   if (requestFailedMatch) {
     return `请求失败，状态码 ${requestFailedMatch[1]}。`;
+  }
+
+  const aiProviderTimeoutMatch = message.match(
+    /^AI provider request timed out after ([\d.]+)s while calling (.+)\.$/,
+  );
+  if (aiProviderTimeoutMatch) {
+    return `AI 服务请求超时（${aiProviderTimeoutMatch[1]} 秒）：${aiProviderTimeoutMatch[2]}。`;
+  }
+
+  const aiProviderFailureDetailMatch = message.match(
+    /^AI provider request failed while calling (.+?): (.+)$/,
+  );
+  if (aiProviderFailureDetailMatch) {
+    return `AI 服务请求失败（${aiProviderFailureDetailMatch[1]}）：${aiProviderFailureDetailMatch[2]}`;
+  }
+
+  const aiProviderFailureTypeMatch = message.match(
+    /^AI provider request failed while calling (.+) \((.+)\)\.$/,
+  );
+  if (aiProviderFailureTypeMatch) {
+    return `AI 服务请求失败（${aiProviderFailureTypeMatch[2]}）：${aiProviderFailureTypeMatch[1]}。`;
   }
 
   return message;

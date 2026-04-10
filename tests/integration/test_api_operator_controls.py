@@ -289,3 +289,33 @@ def test_api_allows_configured_frontend_origin_via_cors_preflight(tmp_path: Path
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
     assert "GET" in response.headers["access-control-allow-methods"]
+
+
+def test_api_allows_put_research_ai_settings_via_cors_preflight(tmp_path: Path) -> None:
+    from apps.api.main import create_app
+
+    database_url = _database_url(tmp_path)
+    settings = Settings(
+        postgres_dsn=database_url,
+        api_port=8010,
+        api_cors_allowed_origins=[
+            "http://127.0.0.1:5173",
+            "http://localhost:4173",
+        ],
+    )
+
+    app = create_app(settings=settings)
+
+    with TestClient(app) as client:
+        response = client.options(
+            "/v1/research/ai-settings",
+            headers={
+                "Origin": "http://127.0.0.1:5173",
+                "Access-Control-Request-Method": "PUT",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+    assert "PUT" in response.headers["access-control-allow-methods"]

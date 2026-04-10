@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
+import { DEFAULT_AI_RESEARCH_PREVIEW_LIMIT } from "./lib/api";
+import { useAiResearchData } from "./hooks/use-ai-research-data";
 import { useDashboardData } from "./hooks/use-dashboard-data";
 import { useAiResearchSettings } from "./hooks/use-ai-research-settings";
 import { useMarketData } from "./hooks/use-market-data";
@@ -19,11 +21,16 @@ vi.mock("./hooks/use-ai-research-settings", () => ({
   useAiResearchSettings: vi.fn(),
 }));
 
+vi.mock("./hooks/use-ai-research-data", () => ({
+  useAiResearchData: vi.fn(),
+}));
+
 vi.mock("./hooks/use-research-data", () => ({
   useResearchData: vi.fn(),
 }));
 
 const mockedUseDashboardData = vi.mocked(useDashboardData);
+const mockedUseAiResearchData = vi.mocked(useAiResearchData);
 const mockedUseAiResearchSettings = vi.mocked(useAiResearchSettings);
 const mockedUseMarketData = vi.mocked(useMarketData);
 const mockedUseResearchData = vi.mocked(useResearchData);
@@ -192,6 +199,17 @@ describe("App", () => {
       refresh: vi.fn(),
       save: vi.fn(),
     });
+    mockedUseAiResearchData.mockReturnValue({
+      snapshot: null,
+      error: null,
+      fetchedAt: null,
+      isLoading: false,
+      isRefreshing: false,
+      lastRequest: null,
+      run: vi.fn(),
+      refresh: vi.fn(),
+      reset: vi.fn(),
+    });
   });
 
   afterEach(() => {
@@ -250,5 +268,71 @@ describe("App", () => {
     });
     expect(screen.getByText(/paper_account_001 \/ 平安银行 \(000001\.SZ\)/)).toBeInTheDocument();
     expect(screen.getByText("模型实验台")).toBeInTheDocument();
+  });
+
+  it("runs AI research with the fast preview limit from the research view", async () => {
+    const saveMock = vi.fn().mockResolvedValue({
+      accountId: "paper_account_001",
+      provider: "openai_compatible",
+      model: "gpt-5.4",
+      baseUrl: "https://api.openai.com/v1",
+      hasApiKey: true,
+      apiKeyHint: "sk-...cret",
+      updatedAt: "2026-04-02T10:05:00+08:00",
+    });
+    const runMock = vi.fn().mockResolvedValue(null);
+    mockedUseAiResearchSettings.mockReturnValue({
+      settings: {
+        accountId: "paper_account_001",
+        provider: "openai_compatible",
+        model: "gpt-5.4",
+        baseUrl: "https://api.openai.com/v1",
+        hasApiKey: true,
+        apiKeyHint: "sk-...cret",
+        updatedAt: "2026-04-02T10:00:00+08:00",
+      },
+      error: null,
+      isLoading: false,
+      isSaving: false,
+      refresh: vi.fn(),
+      save: saveMock,
+    });
+    mockedUseAiResearchData.mockReturnValue({
+      snapshot: null,
+      error: null,
+      fetchedAt: null,
+      isLoading: false,
+      isRefreshing: false,
+      lastRequest: null,
+      run: runMock,
+      refresh: vi.fn(),
+      reset: vi.fn(),
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /研究/ }));
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#research");
+    });
+
+    expect(
+      screen.getByText(`快速预览最近 ${DEFAULT_AI_RESEARCH_PREVIEW_LIMIT} 根 K 线`),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "保存并运行 AI 回测" }));
+
+    await waitFor(() => {
+      expect(saveMock).toHaveBeenCalled();
+      expect(runMock).toHaveBeenCalledWith({
+        symbol: "600036.SH",
+        timeframe: "15m",
+        limit: DEFAULT_AI_RESEARCH_PREVIEW_LIMIT,
+        provider: "openai_compatible",
+        model: "gpt-5.4",
+        baseUrl: "https://api.openai.com/v1",
+      });
+    });
   });
 });

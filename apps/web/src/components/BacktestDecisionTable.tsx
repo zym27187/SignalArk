@@ -12,7 +12,7 @@ export function BacktestDecisionTable({ decisions }: BacktestDecisionTableProps)
           <thead>
             <tr>
               <th>发生时间</th>
-              <th>做了什么</th>
+              <th>策略动作</th>
               <th>信号</th>
               <th>目标仓位</th>
               <th>成交笔数</th>
@@ -35,7 +35,7 @@ export function BacktestDecisionTable({ decisions }: BacktestDecisionTableProps)
                 <div className="decision-reason">
                   <strong>{decision.reasonSummary}</strong>
                   {decision.skipReason ? <span>跳过原因：{titleCase(decision.skipReason)}</span> : null}
-                  {decision.orderPlanSide ? <span>下单方向：{titleCase(decision.orderPlanSide)}</span> : null}
+                  <span>下单计划：{titleCase(decision.executionAction)}</span>
                 </div>
               </td>
             </tr>

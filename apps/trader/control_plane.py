@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import socket
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -283,6 +286,30 @@ def _research_ai_settings_from_record(
     )
 
 
+def _pid_exists(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _split_instance_id(instance_id: str | None) -> tuple[str | None, int | None]:
+    if instance_id is None:
+        return None, None
+    host, separator, pid_text = instance_id.rpartition(":")
+    if not separator or not host:
+        return None, None
+    try:
+        return host, int(pid_text)
+    except ValueError:
+        return host, None
+
+
 class TraderControlPlaneStore:
     """Persist and query the shared control-plane state."""
 
@@ -291,9 +318,13 @@ class TraderControlPlaneStore:
         session_factory: sessionmaker,
         *,
         clock=shanghai_now,
+        hostname: str | None = None,
+        pid_exists: Callable[[int], bool] | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._clock = clock
+        self._hostname = hostname or socket.gethostname()
+        self._pid_exists = pid_exists or _pid_exists
         self._schema_ready = False
 
     def ensure_schema(self) -> None:
@@ -444,6 +475,19 @@ class TraderControlPlaneStore:
                     accepted=True,
                     snapshot=_lease_snapshot_from_record(record),
                     message="lease_taken_over",
+                )
+
+            if self._is_stale_local_owner(current_snapshot.owner_instance_id):
+                record.owner_instance_id = instance_id
+                record.lease_expires_at = lease_expires_at
+                record.last_heartbeat_at = now
+                record.fencing_token = (record.fencing_token or 0) + 1
+                record.updated_at = now
+                session.flush()
+                return LeaseActionResult(
+                    accepted=True,
+                    snapshot=_lease_snapshot_from_record(record),
+                    message="lease_taken_over_stale_local_owner",
                 )
 
             return LeaseActionResult(
@@ -799,6 +843,10 @@ class TraderControlPlaneStore:
         if bind is None:
             raise RuntimeError("session_factory must be bound to an engine")
         return bind
+
+    def _is_stale_local_owner(self, owner_instance_id: str | None) -> bool:
+        host, pid = _split_instance_id(owner_instance_id)
+        return host == self._hostname and pid is not None and not self._pid_exists(pid)
 
 
 class TraderControlRuntime:

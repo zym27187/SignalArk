@@ -134,5 +134,8 @@ def test_research_cli_runs_backtest_and_exports_result_files(tmp_path: Path) -> 
     assert len(snapshot_payload["equityCurve"]) == 3
     assert "runtimePnlCurve" not in snapshot_payload
     assert "backtestEquityCurve" not in snapshot_payload
-    assert snapshot_payload["decisions"][1]["action"] == "SKIP"
+    assert snapshot_payload["decisions"][1]["action"] == "EXIT"
+    assert snapshot_payload["decisions"][1]["executionAction"] == "SKIP"
     assert snapshot_payload["decisions"][2]["orderPlanSide"] == "SELL"
+    assert snapshot_payload["decisions"][2]["action"] == "EXIT"
+    assert snapshot_payload["decisions"][2]["executionAction"] == "SELL"

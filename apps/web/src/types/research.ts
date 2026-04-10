@@ -60,7 +60,8 @@ export interface BacktestDecisionSnapshot {
   eventTime: string;
   symbol: string;
   signalType: string | null;
-  action: "BUY" | "SELL" | "SKIP";
+  action: "ENTRY" | "EXIT" | "HOLD" | "REBALANCE" | "REDUCE" | "SKIP";
+  executionAction: "BUY" | "SELL" | "SKIP";
   targetPosition: number | null;
   reasonSummary: string;
   skipReason: string | null;

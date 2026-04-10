@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict, deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -14,7 +15,7 @@ from typing import Literal, Protocol
 
 import httpx
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.domain.events import BarEvent
 from src.domain.strategy.audit import StrategyDecisionAudit
@@ -63,6 +64,40 @@ class AiStrategyDecision(BaseModel):
     provider_name: NonEmptyStr = "heuristic_stub"
     diagnostics: dict[str, str] = Field(default_factory=dict)
 
+    @field_validator("diagnostics", mode="before")
+    @classmethod
+    def normalize_diagnostics(cls, value: object) -> dict[str, str]:
+        if value is None:
+            return {}
+        if not isinstance(value, Mapping):
+            raise TypeError("diagnostics must be an object")
+
+        normalized: dict[str, str] = {}
+        for raw_key, raw_value in value.items():
+            key = str(raw_key).strip()
+            if not key:
+                raise ValueError("diagnostics keys must be non-empty")
+
+            if isinstance(raw_value, str):
+                normalized[key] = raw_value.strip()
+            elif isinstance(raw_value, bool):
+                normalized[key] = "true" if raw_value else "false"
+            elif raw_value is None:
+                normalized[key] = "null"
+            elif isinstance(raw_value, (int, float, Decimal)):
+                normalized[key] = str(raw_value)
+            else:
+                try:
+                    normalized[key] = json.dumps(
+                        raw_value,
+                        ensure_ascii=True,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    )
+                except TypeError:
+                    normalized[key] = str(raw_value)
+        return normalized
+
 
 @dataclass(frozen=True, slots=True)
 class AiDecisionRequest:
@@ -75,6 +110,14 @@ class AiDecisionRequest:
     recent_bars: tuple[BarEvent, ...]
     target_position: Decimal
     min_confidence: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class AiNonSignalDecision:
+    """Structured audit kept even when AI evaluation does not emit a signal."""
+
+    audit: StrategyDecisionAudit
+    skip_reason: str
 
 
 class AiDecisionProvider(Protocol):
@@ -122,7 +165,7 @@ def _format_confidence(value: Decimal) -> str:
 
 
 class OpenAiCompatibleDecisionProvider:
-    """Call an OpenAI-compatible Chat Completions endpoint and parse JSON output."""
+    """Call an OpenAI-compatible Responses endpoint and parse JSON output."""
 
     def __init__(
         self,
@@ -158,37 +201,51 @@ class OpenAiCompatibleDecisionProvider:
     async def decide(self, request: AiDecisionRequest) -> AiStrategyDecision:
         payload = {
             "model": self._model,
-            "temperature": 0.1,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an A-share long-only signal judge. "
-                        "Return a single JSON object with keys: action, confidence, "
-                        "target_position, reason_summary, provider_name, diagnostics. "
-                        "Use action=rebalance to move toward the configured target position, "
-                        "action=exit to flatten to zero, and action=hold when the signal is "
-                        "not strong enough. Do not return markdown."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": self._build_prompt(request),
-                },
-            ],
+            "instructions": (
+                "You are an A-share long-only signal judge. "
+                "Return a single JSON object with keys: action, confidence, "
+                "target_position, reason_summary, provider_name, diagnostics. "
+                "Use action=rebalance to move toward the configured target "
+                "position, action=exit to flatten to zero, and action=hold "
+                "when the signal is not strong enough. Do not return markdown."
+            ),
+            "input": self._build_prompt(request),
+            "max_output_tokens": 300,
+            "reasoning": {
+                "effort": "minimal",
+            },
+            "text": {
+                "format": {
+                    "type": "json_object",
+                }
+            },
         }
         try:
             async with self._http_client_factory() as client:
                 response = await client.post(
-                    self._completion_endpoint,
+                    self._responses_endpoint,
                     headers={
                         "Authorization": f"Bearer {self._api_key}",
                         "Content-Type": "application/json",
                     },
                     json=payload,
                 )
+        except httpx.TimeoutException as exc:
+            raise AiProviderRequestError(
+                "AI provider request timed out after "
+                f"{self._timeout_seconds:g}s while calling {self._responses_endpoint}."
+            ) from exc
         except httpx.HTTPError as exc:
-            raise AiProviderRequestError(f"AI provider request failed: {exc}") from exc
+            detail = str(exc).strip()
+            if detail:
+                raise AiProviderRequestError(
+                    "AI provider request failed while calling "
+                    f"{self._responses_endpoint}: {detail}"
+                ) from exc
+            raise AiProviderRequestError(
+                "AI provider request failed while calling "
+                f"{self._responses_endpoint} ({type(exc).__name__})."
+            ) from exc
 
         if 400 <= response.status_code < 500:
             detail = self._extract_error_detail(response)
@@ -197,7 +254,7 @@ class OpenAiCompatibleDecisionProvider:
             detail = self._extract_error_detail(response)
             raise AiProviderRequestError(detail)
 
-        content = self._extract_content(response)
+        content = self._extract_output_text(response)
         decision_payload = self._parse_json_object(content)
         if decision_payload.get("provider_name") in (None, ""):
             decision_payload["provider_name"] = "openai_compatible"
@@ -218,70 +275,108 @@ class OpenAiCompatibleDecisionProvider:
         }
 
     @property
-    def _completion_endpoint(self) -> str:
-        if self._base_url.endswith("/chat/completions"):
+    def _responses_endpoint(self) -> str:
+        if self._base_url.endswith("/responses"):
             return self._base_url
-        return f"{self._base_url}/chat/completions"
+        return f"{self._base_url}/responses"
 
     def _build_prompt(self, request: AiDecisionRequest) -> str:
         recent_bars = [
             {
-                "bar_start_time": bar.bar_start_time.isoformat(),
-                "bar_end_time": bar.bar_end_time.isoformat(),
-                "open": str(bar.open),
-                "high": str(bar.high),
-                "low": str(bar.low),
-                "close": str(bar.close),
-                "volume": str(bar.volume),
-                "previous_close": (
+                "t": bar.bar_end_time.isoformat(),
+                "o": str(bar.open),
+                "h": str(bar.high),
+                "l": str(bar.low),
+                "c": str(bar.close),
+                "v": str(bar.volume),
+                "pc": (
                     None if bar.market_state is None else str(bar.market_state.previous_close)
                 ),
-                "trading_phase": (
+                "phase": (
                     None if bar.market_state is None else bar.market_state.trading_phase.value
                 ),
             }
             for bar in request.recent_bars
         ]
+        latest_bar = request.recent_bars[-1]
+        first_bar = request.recent_bars[0]
+        previous_close = latest_bar.market_state.previous_close if latest_bar.market_state else None
+        latest_close = latest_bar.close
+        latest_move_pct = (
+            None
+            if previous_close is None or previous_close <= 0
+            else _format_pct((latest_close - previous_close) / previous_close)
+        )
         return json.dumps(
             {
-                "task": (
-                    "Judge whether the latest finalized bar stack justifies a "
-                    "long-only rebalance, exit, or hold decision for research "
-                    "backtesting."
-                ),
-                "constraints": {
-                    "market": "A-share",
-                    "position_mode": "long_only",
-                    "min_confidence": _format_confidence(request.min_confidence),
-                    "entry_threshold_pct": _format_pct(self._entry_threshold_pct),
-                    "exit_threshold_pct": _format_pct(self._exit_threshold_pct),
-                    "target_position": str(request.target_position),
-                },
-                "context": {
-                    "strategy_id": request.strategy_id,
-                    "symbol": request.symbol,
-                    "timeframe": request.timeframe,
-                    "received_at": request.received_at.isoformat(),
-                },
-                "recent_bars": recent_bars,
+                "response_requirement": "Return a JSON object only.",
+                "strategy_id": request.strategy_id,
+                "symbol": request.symbol,
+                "timeframe": request.timeframe,
+                "received_at": request.received_at.isoformat(),
+                "target_position": str(request.target_position),
+                "min_confidence": _format_confidence(request.min_confidence),
+                "entry_threshold_pct": _format_pct(self._entry_threshold_pct),
+                "exit_threshold_pct": _format_pct(self._exit_threshold_pct),
+                "latest_close": str(latest_close),
+                "first_open": str(first_bar.open),
+                "latest_move_pct": latest_move_pct,
+                "bars": recent_bars,
             },
             ensure_ascii=True,
             separators=(",", ":"),
         )
 
     @staticmethod
-    def _extract_content(response: httpx.Response) -> str:
+    def _extract_output_text(response: httpx.Response) -> str:
         payload = response.json()
-        choices = payload.get("choices")
-        if not isinstance(choices, list) or not choices:
-            raise AiProviderRequestError("AI provider response did not include choices")
-        message = choices[0].get("message")
-        if not isinstance(message, Mapping):
-            raise AiProviderRequestError("AI provider response did not include a message payload")
-        content = message.get("content")
-        if not isinstance(content, str) or not content.strip():
-            raise AiProviderRequestError("AI provider response content was empty")
-        return content
+        if not isinstance(payload, Mapping):
+            raise AiProviderRequestError("AI provider response payload must be an object")
+
+        if payload.get("status") == "incomplete":
+            incomplete_details = payload.get("incomplete_details")
+            if isinstance(incomplete_details, Mapping):
+                reason = incomplete_details.get("reason")
+                if isinstance(reason, str) and reason.strip():
+                    raise AiProviderRequestError(
+                        f"AI provider response was incomplete: {reason.strip()}"
+                    )
+            raise AiProviderRequestError("AI provider response was incomplete")
+
+        output_text = payload.get("output_text")
+        if isinstance(output_text, str) and output_text.strip():
+            return output_text
+
+        collected_parts: list[str] = []
+        refusal_detail: str | None = None
+        output_items = payload.get("output")
+        if isinstance(output_items, list):
+            for item in output_items:
+                if not isinstance(item, Mapping):
+                    continue
+                content = item.get("content")
+                if not isinstance(content, list):
+                    continue
+                for part in content:
+                    if not isinstance(part, Mapping):
+                        continue
+                    part_type = part.get("type")
+                    if part_type == "output_text":
+                        text = part.get("text")
+                        if isinstance(text, str) and text.strip():
+                            collected_parts.append(text)
+                    elif part_type == "refusal":
+                        refusal = part.get("refusal")
+                        if isinstance(refusal, str) and refusal.strip():
+                            refusal_detail = refusal
+
+        if collected_parts:
+            return "\n".join(collected_parts)
+
+        if refusal_detail is not None:
+            raise AiProviderRequestError(f"AI provider refused the request: {refusal_detail}")
+
+        raise AiProviderRequestError("AI provider response did not include output text")
 
     @staticmethod
     def _parse_json_object(content: str) -> dict[str, object]:
@@ -308,6 +403,16 @@ class OpenAiCompatibleDecisionProvider:
             payload = response.json()
         except ValueError:
             raw = response.text.strip()
+            if raw.startswith("<!DOCTYPE html") or raw.startswith("<html"):
+                title_match = re.search(
+                    r"<title>(.*?)</title>",
+                    raw,
+                    flags=re.IGNORECASE | re.DOTALL,
+                )
+                if title_match is not None:
+                    title = " ".join(title_match.group(1).split())
+                    if title:
+                        return f"AI provider returned an HTML error page: {title}"
             return raw or default_detail
 
         if isinstance(payload, Mapping):
@@ -430,6 +535,7 @@ class AiBarJudgeStrategy:
             lambda: deque(maxlen=self._lookback_bars)
         )
         self._latest_audit: dict[str, StrategyDecisionAudit] = {}
+        self._latest_non_signal_decisions: dict[str, AiNonSignalDecision] = {}
 
     async def on_bar(self, event: BarEvent, context: object) -> Signal | None:
         if not event.actionable or event.market_state is None:
@@ -440,6 +546,12 @@ class AiBarJudgeStrategy:
         history = self._history[event.symbol]
         history.append(event)
         if len(history) < self._lookback_bars:
+            self._latest_non_signal_decisions[event.bar_key] = (
+                self._build_warmup_non_signal_decision(
+                    event=event,
+                    observed_bars=len(history),
+                )
+            )
             return None
 
         request = AiDecisionRequest(
@@ -453,12 +565,43 @@ class AiBarJudgeStrategy:
         )
         try:
             decision = await self._provider.decide(request)
-        except Exception:
+        except Exception as exc:
             if not self._suppress_provider_errors:
                 raise
+            self._latest_non_signal_decisions[event.bar_key] = (
+                self._build_provider_error_non_signal_decision(
+                    event=event,
+                    history=request.recent_bars,
+                    error=exc,
+                )
+            )
             return None
 
-        if decision.action == "hold" or decision.confidence < self._min_confidence:
+        if decision.action == "hold":
+            self._latest_non_signal_decisions[event.bar_key] = (
+                self._build_non_signal_decision_from_decision(
+                    event=event,
+                    decision=decision,
+                    history=request.recent_bars,
+                    skip_reason="ai_decision_hold",
+                )
+            )
+            return None
+
+        if decision.confidence < self._min_confidence:
+            self._latest_non_signal_decisions[event.bar_key] = (
+                self._build_non_signal_decision_from_decision(
+                    event=event,
+                    decision=decision,
+                    history=request.recent_bars,
+                    skip_reason="ai_decision_below_min_confidence",
+                    reason_summary=(
+                        f"{decision.reason_summary} "
+                        f"(confidence {_format_confidence(decision.confidence)} < "
+                        f"min {_format_confidence(self._min_confidence)})."
+                    ),
+                )
+            )
             return None
 
         signal_type = SignalType.REBALANCE
@@ -484,6 +627,7 @@ class AiBarJudgeStrategy:
             created_at=created_at,
             reason_summary=decision.reason_summary,
         )
+        self._latest_non_signal_decisions.pop(event.bar_key, None)
         self._latest_audit[event.bar_key] = self._build_audit_from_decision(
             event=event,
             signal=signal,
@@ -491,6 +635,11 @@ class AiBarJudgeStrategy:
             history=request.recent_bars,
         )
         return signal
+
+    def build_non_signal_decision(self, event: BarEvent) -> AiNonSignalDecision | None:
+        """Expose the latest skipped decision audit for backtest and research UIs."""
+
+        return self._latest_non_signal_decisions.get(event.bar_key)
 
     def build_decision_audit(self, event: BarEvent, signal: Signal) -> StrategyDecisionAudit:
         """Expose the latest structured audit snapshot for one emitted signal."""
@@ -563,34 +712,11 @@ class AiBarJudgeStrategy:
         decision: AiStrategyDecision,
         history: tuple[BarEvent, ...],
     ) -> StrategyDecisionAudit:
-        latest_bar = history[-1]
-        first_bar = history[0]
-        previous_bar = history[-2]
-        assert latest_bar.market_state is not None
-        latest_momentum = (
-            latest_bar.close - latest_bar.market_state.previous_close
-        ) / latest_bar.market_state.previous_close
-        lookback_return = (latest_bar.close - first_bar.open) / first_bar.open
-        short_return = (latest_bar.close - previous_bar.close) / previous_bar.close
-        input_snapshot = {
-            "strategy_description": self._description,
-            "provider_mode": self._provider_mode,
-            "provider_name": decision.provider_name,
-            "lookback_bars": str(len(history)),
-            "bar_key": event.bar_key,
-            "source_kind": event.source_kind,
-            "bar_start_time": event.bar_start_time.isoformat(),
-            "bar_end_time": event.bar_end_time.isoformat(),
-            "close": str(event.close),
-            "previous_close": str(latest_bar.market_state.previous_close),
-            "latest_momentum_pct": _format_pct(latest_momentum),
-            "lookback_return_pct": _format_pct(lookback_return),
-            "short_return_pct": _format_pct(short_return),
-            "min_confidence": _format_confidence(self._min_confidence),
-        }
-        for key, value in decision.diagnostics.items():
-            input_snapshot[f"diagnostic_{key}"] = value
-
+        input_snapshot = self._build_input_snapshot_from_decision(
+            event=event,
+            decision=decision,
+            history=history,
+        )
         signal_snapshot = {
             "signal_id": str(signal.id),
             "signal_type": signal.signal_type.value,
@@ -606,6 +732,124 @@ class AiBarJudgeStrategy:
             signal_snapshot=signal_snapshot,
             reason_summary=decision.reason_summary,
         )
+
+    def _build_non_signal_decision_from_decision(
+        self,
+        *,
+        event: BarEvent,
+        decision: AiStrategyDecision,
+        history: tuple[BarEvent, ...],
+        skip_reason: str,
+        reason_summary: str | None = None,
+    ) -> AiNonSignalDecision:
+        return AiNonSignalDecision(
+            audit=StrategyDecisionAudit(
+                input_snapshot=self._build_input_snapshot_from_decision(
+                    event=event,
+                    decision=decision,
+                    history=history,
+                ),
+                signal_snapshot={},
+                reason_summary=reason_summary or decision.reason_summary,
+            ),
+            skip_reason=skip_reason,
+        )
+
+    def _build_warmup_non_signal_decision(
+        self,
+        *,
+        event: BarEvent,
+        observed_bars: int,
+    ) -> AiNonSignalDecision:
+        return AiNonSignalDecision(
+            audit=StrategyDecisionAudit(
+                input_snapshot={
+                    "strategy_description": self._description,
+                    "provider_mode": self._provider_mode,
+                    "lookback_bars_required": str(self._lookback_bars),
+                    "lookback_bars_observed": str(observed_bars),
+                    "bar_key": event.bar_key,
+                    "source_kind": event.source_kind,
+                    "bar_start_time": event.bar_start_time.isoformat(),
+                    "bar_end_time": event.bar_end_time.isoformat(),
+                    "close": str(event.close),
+                    "previous_close": (
+                        None
+                        if event.market_state is None
+                        else str(event.market_state.previous_close)
+                    ),
+                },
+                signal_snapshot={},
+                reason_summary=(
+                    "Waiting for AI lookback warmup before the first model decision "
+                    f"({observed_bars}/{self._lookback_bars} bars collected)."
+                ),
+            ),
+            skip_reason="ai_lookback_warmup",
+        )
+
+    def _build_provider_error_non_signal_decision(
+        self,
+        *,
+        event: BarEvent,
+        history: tuple[BarEvent, ...],
+        error: Exception,
+    ) -> AiNonSignalDecision:
+        error_detail = str(error).strip() or type(error).__name__
+        return AiNonSignalDecision(
+            audit=StrategyDecisionAudit(
+                input_snapshot=self._build_input_snapshot_from_decision(
+                    event=event,
+                    decision=None,
+                    history=history,
+                ),
+                signal_snapshot={},
+                reason_summary=f"AI provider error was suppressed: {error_detail}",
+            ),
+            skip_reason="ai_provider_error_suppressed",
+        )
+
+    def _build_input_snapshot_from_decision(
+        self,
+        *,
+        event: BarEvent,
+        decision: AiStrategyDecision | None,
+        history: tuple[BarEvent, ...],
+    ) -> dict[str, str | None]:
+        latest_bar = history[-1]
+        first_bar = history[0]
+        previous_bar = history[-2]
+        assert latest_bar.market_state is not None
+        latest_momentum = (
+            latest_bar.close - latest_bar.market_state.previous_close
+        ) / latest_bar.market_state.previous_close
+        lookback_return = (latest_bar.close - first_bar.open) / first_bar.open
+        short_return = (latest_bar.close - previous_bar.close) / previous_bar.close
+        input_snapshot = {
+            "strategy_description": self._description,
+            "provider_mode": self._provider_mode,
+            "provider_name": None if decision is None else decision.provider_name,
+            "lookback_bars": str(len(history)),
+            "bar_key": event.bar_key,
+            "source_kind": event.source_kind,
+            "bar_start_time": event.bar_start_time.isoformat(),
+            "bar_end_time": event.bar_end_time.isoformat(),
+            "close": str(event.close),
+            "previous_close": str(latest_bar.market_state.previous_close),
+            "latest_momentum_pct": _format_pct(latest_momentum),
+            "lookback_return_pct": _format_pct(lookback_return),
+            "short_return_pct": _format_pct(short_return),
+            "min_confidence": _format_confidence(self._min_confidence),
+        }
+        if decision is not None:
+            input_snapshot["decision_action"] = decision.action
+            input_snapshot["decision_confidence"] = _format_confidence(decision.confidence)
+            input_snapshot["decision_target_position"] = (
+                None if decision.target_position is None else str(decision.target_position)
+            )
+            for key, value in decision.diagnostics.items():
+                input_snapshot[f"diagnostic_{key}"] = value
+        return input_snapshot
 
     @staticmethod
     def _resolve_trader_run_uuid(context: object):

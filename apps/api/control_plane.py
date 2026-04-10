@@ -47,6 +47,7 @@ from apps.trader.reconciliation import SessionFactoryBackedReconciliationStore
 READ_ONLY_MARKET_TIMEFRAMES = frozenset({"15m", "1h"})
 DEFAULT_RESEARCH_INITIAL_CASH = Decimal("100000")
 DEFAULT_RESEARCH_SLIPPAGE_BPS = Decimal("5")
+DEFAULT_AI_RESEARCH_PROVIDER_TIMEOUT_SECONDS = 30.0
 
 
 def _is_missing_persistence_table_error(exc: Exception) -> bool:
@@ -716,6 +717,7 @@ class ApiControlPlaneService:
                 api_key=resolved_api_key or "",
                 entry_threshold_pct=config.entry_threshold_pct,
                 exit_threshold_pct=config.exit_threshold_pct,
+                timeout_seconds=DEFAULT_AI_RESEARCH_PROVIDER_TIMEOUT_SECONDS,
             )
         else:
             raise ValueError(f"Unsupported AI research provider: {resolved_provider}")

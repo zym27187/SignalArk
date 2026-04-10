@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  AI_RESEARCH_REQUEST_TIMEOUT_MS,
+  AI_RESEARCH_REQUEST_TIMEOUT_PER_DECISION_MS,
+  DEFAULT_AI_RESEARCH_PREVIEW_LIMIT,
+  DEFAULT_AI_RESEARCH_LOOKBACK_BARS,
   fetchResearchAiSettings,
   fetchFillHistory,
   fetchMarketBars,
@@ -8,6 +12,7 @@ import {
   fetchReplayEvents,
   fetchResearchSnapshot,
   fetchRuntimeBars,
+  resolveAiResearchRequestTimeoutMs,
   fetchStatus,
   postControlAction,
   postResearchAiSnapshot,
@@ -24,6 +29,7 @@ describe("api helpers", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it("builds market-bar queries from symbol, timeframe, and limit", async () => {
@@ -310,6 +316,90 @@ describe("api helpers", () => {
     );
   });
 
+  it("uses the AI preview default limit when none is provided", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          datasetName: "cn_equity / 600036.SH / 15m",
+          sourceLabel: "由 research API 生成的 AI 回测结果",
+          sourceMode: "live",
+          klineBars: [],
+          equityCurve: [],
+          manifest: {},
+          performance: {},
+          decisions: [],
+          notes: [],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await postResearchAiSnapshot({
+      symbol: "600036.SH",
+      timeframe: "15m",
+      provider: "openai_compatible",
+      model: "gpt-5.4",
+      baseUrl: "https://api.openai.com/v1",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/research/ai-snapshot",
+      expect.objectContaining({
+        body: JSON.stringify({
+          symbol: "600036.SH",
+          timeframe: "15m",
+          limit: DEFAULT_AI_RESEARCH_PREVIEW_LIMIT,
+          provider: "openai_compatible",
+          model: "gpt-5.4",
+          baseUrl: "https://api.openai.com/v1",
+        }),
+      }),
+    );
+  });
+
+  it("times out stalled AI research snapshot requests", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation((_input, init) => {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          },
+          { once: true },
+        );
+      });
+    });
+
+    const pendingExpectation = expect(
+      postResearchAiSnapshot({
+        provider: "openai_compatible",
+        model: "gpt-5.4",
+        baseUrl: "https://api.openai.com/v1",
+      }),
+    ).rejects.toMatchObject({
+      message: "AI research request timed out.",
+    });
+
+    await vi.advanceTimersByTimeAsync(
+      resolveAiResearchRequestTimeoutMs(DEFAULT_AI_RESEARCH_PREVIEW_LIMIT),
+    );
+
+    await pendingExpectation;
+  });
+
+  it("scales AI timeout with the preview window", () => {
+    expect(resolveAiResearchRequestTimeoutMs(12)).toBe(AI_RESEARCH_REQUEST_TIMEOUT_MS);
+    expect(resolveAiResearchRequestTimeoutMs(24)).toBe(
+      10_000
+        + (24 - DEFAULT_AI_RESEARCH_LOOKBACK_BARS + 1)
+          * AI_RESEARCH_REQUEST_TIMEOUT_PER_DECISION_MS,
+    );
+  });
+
   it("loads and saves persisted AI research settings", async () => {
     fetchMock
       .mockResolvedValueOnce(
@@ -400,6 +490,32 @@ describe("api helpers", () => {
     await expect(fetchStatus()).rejects.toMatchObject({
       message: "请求失败，状态码 503。",
       status: 503,
+    });
+  });
+
+  it("localizes AI provider timeout details before surfacing them", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          detail:
+            "AI provider request timed out after 15s while calling https://openai.test/v1/chat/completions.",
+        }),
+        {
+          status: 502,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await expect(
+      postResearchAiSnapshot({
+        provider: "openai_compatible",
+        model: "gpt-5.4",
+        baseUrl: "https://openai.test/v1",
+      }),
+    ).rejects.toMatchObject({
+      message: "AI 服务请求超时（15 秒）：https://openai.test/v1/chat/completions。",
+      status: 502,
     });
   });
 });

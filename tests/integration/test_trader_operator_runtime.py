@@ -231,6 +231,46 @@ def test_control_plane_store_requires_migrated_control_plane_tables(tmp_path: Pa
         engine.dispose()
 
 
+def test_control_plane_store_can_take_over_stale_local_owner_before_ttl(tmp_path: Path) -> None:
+    clock = MutableClock(BASE_TIME)
+    database_url = _database_url(tmp_path)
+    upgrade_database(database_url)
+    engine = create_database_engine(database_url)
+    session_factory = create_session_factory(engine)
+    store = TraderControlPlaneStore(
+        session_factory,
+        clock=clock.now,
+        hostname="zymdeMac-mini.local",
+        pid_exists=lambda pid: pid != 70736,
+    )
+
+    try:
+        first = store.acquire_lease(
+            account_id="paper_account_001",
+            instance_id="zymdeMac-mini.local:70736",
+            ttl_seconds=15,
+            now=clock.now(),
+        )
+        assert first.accepted is True
+        assert first.snapshot.owner_instance_id == "zymdeMac-mini.local:70736"
+        assert first.snapshot.fencing_token == 1
+
+        clock.advance(timedelta(seconds=1))
+        second = store.acquire_lease(
+            account_id="paper_account_001",
+            instance_id="zymdeMac-mini.local:70737",
+            ttl_seconds=15,
+            now=clock.now(),
+        )
+
+        assert second.accepted is True
+        assert second.message == "lease_taken_over_stale_local_owner"
+        assert second.snapshot.owner_instance_id == "zymdeMac-mini.local:70737"
+        assert second.snapshot.fencing_token == 2
+    finally:
+        engine.dispose()
+
+
 @pytest.mark.asyncio
 async def test_trader_runtime_rejects_second_active_instance_for_same_account(
     tmp_path: Path,

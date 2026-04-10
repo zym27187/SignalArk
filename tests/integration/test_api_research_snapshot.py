@@ -5,7 +5,10 @@ from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from apps.api.control_plane import ApiControlPlaneService
+from apps.api.control_plane import (
+    DEFAULT_AI_RESEARCH_PROVIDER_TIMEOUT_SECONDS,
+    ApiControlPlaneService,
+)
 from apps.trader.control_plane import TraderControlPlaneStore
 from fastapi.testclient import TestClient
 from src.config.settings import Settings
@@ -227,8 +230,37 @@ def test_api_ai_research_snapshot_returns_live_ai_backtest_payload(
     assert payload["manifest"]["handlerName"] == "AiBarJudgeStrategy"
     assert payload["performance"]["tradeCount"] == 1
     assert payload["performance"]["fillCount"] == 1
+    assert payload["decisions"][-1]["action"] == "REBALANCE"
+    assert payload["decisions"][-1]["executionAction"] == "BUY"
     assert payload["decisions"][-1]["reasonSummary"] == "model confirmed the bullish stack"
     assert "OpenAI-compatible" in payload["notes"][0]
+
+
+def test_api_ai_research_strategy_uses_interactive_provider_timeout(tmp_path: Path) -> None:
+    database_url = _database_url(tmp_path)
+    upgrade_database(database_url)
+    engine = create_database_engine(database_url)
+    session_factory = create_session_factory(engine)
+    control_store = TraderControlPlaneStore(session_factory)
+    service = ApiControlPlaneService(
+        settings=_settings(database_url),
+        session_factory=session_factory,
+        control_store=control_store,
+        market_gateway_factory=lambda: FakeHistoricalBarGateway([]),
+    )
+
+    try:
+        strategy = service._build_research_ai_strategy(
+            provider="openai_compatible",
+            model="gpt-5.4",
+            base_url="https://openai.test/v1",
+            api_key="sk-test",
+        )
+    finally:
+        engine.dispose()
+
+    assert isinstance(strategy._provider, OpenAiCompatibleDecisionProvider)
+    assert strategy._provider._timeout_seconds == DEFAULT_AI_RESEARCH_PROVIDER_TIMEOUT_SECONDS
 
 
 def test_api_ai_research_settings_roundtrip_and_snapshot_can_reuse_saved_api_key(
@@ -331,6 +363,8 @@ def test_api_ai_research_settings_roundtrip_and_snapshot_can_reuse_saved_api_key
     assert snapshot.status_code == 200
     payload = snapshot.json()
     assert payload["manifest"]["strategyId"] == "ai_bar_judge_v1"
+    assert payload["decisions"][-1]["action"] == "REBALANCE"
+    assert payload["decisions"][-1]["executionAction"] == "BUY"
     assert payload["decisions"][-1]["reasonSummary"] == "saved config triggered the entry"
     assert captured["model"] == "gpt-5.4-mini"
     assert captured["base_url"] == "https://saved-provider.test/v1"

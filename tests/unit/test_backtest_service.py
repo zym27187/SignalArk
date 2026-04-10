@@ -12,6 +12,7 @@ from src.config import Settings
 from src.domain.events import BarEvent
 from src.domain.market import MarketStateSnapshot, SuspensionStatus, TradingPhase
 from src.domain.strategy import BaselineMomentumStrategy
+from src.domain.strategy.ai import AiBarJudgeStrategy, AiDecisionRequest, AiStrategyDecision
 from src.services.backtest import BacktestStrategyContext
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -66,6 +67,18 @@ def _trader_context() -> TraderEventContext:
     )
 
 
+class HoldOnlyAiProvider:
+    async def decide(self, request: AiDecisionRequest) -> AiStrategyDecision:
+        del request
+        return AiStrategyDecision(
+            action="hold",
+            confidence=Decimal("0.91"),
+            target_position=None,
+            reason_summary="market regime is mixed",
+            provider_name="scripted_provider",
+        )
+
+
 @pytest.mark.asyncio
 async def test_baseline_strategy_accepts_backtest_context_with_same_signal_semantics() -> None:
     strategy = BaselineMomentumStrategy(account_id="paper_account_001")
@@ -113,3 +126,32 @@ async def test_default_backtest_runner_builds_stable_manifest_for_identical_inpu
         first_result.manifest.dataset.data_fingerprint
         == second_result.manifest.dataset.data_fingerprint
     )
+
+
+@pytest.mark.asyncio
+async def test_ai_backtest_preserves_non_signal_skip_reasons() -> None:
+    strategy = AiBarJudgeStrategy(
+        account_id="paper_account_001",
+        lookback_bars=2,
+        min_confidence=Decimal("0.60"),
+        provider=HoldOnlyAiProvider(),
+        suppress_provider_errors=False,
+    )
+    runner = build_default_backtest_runner(
+        _settings(),
+        strategy=strategy,
+        initial_cash=Decimal("100000"),
+        slippage_bps=Decimal("5"),
+    )
+    bars = (
+        _bar_event(close=Decimal("39.50")),
+        _bar_event(event_time=BASE_TIME + timedelta(minutes=15), close=Decimal("39.52")),
+    )
+
+    result = await runner.run(bars)
+
+    assert result.decisions[0].skip_reason == "ai_lookback_warmup"
+    assert result.decisions[0].reason_summary is not None
+    assert "1/2 bars collected" in result.decisions[0].reason_summary
+    assert result.decisions[1].skip_reason == "ai_decision_hold"
+    assert result.decisions[1].reason_summary == "market regime is mixed"

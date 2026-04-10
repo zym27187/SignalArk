@@ -107,13 +107,21 @@ def _serialize_decision(decision: BacktestDecisionRecord) -> dict[str, Any]:
         signal_type = None if raw_signal_type is None else str(raw_signal_type)
 
     order_plan_side = decision.order_plan.get("side")
-    action = order_plan_side if order_plan_side in {"BUY", "SELL"} else "SKIP"
+    execution_action = order_plan_side if order_plan_side in {"BUY", "SELL"} else "SKIP"
+    raw_decision_action = decision.input_snapshot.get("decision_action")
+    if isinstance(raw_decision_action, str) and raw_decision_action.strip():
+        action = raw_decision_action.strip().upper()
+    elif signal_type is not None and signal_type.strip():
+        action = signal_type.strip().upper()
+    else:
+        action = "SKIP"
     return {
         "barKey": decision.bar_key,
         "eventTime": decision.event_time.isoformat(),
         "symbol": decision.symbol,
         "signalType": signal_type,
         "action": action,
+        "executionAction": execution_action,
         "targetPosition": target_position,
         "reasonSummary": decision.reason_summary or "",
         "skipReason": decision.skip_reason,

@@ -10,6 +10,9 @@ import { useAiResearchData } from "../../hooks/use-ai-research-data";
 import { useAiResearchSettings } from "../../hooks/use-ai-research-settings";
 import type { ResearchDataState } from "../../hooks/use-research-data";
 import {
+  DEFAULT_AI_RESEARCH_PREVIEW_LIMIT,
+} from "../../lib/api";
+import {
   formatDateTime,
   formatDecimal,
   formatSignedMoney,
@@ -159,7 +162,7 @@ export function ResearchView({
     isLoading: aiResearchData.isLoading,
     error: aiResearchData.error,
     symbolNames,
-    waitingHint: "填好模型接入信息后，这里会生成一份 AI 回测结果。",
+    waitingHint: `填好模型接入信息后，这里会生成一份 AI 回测快速预览（最近 ${DEFAULT_AI_RESEARCH_PREVIEW_LIMIT} 根 K 线）。`,
   });
   const savedApiKeyHint = aiSettings.settings?.hasApiKey ? aiSettings.settings.apiKeyHint : null;
   const latestAiSettingsUpdatedAt = aiSettings.settings?.updatedAt;
@@ -186,15 +189,22 @@ export function ResearchView({
     if (savedSettings === null) {
       return;
     }
-    setSettingsMessage("AI 配置已保存，开始运行回测。");
-    await aiResearchData.run({
+    setSettingsMessage(
+      `AI 配置已保存，开始运行最近 ${DEFAULT_AI_RESEARCH_PREVIEW_LIMIT} 根 K 线的快速回测。`,
+    );
+    const nextSnapshot = await aiResearchData.run({
       symbol: selectedSymbol,
       timeframe: selectedTimeframe,
-      limit: 96,
+      limit: DEFAULT_AI_RESEARCH_PREVIEW_LIMIT,
       provider: savedSettings.provider,
       model: savedSettings.model,
       baseUrl: savedSettings.baseUrl,
     });
+    setSettingsMessage(
+      nextSnapshot === null
+        ? "AI 回测未完成，请检查下方错误提示。"
+        : `AI 回测已完成，当前展示最近 ${DEFAULT_AI_RESEARCH_PREVIEW_LIMIT} 根 K 线的快速预览。`,
+    );
   }
 
   function renderSnapshotSections(
@@ -380,7 +390,7 @@ export function ResearchView({
           chartAccent: "red",
           decisionEyebrow: "买卖原因",
           decisionTitle: "每一步为什么买卖",
-          decisionDescription: "按时间列出信号、动作和下单计划。",
+          decisionDescription: "按时间列出信号、策略动作和下单计划。",
           metadataEyebrow: "回测信息",
           metadataTitle: "本次回放信息",
           metadataDescription: "这次回测用的时间范围、标的和成本假设。",
@@ -395,7 +405,7 @@ export function ResearchView({
       <SectionCard
         eyebrow="AI 回测"
         title="模型实验台"
-        description="数据库里会持久化保存 AI 回测配置，进入研究页时自动回填；运行回测时会优先复用后端已保存的 API Key。"
+        description={`数据库里会持久化保存 AI 回测配置，进入研究页时自动回填；运行回测时会优先复用后端已保存的 API Key。为保证交互速度，页面默认只预览最近 ${DEFAULT_AI_RESEARCH_PREVIEW_LIMIT} 根 K 线。`}
       >
         <form
           className="ai-form"
@@ -529,7 +539,9 @@ export function ResearchView({
               </button>
 
               <span className="tag">
-                {clearSavedApiKey ? "将清除已保存 Key" : "保存后立即运行"}
+                {clearSavedApiKey
+                  ? "将清除已保存 Key"
+                  : `快速预览最近 ${DEFAULT_AI_RESEARCH_PREVIEW_LIMIT} 根 K 线`}
               </span>
 
               <button
@@ -556,7 +568,7 @@ export function ResearchView({
           chartAccent: "teal",
           decisionEyebrow: "AI 买卖原因",
           decisionTitle: "AI 每一步为什么买卖",
-          decisionDescription: "按时间列出 AI 信号、动作和下单计划。",
+          decisionDescription: "按时间列出 AI 信号、策略动作和下单计划。",
           metadataEyebrow: "AI 回测信息",
           metadataTitle: "本次 AI 回放信息",
           metadataDescription: "这次 AI 回测使用的模型、时间范围、标的和成本假设。",
