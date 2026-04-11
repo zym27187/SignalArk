@@ -4,6 +4,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 from src.infra.db import create_database_engine
 
@@ -24,9 +25,6 @@ EXPECTED_PHASE2_TABLES = {
     "runtime_symbol_requests",
     "alembic_version",
 }
-HEAD_REVISION = "20260411_110000"
-
-
 def _sqlite_database_url(path: Path) -> str:
     return f"sqlite+pysqlite:///{path}"
 
@@ -39,6 +37,7 @@ def test_alembic_upgrade_smoke_uses_explicit_sqlalchemy_url(tmp_path: Path, monk
     config = Config(str(ALEMBIC_INI_PATH))
     config.set_main_option("sqlalchemy.url", target_database_url)
     command.upgrade(config, "head")
+    expected_head_revision = ScriptDirectory.from_config(config).get_current_head()
 
     target_engine = create_database_engine(target_database_url)
     fallback_engine = create_database_engine(fallback_database_url)
@@ -48,7 +47,7 @@ def test_alembic_upgrade_smoke_uses_explicit_sqlalchemy_url(tmp_path: Path, monk
             applied_revision = connection.execute(
                 text("SELECT version_num FROM alembic_version")
             ).scalar_one()
-        assert applied_revision == HEAD_REVISION
+        assert applied_revision == expected_head_revision
         assert inspect(fallback_engine).get_table_names() == []
     finally:
         target_engine.dispose()
