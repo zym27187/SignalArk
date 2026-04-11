@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.domain.events import BarEvent
 from src.domain.strategy.ai import AI_BAR_JUDGE_V1, build_ai_bar_judge_strategy
-from src.domain.strategy.audit import StrategyDecisionAudit
+from src.domain.strategy.audit import StrategyDecisionAudit, build_strategy_decision_audit_summary
 from src.domain.strategy.signal import Signal, SignalType
 
 BASELINE_MOMENTUM_V1 = "baseline_momentum_v1"
@@ -367,6 +367,10 @@ class BaselineMomentumStrategy:
             input_snapshot=input_snapshot,
             signal_snapshot=signal_snapshot,
             reason_summary=signal.reason_summary or "",
+            summary=self._build_audit_summary(
+                decision=signal.signal_type.value,
+                reason_summary=signal.reason_summary or "",
+            ),
         )
 
     def backtest_metadata(self) -> dict[str, object]:
@@ -446,6 +450,10 @@ class BaselineMomentumStrategy:
                 "created_at": signal.created_at.isoformat(),
             },
             reason_summary=signal.reason_summary or "",
+            summary=self._build_audit_summary(
+                decision=signal.signal_type.value,
+                reason_summary=signal.reason_summary or "",
+            ),
         )
 
     def _build_input_snapshot(
@@ -530,6 +538,13 @@ class BaselineMomentumStrategy:
                     "Waiting for enough finalized bars before the first confirmed baseline "
                     f"decision ({observed_bars}/{self._trend_lookback_bars} bars collected)."
                 ),
+                summary=self._build_audit_summary(
+                    decision="hold",
+                    reason_summary=(
+                        "Waiting for enough finalized bars before the first confirmed baseline "
+                        f"decision ({observed_bars}/{self._trend_lookback_bars} bars collected)."
+                    ),
+                ),
             ),
             skip_reason="baseline_trend_warmup",
         )
@@ -573,6 +588,10 @@ class BaselineMomentumStrategy:
                 ),
                 signal_snapshot={},
                 reason_summary=reason_summary,
+                summary=self._build_audit_summary(
+                    decision="hold",
+                    reason_summary=reason_summary,
+                ),
             ),
             skip_reason=skip_reason,
         )
@@ -581,6 +600,20 @@ class BaselineMomentumStrategy:
         if state.desired_target_position <= 0 or state.peak_close_since_entry is None:
             return None
         return state.peak_close_since_entry * (Decimal("1") - self._trailing_stop_pct)
+
+    def _build_audit_summary(
+        self,
+        *,
+        decision: str,
+        reason_summary: str,
+    ):
+        return build_strategy_decision_audit_summary(
+            provider_id="deterministic_policy",
+            model_or_policy_version=self._strategy_id,
+            decision=decision,
+            confidence=None,
+            reason_summary=reason_summary,
+        )
 
     @staticmethod
     def _store_position_state(

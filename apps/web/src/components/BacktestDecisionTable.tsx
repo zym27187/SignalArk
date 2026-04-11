@@ -5,6 +5,19 @@ import type { BacktestDecisionSnapshot } from "../types/research";
 
 const DEFAULT_PAGE_SIZE = 8;
 
+function formatAuditProvider(providerId: string | null | undefined): string {
+  switch (providerId) {
+    case "openai_chat_completions":
+      return "OpenAI Chat Completions";
+    case "heuristic_stub":
+      return "Heuristic Stub";
+    case "deterministic_policy":
+      return "Deterministic Policy";
+    default:
+      return providerId ? titleCase(providerId) : "--";
+  }
+}
+
 interface BacktestDecisionTableProps {
   decisions: BacktestDecisionSnapshot[];
   pageSize?: number;
@@ -75,6 +88,16 @@ export function BacktestDecisionTable({
               <td>
                 <div className="decision-reason">
                   <strong>{decision.reasonSummary}</strong>
+                  {decision.audit ? (
+                    <>
+                      <span>{`来源：${formatAuditProvider(decision.audit.providerId)}`}</span>
+                      <span>{`审计决策：${titleCase(decision.audit.decision || "--")}`}</span>
+                      <span>{`置信度：${decision.audit.confidence ?? "--"}`}</span>
+                      {decision.audit.fallbackUsed ? (
+                        <span>{`回退原因：${decision.audit.fallbackReason || "外部 provider 暂不可用"}`}</span>
+                      ) : null}
+                    </>
+                  ) : null}
                   {decision.skipReason ? <span>跳过原因：{titleCase(decision.skipReason)}</span> : null}
                   <span>下单计划：{titleCase(decision.executionAction)}</span>
                 </div>

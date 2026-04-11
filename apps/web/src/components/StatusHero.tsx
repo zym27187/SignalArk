@@ -8,6 +8,19 @@ interface StatusHeroProps {
   error?: string;
 }
 
+function formatAuditProvider(providerId: string | null | undefined): string {
+  switch (providerId) {
+    case "openai_chat_completions":
+      return "OpenAI Chat Completions";
+    case "heuristic_stub":
+      return "Heuristic Stub";
+    case "deterministic_policy":
+      return "Deterministic Policy";
+    default:
+      return titleCase(providerId ?? "--");
+  }
+}
+
 function statusTone(
   ready: boolean | undefined,
   controlState: string | undefined,
@@ -94,6 +107,20 @@ export function StatusHero({ status, isLoading, error }: StatusHeroProps) {
         <p className="status-hero__summary">{summary}</p>
         <p className="status-hero__impact">{impact}</p>
         <DegradedModeCallout diagnostics={status?.degraded_mode} title="诊断结论" />
+        {status?.last_strategy_audit ? (
+          <div className="status-hero__decision">
+            <p className="status-hero__decision-eyebrow">最近一次策略判断</p>
+            <strong>{`${titleCase(status.last_strategy_audit.decision ?? "hold")} · ${formatAuditProvider(status.last_strategy_audit.provider_id)}`}</strong>
+            <p>{status.last_strategy_audit.reason_summary ?? "当前还没有可解释的策略摘要。"}</p>
+            <p>{`策略：${status.last_strategy_id ?? "--"} · 决策时间：${formatDateTime(status.last_strategy_decision_at)}`}</p>
+            {status.last_strategy_audit.confidence ? (
+              <p>{`置信度：${status.last_strategy_audit.confidence}`}</p>
+            ) : null}
+            {status.last_strategy_audit.fallback_used ? (
+              <p>{`已降级到 deterministic fallback：${status.last_strategy_audit.fallback_reason ?? "外部 provider 暂不可用"}`}</p>
+            ) : null}
+          </div>
+        ) : null}
         {error ? <p className="status-hero__error">状态读取失败：{error}</p> : null}
       </div>
 

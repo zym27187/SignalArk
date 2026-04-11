@@ -565,6 +565,10 @@ async def test_trader_runtime_runs_baseline_strategy_through_paper_execution(
     assert snapshot["last_strategy_signal_snapshot"]["signal_type"] == "REBALANCE"
     assert snapshot["last_strategy_signal_snapshot"]["target_position"] == "400"
     assert snapshot["last_strategy_reason_summary"] is not None
+    assert snapshot["last_strategy_audit"]["provider_id"] == "deterministic_policy"
+    assert snapshot["last_strategy_audit"]["model_or_policy_version"] == "baseline_momentum_v1"
+    assert snapshot["last_strategy_audit"]["decision"] == "rebalance"
+    assert snapshot["last_strategy_audit"]["fallback_used"] is False
     assert "position_tier full" in snapshot["last_strategy_reason_summary"]
     assert signal_record.reason_summary == snapshot["last_strategy_reason_summary"]
     assert order_record.status == "FILLED"
@@ -572,6 +576,11 @@ async def test_trader_runtime_runs_baseline_strategy_through_paper_execution(
     assert order_intent_payload is not None
     assert order_intent_payload["strategy_input_snapshot"]["momentum_pct"] == "0.1267"
     assert order_intent_payload["strategy_signal_snapshot"]["signal_type"] == "REBALANCE"
+    assert order_intent_payload["strategy_audit_summary"]["provider_id"] == "deterministic_policy"
+    assert (
+        order_intent_payload["strategy_audit_summary"]["model_or_policy_version"]
+        == "baseline_momentum_v1"
+    )
     assert order_intent_payload["reason_summary"] == snapshot["last_strategy_reason_summary"]
     assert position is not None
     assert position.qty == Decimal("400")

@@ -104,6 +104,9 @@ export interface StatusPayload {
   market_state_available: boolean;
   latest_final_bar_time: string | null;
   current_trading_phase: string | null;
+  last_strategy_id?: string | null;
+  last_strategy_decision_at?: string | null;
+  last_strategy_audit?: StrategyDecisionAuditSummaryPayload | null;
   lease_owner_instance_id: string | null;
   lease_expires_at: string | null;
   last_heartbeat_at: string | null;
@@ -119,6 +122,16 @@ export interface StatusPayload {
   symbols?: string[];
   symbol_names?: SymbolNameMap;
   degraded_mode?: DegradedModeStatusPayload;
+}
+
+export interface StrategyDecisionAuditSummaryPayload {
+  provider_id: string | null;
+  model_or_policy_version: string | null;
+  decision: string | null;
+  confidence: string | null;
+  reason_summary: string | null;
+  fallback_used: boolean | null;
+  fallback_reason: string | null;
 }
 
 export interface Position {

@@ -173,6 +173,17 @@ def test_api_exposes_status_controls_and_cancel_all_boundaries(tmp_path: Path) -
             market_data_fresh=True,
             latest_final_bar_time=NOW - timedelta(seconds=5),
             current_trading_phase=TradingPhase.CONTINUOUS_AUCTION.value,
+            last_strategy_id="ai_bar_judge_v1",
+            last_strategy_decision_at=NOW - timedelta(seconds=8),
+            last_strategy_audit={
+                "provider_id": "heuristic_stub",
+                "model_or_policy_version": "heuristic_stub_v1",
+                "decision": "hold",
+                "confidence": "0.7100",
+                "reason_summary": "当前波段方向还不够清晰，先维持观望。",
+                "fallback_used": True,
+                "fallback_reason": "provider timeout",
+            },
             fencing_token=lease_result.snapshot.fencing_token,
             last_status_message="runtime_ready",
             updated_at=NOW,
@@ -261,6 +272,9 @@ def test_api_exposes_status_controls_and_cancel_all_boundaries(tmp_path: Path) -
         assert ready.json()["degraded_mode"]["reason_code"] == "LIVE_DATA_READY"
         assert status.json()["control_state"] == "normal"
         assert status.json()["trader_run_id"] == "runtime-run-001"
+        assert status.json()["last_strategy_id"] == "ai_bar_judge_v1"
+        assert status.json()["last_strategy_audit"]["provider_id"] == "heuristic_stub"
+        assert status.json()["last_strategy_audit"]["fallback_used"] is True
         assert status.json()["degraded_mode"]["data_source"] == "eastmoney"
         assert balance_summary.status_code == 200
         assert balance_summary.json()["cash_balance"] == "98000"

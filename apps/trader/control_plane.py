@@ -103,6 +103,9 @@ class TraderRuntimeStatusRecord(Base):
     market_data_fresh: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     latest_final_bar_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     current_trading_phase: Mapped[str | None] = mapped_column(String(64))
+    last_strategy_id: Mapped[str | None] = mapped_column(String(128))
+    last_strategy_decision_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_strategy_audit_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     last_seen_bars_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     last_strategy_bars_json: Mapped[dict[str, Any]] = mapped_column(
         JSON,
@@ -204,6 +207,9 @@ class TraderRuntimeStatusSnapshot:
     fencing_token: int | None
     last_status_message: str | None
     updated_at: datetime
+    last_strategy_id: str | None = None
+    last_strategy_decision_at: datetime | None = None
+    last_strategy_audit: dict[str, object] | None = None
     last_seen_bars: dict[str, dict[str, object]] = field(default_factory=dict)
     last_strategy_bars: dict[str, dict[str, object]] = field(default_factory=dict)
 
@@ -293,6 +299,9 @@ def _runtime_status_from_record(record: TraderRuntimeStatusRecord) -> TraderRunt
         market_data_fresh=record.market_data_fresh,
         latest_final_bar_time=_shanghai_datetime(record.latest_final_bar_time),
         current_trading_phase=record.current_trading_phase,
+        last_strategy_id=record.last_strategy_id,
+        last_strategy_decision_at=_shanghai_datetime(record.last_strategy_decision_at),
+        last_strategy_audit=_json_single_object(record.last_strategy_audit_json),
         last_seen_bars=_json_object_mapping(record.last_seen_bars_json),
         last_strategy_bars=_json_object_mapping(record.last_strategy_bars_json),
         fencing_token=record.fencing_token,
@@ -669,6 +678,9 @@ class TraderControlPlaneStore:
                     market_data_fresh=snapshot.market_data_fresh,
                     latest_final_bar_time=snapshot.latest_final_bar_time,
                     current_trading_phase=snapshot.current_trading_phase,
+                    last_strategy_id=snapshot.last_strategy_id,
+                    last_strategy_decision_at=snapshot.last_strategy_decision_at,
+                    last_strategy_audit_json=snapshot.last_strategy_audit,
                     last_seen_bars_json=snapshot.last_seen_bars,
                     last_strategy_bars_json=snapshot.last_strategy_bars,
                     fencing_token=snapshot.fencing_token,
@@ -691,6 +703,9 @@ class TraderControlPlaneStore:
             record.market_data_fresh = snapshot.market_data_fresh
             record.latest_final_bar_time = snapshot.latest_final_bar_time
             record.current_trading_phase = snapshot.current_trading_phase
+            record.last_strategy_id = snapshot.last_strategy_id
+            record.last_strategy_decision_at = snapshot.last_strategy_decision_at
+            record.last_strategy_audit_json = snapshot.last_strategy_audit
             record.last_seen_bars_json = snapshot.last_seen_bars
             record.last_strategy_bars_json = snapshot.last_strategy_bars
             record.fencing_token = snapshot.fencing_token
@@ -905,6 +920,15 @@ class TraderControlPlaneStore:
             "market_state_available": market_state_available,
             "latest_final_bar_time": _isoformat(latest_final_bar_time),
             "current_trading_phase": current_trading_phase,
+            "last_strategy_id": None if runtime_status is None else runtime_status.last_strategy_id,
+            "last_strategy_decision_at": (
+                None
+                if runtime_status is None
+                else _isoformat(runtime_status.last_strategy_decision_at)
+            ),
+            "last_strategy_audit": (
+                None if runtime_status is None else runtime_status.last_strategy_audit
+            ),
             "lease_owner_instance_id": lease_snapshot.owner_instance_id,
             "lease_expires_at": _isoformat(lease_snapshot.lease_expires_at),
             "last_heartbeat_at": _isoformat(lease_snapshot.last_heartbeat_at),
@@ -1421,6 +1445,9 @@ class TraderControlRuntime:
                 market_data_fresh=self._runtime_state.market_data_fresh,
                 latest_final_bar_time=self._runtime_state.latest_final_bar_time,
                 current_trading_phase=self._runtime_state.current_trading_phase,
+                last_strategy_id=self._runtime_state.last_strategy_id,
+                last_strategy_decision_at=self._runtime_state.last_strategy_decision_at,
+                last_strategy_audit=self._runtime_state.last_strategy_audit,
                 last_seen_bars={
                     stream_key: dict(snapshot)
                     for stream_key, snapshot in self._runtime_state.last_seen_bars_by_stream.items()
@@ -1460,3 +1487,9 @@ def _json_object_mapping(value: Any) -> dict[str, dict[str, object]]:
         if isinstance(key, str) and isinstance(item, dict):
             normalized[key] = dict(item)
     return normalized
+
+
+def _json_single_object(value: Any) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    return dict(value)

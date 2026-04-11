@@ -23,6 +23,7 @@ from src.domain.strategy.ai import (
     AiDecisionRequest,
     AiProviderRequestError,
     AiStrategyDecision,
+    FallbackAiDecisionProvider,
     OpenAiCompatibleDecisionProvider,
 )
 
@@ -78,6 +79,12 @@ class ScriptedProvider:
     async def decide(self, request: AiDecisionRequest) -> AiStrategyDecision:
         self.requests.append(request)
         return self._decisions.pop(0)
+
+    def metadata(self) -> dict[str, str]:
+        return {
+            "provider_id": "scripted_provider",
+            "model_or_policy_version": "scripted_provider_v1",
+        }
 
 
 @pytest.mark.asyncio
@@ -183,6 +190,9 @@ async def test_ai_strategy_records_hold_decisions_without_emitting_a_signal() ->
     assert skipped is not None
     assert skipped.skip_reason == "ai_decision_hold"
     assert skipped.audit.reason_summary == "market regime is mixed"
+    assert skipped.audit.summary is not None
+    assert skipped.audit.summary.provider_id == "scripted_provider"
+    assert skipped.audit.summary.decision == "hold"
 
 
 @pytest.mark.asyncio
@@ -223,6 +233,11 @@ async def test_ai_strategy_exposes_structured_decision_audit() -> None:
     assert audit.input_snapshot["diagnostic_cluster"] == "reversal"
     assert audit.signal_snapshot["confidence"] == "0.8800"
     assert audit.reason_summary == "bearish reversal"
+    assert audit.summary is not None
+    assert audit.summary.provider_id == "scripted_provider"
+    assert audit.summary.model_or_policy_version == "scripted_provider_v1"
+    assert audit.summary.decision == "exit"
+    assert audit.summary.fallback_used is False
 
 
 @pytest.mark.asyncio
@@ -243,6 +258,57 @@ async def test_ai_strategy_can_surface_provider_errors_for_research_runs() -> No
     await strategy.on_bar(_bar_event(close=Decimal("39.52"), offset=0), _context())
     with pytest.raises(ValueError, match="invalid api key"):
         await strategy.on_bar(_bar_event(close=Decimal("39.64"), offset=1), _context())
+
+
+@pytest.mark.asyncio
+async def test_fallback_provider_returns_deterministic_decision_after_primary_error() -> None:
+    class ExplodingProvider:
+        async def decide(self, request: AiDecisionRequest) -> AiStrategyDecision:
+            del request
+            raise AiProviderRequestError("provider timed out")
+
+        def metadata(self) -> dict[str, str]:
+            return {
+                "provider_id": "openai_chat_completions",
+                "model_or_policy_version": "gpt-5.4",
+            }
+
+    fallback_provider = ScriptedProvider(
+        [
+            AiStrategyDecision(
+                action="rebalance",
+                confidence=Decimal("0.79"),
+                target_position=Decimal("400"),
+                reason_summary="fallback heuristic confirmed the move",
+                provider_name="heuristic_stub",
+            )
+        ]
+    )
+    provider = FallbackAiDecisionProvider(
+        primary=ExplodingProvider(),
+        fallback=fallback_provider,
+    )
+
+    decision = await provider.decide(
+        AiDecisionRequest(
+            strategy_id=AI_BAR_JUDGE_V1,
+            symbol="600036.SH",
+            timeframe="15m",
+            received_at=BASE_TIME,
+            recent_bars=(
+                _bar_event(close=Decimal("39.52"), offset=0),
+                _bar_event(close=Decimal("39.64"), offset=1),
+            ),
+            target_position=Decimal("400"),
+            min_confidence=Decimal("0.60"),
+        )
+    )
+
+    assert decision.provider_name == "scripted_provider"
+    assert decision.diagnostics["audit_provider_id"] == "scripted_provider"
+    assert decision.diagnostics["audit_model_or_policy_version"] == "scripted_provider_v1"
+    assert decision.diagnostics["audit_fallback_used"] == "true"
+    assert "provider timed out" in decision.diagnostics["audit_fallback_reason"]
 
 
 @pytest.mark.asyncio

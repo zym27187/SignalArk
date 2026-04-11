@@ -71,6 +71,11 @@ def test_shared_contract_catalog_documents_fact_aliases_and_reason_codes() -> No
     diagnostic_replay_summary = fact_contracts["diagnostic_replay_summary"]
     assert "events.reason_code" in diagnostic_replay_summary["machine_fields"]
 
+    strategy_decision_audit_summary = fact_contracts["strategy_decision_audit_summary"]
+    assert strategy_decision_audit_summary["delivery_phase"] == "phase_5"
+    assert "provider_id" in strategy_decision_audit_summary["machine_fields"]
+    assert strategy_decision_audit_summary["surface_aliases"]["providerId"] == "provider_id"
+
     control_action_reasons = payload["reason_code_catalog"]["control_actions"]
     assert control_action_reasons == [
         {

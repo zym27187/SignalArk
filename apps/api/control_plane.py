@@ -24,6 +24,8 @@ from src.domain.strategy.ai import (
     HEURISTIC_STUB,
     OPENAI_CHAT_COMPLETIONS,
     AiBarJudgeStrategy,
+    FallbackAiDecisionProvider,
+    HeuristicStubAiDecisionProvider,
     OpenAiCompatibleDecisionProvider,
 )
 from src.infra.db import SqlAlchemyRepositories, session_scope
@@ -143,6 +145,9 @@ class ApiControlPlaneService:
             "market_state_available": False,
             "latest_final_bar_time": None,
             "current_trading_phase": None,
+            "last_strategy_id": None,
+            "last_strategy_decision_at": None,
+            "last_strategy_audit": None,
             "lease_owner_instance_id": None,
             "lease_expires_at": None,
             "last_heartbeat_at": None,
@@ -1086,13 +1091,17 @@ class ApiControlPlaneService:
         )
         notes = [
             (
-                "本次 AI 快照通过 OpenAI-compatible Chat Completions 生成，"
-                f"模型 {strategy._provider.metadata().get('model', '未指定')}，"
+                "本次 AI 快照优先通过 OpenAI-compatible Chat Completions 生成，"
+                f"模型 {strategy._provider.metadata().get('model_or_policy_version', '未指定')}，"
                 f"Base URL {strategy._provider.metadata().get('base_url', '未指定')}。"
                 if strategy._provider_mode == OPENAI_CHAT_COMPLETIONS
                 else "本次 AI 快照使用仓库内置 heuristic stub 生成，不依赖外部模型服务。"
             ),
             "AI 回测优先使用数据库中已保存的模型接入配置，前端临时输入会覆盖本次请求。",
+            (
+                "当外部 AI provider 超时、拒绝或返回无效结果时，"
+                "本次回测会自动降级到 deterministic heuristic fallback。"
+            ),
             (
                 "AI research snapshot 同样复用了 strategy、order plan、paper "
                 "execution 与 portfolio ledger 语义。"
@@ -1158,13 +1167,19 @@ class ApiControlPlaneService:
             decision_provider = None
         elif resolved_provider == "openai_compatible":
             provider_mode = OPENAI_CHAT_COMPLETIONS
-            decision_provider = OpenAiCompatibleDecisionProvider(
-                model=resolved_model,
-                base_url=resolved_base_url,
-                api_key=resolved_api_key or "",
-                entry_threshold_pct=config.entry_threshold_pct,
-                exit_threshold_pct=config.exit_threshold_pct,
-                timeout_seconds=DEFAULT_AI_RESEARCH_PROVIDER_TIMEOUT_SECONDS,
+            decision_provider = FallbackAiDecisionProvider(
+                primary=OpenAiCompatibleDecisionProvider(
+                    model=resolved_model,
+                    base_url=resolved_base_url,
+                    api_key=resolved_api_key or "",
+                    entry_threshold_pct=config.entry_threshold_pct,
+                    exit_threshold_pct=config.exit_threshold_pct,
+                    timeout_seconds=DEFAULT_AI_RESEARCH_PROVIDER_TIMEOUT_SECONDS,
+                ),
+                fallback=HeuristicStubAiDecisionProvider(
+                    entry_threshold_pct=config.entry_threshold_pct,
+                    exit_threshold_pct=config.exit_threshold_pct,
+                ),
             )
         else:
             raise ValueError(f"Unsupported AI research provider: {resolved_provider}")

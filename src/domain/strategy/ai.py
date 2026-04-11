@@ -18,7 +18,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.domain.events import BarEvent
-from src.domain.strategy.audit import StrategyDecisionAudit
+from src.domain.strategy.audit import StrategyDecisionAudit, build_strategy_decision_audit_summary
 from src.domain.strategy.signal import Signal, SignalType
 from src.shared.types import NonEmptyStr, NonNegativeDecimal, UnitIntervalDecimal
 
@@ -124,6 +124,8 @@ class AiDecisionProvider(Protocol):
     """Async provider seam reserved for future LLM or model integrations."""
 
     async def decide(self, request: AiDecisionRequest) -> AiStrategyDecision: ...
+
+    def metadata(self) -> dict[str, str]: ...
 
 
 class AiProviderRequestError(RuntimeError):
@@ -269,8 +271,8 @@ class OpenAiCompatibleDecisionProvider:
 
     def metadata(self) -> dict[str, str]:
         return {
-            "provider_name": "openai_compatible",
-            "model": self._model,
+            "provider_id": OPENAI_CHAT_COMPLETIONS,
+            "model_or_policy_version": self._model,
             "base_url": self._base_url,
         }
 
@@ -489,6 +491,86 @@ class HeuristicStubAiDecisionProvider:
             diagnostics=diagnostics,
         )
 
+    def metadata(self) -> dict[str, str]:
+        return {
+            "provider_id": HEURISTIC_STUB,
+            "model_or_policy_version": "heuristic_stub_v1",
+        }
+
+
+class FallbackAiDecisionProvider:
+    """Wrap an external provider with a deterministic local fallback."""
+
+    def __init__(
+        self,
+        *,
+        primary: AiDecisionProvider,
+        fallback: AiDecisionProvider,
+    ) -> None:
+        self._primary = primary
+        self._fallback = fallback
+
+    async def decide(self, request: AiDecisionRequest) -> AiStrategyDecision:
+        primary_metadata = self._primary.metadata()
+        try:
+            decision = await self._primary.decide(request)
+        except Exception as exc:
+            detail = str(exc).strip() or type(exc).__name__
+            fallback_decision = await self._fallback.decide(request)
+            fallback_metadata = self._fallback.metadata()
+            diagnostics = {
+                **fallback_decision.diagnostics,
+                "audit_provider_id": fallback_metadata.get(
+                    "provider_id",
+                    fallback_decision.provider_name,
+                ),
+                "audit_model_or_policy_version": fallback_metadata.get(
+                    "model_or_policy_version",
+                    fallback_decision.provider_name,
+                ),
+                "audit_fallback_used": "true",
+                "audit_fallback_reason": detail,
+                "requested_provider_id": primary_metadata.get("provider_id", ""),
+                "requested_model_or_policy_version": primary_metadata.get(
+                    "model_or_policy_version",
+                    "",
+                ),
+            }
+            return fallback_decision.model_copy(
+                update={
+                    "provider_name": diagnostics["audit_provider_id"],
+                    "diagnostics": diagnostics,
+                }
+            )
+
+        diagnostics = {
+            **decision.diagnostics,
+            "audit_provider_id": primary_metadata.get("provider_id", decision.provider_name),
+            "audit_model_or_policy_version": primary_metadata.get(
+                "model_or_policy_version",
+                decision.provider_name,
+            ),
+            "audit_fallback_used": "false",
+        }
+        return decision.model_copy(
+            update={
+                "provider_name": diagnostics["audit_provider_id"],
+                "diagnostics": diagnostics,
+            }
+        )
+
+    def metadata(self) -> dict[str, str]:
+        primary_metadata = self._primary.metadata()
+        fallback_metadata = self._fallback.metadata()
+        return {
+            **primary_metadata,
+            "fallback_provider_id": fallback_metadata.get("provider_id", HEURISTIC_STUB),
+            "fallback_model_or_policy_version": fallback_metadata.get(
+                "model_or_policy_version",
+                "heuristic_stub_v1",
+            ),
+        }
+
 
 class AiBarJudgeStrategy:
     """Safe AI-strategy skeleton that can later swap in a real inference provider."""
@@ -676,6 +758,12 @@ class AiBarJudgeStrategy:
                 or "",
             },
             reason_summary=signal.reason_summary or "",
+            summary=self._build_audit_summary(
+                decision_name=signal.signal_type.value,
+                confidence=signal.confidence,
+                reason_summary=signal.reason_summary or "",
+                decision=None,
+            ),
         )
 
     def backtest_metadata(self) -> dict[str, object]:
@@ -731,6 +819,12 @@ class AiBarJudgeStrategy:
             input_snapshot=input_snapshot,
             signal_snapshot=signal_snapshot,
             reason_summary=decision.reason_summary,
+            summary=self._build_audit_summary(
+                decision_name=decision.action,
+                confidence=decision.confidence,
+                reason_summary=decision.reason_summary,
+                decision=decision,
+            ),
         )
 
     def _build_non_signal_decision_from_decision(
@@ -751,6 +845,12 @@ class AiBarJudgeStrategy:
                 ),
                 signal_snapshot={},
                 reason_summary=reason_summary or decision.reason_summary,
+                summary=self._build_audit_summary(
+                    decision_name=decision.action,
+                    confidence=decision.confidence,
+                    reason_summary=reason_summary or decision.reason_summary,
+                    decision=decision,
+                ),
             ),
             skip_reason=skip_reason,
         )
@@ -784,6 +884,15 @@ class AiBarJudgeStrategy:
                     "Waiting for AI lookback warmup before the first model decision "
                     f"({observed_bars}/{self._lookback_bars} bars collected)."
                 ),
+                summary=self._build_audit_summary(
+                    decision_name="hold",
+                    confidence=None,
+                    reason_summary=(
+                        "Waiting for AI lookback warmup before the first model decision "
+                        f"({observed_bars}/{self._lookback_bars} bars collected)."
+                    ),
+                    decision=None,
+                ),
             ),
             skip_reason="ai_lookback_warmup",
         )
@@ -805,6 +914,12 @@ class AiBarJudgeStrategy:
                 ),
                 signal_snapshot={},
                 reason_summary=f"AI provider error was suppressed: {error_detail}",
+                summary=self._build_audit_summary(
+                    decision_name="hold",
+                    confidence=None,
+                    reason_summary=f"AI provider error was suppressed: {error_detail}",
+                    decision=None,
+                ),
             ),
             skip_reason="ai_provider_error_suppressed",
         )
@@ -849,7 +964,68 @@ class AiBarJudgeStrategy:
             )
             for key, value in decision.diagnostics.items():
                 input_snapshot[f"diagnostic_{key}"] = value
+            input_snapshot["audit_provider_id"] = (
+                decision.diagnostics.get("audit_provider_id") or decision.provider_name
+            )
+            input_snapshot["audit_model_or_policy_version"] = decision.diagnostics.get(
+                "audit_model_or_policy_version"
+            )
+            input_snapshot["audit_fallback_used"] = decision.diagnostics.get(
+                "audit_fallback_used",
+                "false",
+            )
+            input_snapshot["audit_fallback_reason"] = decision.diagnostics.get(
+                "audit_fallback_reason"
+            )
         return input_snapshot
+
+    def _provider_metadata(self) -> dict[str, str]:
+        provider_metadata = getattr(self._provider, "metadata", None)
+        if callable(provider_metadata):
+            payload = provider_metadata()
+            if isinstance(payload, Mapping):
+                return {
+                    str(key): str(value)
+                    for key, value in payload.items()
+                    if str(key).strip() and str(value).strip()
+                }
+        return {
+            "provider_id": self._provider_mode,
+            "model_or_policy_version": self._strategy_id,
+        }
+
+    def _build_audit_summary(
+        self,
+        *,
+        decision_name: str,
+        confidence: Decimal | None,
+        reason_summary: str,
+        decision: AiStrategyDecision | None,
+    ):
+        provider_metadata = self._provider_metadata()
+        diagnostics = {} if decision is None else decision.diagnostics
+        provider_id = (
+            diagnostics.get("audit_provider_id")
+            or (None if decision is None else decision.provider_name)
+            or provider_metadata.get("provider_id")
+            or self._provider_mode
+        )
+        model_or_policy_version = (
+            diagnostics.get("audit_model_or_policy_version")
+            or provider_metadata.get("model_or_policy_version")
+            or self._strategy_id
+        )
+        fallback_used = diagnostics.get("audit_fallback_used") == "true"
+        fallback_reason = diagnostics.get("audit_fallback_reason")
+        return build_strategy_decision_audit_summary(
+            provider_id=provider_id,
+            model_or_policy_version=model_or_policy_version,
+            decision=decision_name,
+            confidence=confidence,
+            reason_summary=reason_summary,
+            fallback_used=fallback_used,
+            fallback_reason=fallback_reason,
+        )
 
     @staticmethod
     def _resolve_trader_run_uuid(context: object):

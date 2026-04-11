@@ -20,6 +20,7 @@ ReadinessStatus = Literal["not_ready", "ready", "draining"]
 IntegrationStatus = Literal["reserved", "bound"]
 SingleActiveStatus = Literal["unbound", "observed", "acquired", "lost", "rejected"]
 RuntimeBarAuditSnapshot = dict[str, str | float | int | bool | None]
+RuntimeStrategyAuditSummary = dict[str, str | bool | None]
 
 
 def default_instance_id() -> str:
@@ -146,6 +147,7 @@ class TraderRuntimeState:
     last_strategy_input_snapshot: dict[str, str | None] | None = None
     last_strategy_signal_snapshot: dict[str, str] | None = None
     last_strategy_reason_summary: str | None = None
+    last_strategy_audit: RuntimeStrategyAuditSummary | None = None
     last_ignored_bar_key: str | None = None
     last_ignored_bar_reason: str | None = None
     last_seen_bars_by_stream: dict[str, RuntimeBarAuditSnapshot] = field(default_factory=dict)
@@ -262,12 +264,14 @@ class TraderRuntimeState:
         input_snapshot: dict[str, str | None],
         signal_snapshot: dict[str, str],
         reason_summary: str | None,
+        audit_summary: RuntimeStrategyAuditSummary | None,
     ) -> None:
         self.last_strategy_decision_at = decision_at
         self.last_strategy_id = strategy_id
         self.last_strategy_input_snapshot = dict(input_snapshot)
         self.last_strategy_signal_snapshot = dict(signal_snapshot)
         self.last_strategy_reason_summary = reason_summary
+        self.last_strategy_audit = None if audit_summary is None else dict(audit_summary)
 
     def record_ignored_bar(self, event: BarEvent, reason: str) -> None:
         self.last_ignored_bar_key = event.bar_key
@@ -309,6 +313,7 @@ class TraderRuntimeState:
             "last_strategy_input_snapshot": self.last_strategy_input_snapshot,
             "last_strategy_signal_snapshot": self.last_strategy_signal_snapshot,
             "last_strategy_reason_summary": self.last_strategy_reason_summary,
+            "last_strategy_audit": self.last_strategy_audit,
             "last_ignored_bar_reason": self.last_ignored_bar_reason,
         }
 
@@ -344,6 +349,7 @@ class TraderRuntimeState:
             "last_strategy_input_snapshot": self.last_strategy_input_snapshot,
             "last_strategy_signal_snapshot": self.last_strategy_signal_snapshot,
             "last_strategy_reason_summary": self.last_strategy_reason_summary,
+            "last_strategy_audit": self.last_strategy_audit,
             "last_ignored_bar_key": self.last_ignored_bar_key,
             "last_ignored_bar_reason": self.last_ignored_bar_reason,
             "last_seen_bars": _sorted_runtime_bar_audit_snapshots(self.last_seen_bars_by_stream),

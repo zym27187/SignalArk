@@ -377,6 +377,7 @@ def _serialize_decision(decision: BacktestDecisionRecord) -> dict[str, Any]:
         "executionAction": execution_action,
         "targetPosition": target_position,
         "reasonSummary": decision.reason_summary or "",
+        "audit": _serialize_audit_summary(decision.audit_summary),
         "skipReason": decision.skip_reason,
         "fillCount": decision.fill_count,
         "orderPlanSide": None if order_plan_side is None else str(order_plan_side),
@@ -448,6 +449,22 @@ def _serialize_performance(performance: BacktestPerformanceSummary) -> dict[str,
         "avgHoldingBars": (
             None if performance.avg_holding_bars is None else float(performance.avg_holding_bars)
         ),
+    }
+
+
+def _serialize_audit_summary(
+    audit_summary: dict[str, str | bool | None] | None,
+) -> dict[str, str | bool | None] | None:
+    if audit_summary is None:
+        return None
+    return {
+        "providerId": audit_summary.get("provider_id"),
+        "modelOrPolicyVersion": audit_summary.get("model_or_policy_version"),
+        "decision": audit_summary.get("decision"),
+        "confidence": audit_summary.get("confidence"),
+        "reasonSummary": audit_summary.get("reason_summary"),
+        "fallbackUsed": audit_summary.get("fallback_used"),
+        "fallbackReason": audit_summary.get("fallback_reason"),
     }
 
 

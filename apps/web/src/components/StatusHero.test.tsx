@@ -23,6 +23,17 @@ describe("StatusHero", () => {
           market_state_available: true,
           latest_final_bar_time: "2026-04-02T10:00:00+08:00",
           current_trading_phase: "CONTINUOUS_AUCTION",
+          last_strategy_id: "ai_bar_judge_v1",
+          last_strategy_decision_at: "2026-04-02T09:58:00+08:00",
+          last_strategy_audit: {
+            provider_id: "heuristic_stub",
+            model_or_policy_version: "heuristic_stub_v1",
+            decision: "hold",
+            confidence: "0.7100",
+            reason_summary: "当前波段方向还不够清晰，先维持观望。",
+            fallback_used: true,
+            fallback_reason: "provider timeout",
+          },
           lease_owner_instance_id: "instance-A",
           lease_expires_at: "2026-04-02T10:00:15+08:00",
           last_heartbeat_at: "2026-04-02T10:00:05+08:00",
@@ -60,5 +71,9 @@ describe("StatusHero", () => {
     expect(screen.getByText("状态读取失败：状态查询失败")).toBeInTheDocument();
     expect(screen.getByText("开发环境")).toBeInTheDocument();
     expect(screen.getByText("模拟交易")).toBeInTheDocument();
+    expect(screen.getByText("最近一次策略判断")).toBeInTheDocument();
+    expect(screen.getByText("当前波段方向还不够清晰，先维持观望。")).toBeInTheDocument();
+    expect(screen.getByText("置信度：0.7100")).toBeInTheDocument();
+    expect(screen.getByText("已降级到 deterministic fallback：provider timeout")).toBeInTheDocument();
   });
 });

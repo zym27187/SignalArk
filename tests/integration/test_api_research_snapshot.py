@@ -13,7 +13,12 @@ from apps.trader.control_plane import TraderControlPlaneStore
 from fastapi.testclient import TestClient
 from src.config.settings import Settings
 from src.domain.market import MarketStateSnapshot, NormalizedBar, SuspensionStatus, TradingPhase
-from src.domain.strategy.ai import AiStrategyDecision, OpenAiCompatibleDecisionProvider
+from src.domain.strategy.ai import (
+    AiProviderRequestError,
+    AiStrategyDecision,
+    FallbackAiDecisionProvider,
+    OpenAiCompatibleDecisionProvider,
+)
 from src.infra.db import create_database_engine, create_session_factory
 from tests.support.migrations import upgrade_database
 
@@ -514,6 +519,9 @@ def test_api_ai_research_snapshot_returns_live_ai_backtest_payload(
     assert payload["decisions"][-1]["action"] == "REBALANCE"
     assert payload["decisions"][-1]["executionAction"] == "BUY"
     assert payload["decisions"][-1]["reasonSummary"] == "model confirmed the bullish stack"
+    assert payload["decisions"][-1]["audit"]["providerId"] == "openai_chat_completions"
+    assert payload["decisions"][-1]["audit"]["modelOrPolicyVersion"] == "gpt-5.4"
+    assert payload["decisions"][-1]["audit"]["fallbackUsed"] is False
     assert "OpenAI-compatible" in payload["notes"][0]
 
 
@@ -540,8 +548,12 @@ def test_api_ai_research_strategy_uses_interactive_provider_timeout(tmp_path: Pa
     finally:
         engine.dispose()
 
-    assert isinstance(strategy._provider, OpenAiCompatibleDecisionProvider)
-    assert strategy._provider._timeout_seconds == DEFAULT_AI_RESEARCH_PROVIDER_TIMEOUT_SECONDS
+    assert isinstance(strategy._provider, FallbackAiDecisionProvider)
+    assert isinstance(strategy._provider._primary, OpenAiCompatibleDecisionProvider)
+    assert (
+        strategy._provider._primary._timeout_seconds
+        == DEFAULT_AI_RESEARCH_PROVIDER_TIMEOUT_SECONDS
+    )
 
 
 def test_api_ai_research_settings_roundtrip_and_snapshot_can_reuse_saved_api_key(
@@ -648,6 +660,74 @@ def test_api_ai_research_settings_roundtrip_and_snapshot_can_reuse_saved_api_key
     assert payload["decisions"][-1]["action"] == "REBALANCE"
     assert payload["decisions"][-1]["executionAction"] == "BUY"
     assert payload["decisions"][-1]["reasonSummary"] == "saved config triggered the entry"
+    assert payload["decisions"][-1]["audit"]["providerId"] == "openai_chat_completions"
+    assert payload["decisions"][-1]["audit"]["modelOrPolicyVersion"] == "gpt-5.4-mini"
+    assert payload["decisions"][-1]["audit"]["fallbackUsed"] is False
     assert captured["model"] == "gpt-5.4-mini"
     assert captured["base_url"] == "https://saved-provider.test/v1"
     assert captured["api_key"] == "sk-saved-secret"
+
+
+def test_api_ai_research_snapshot_falls_back_to_deterministic_provider(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("SIGNALARK_POSTGRES_DSN", database_url)
+    from src.config import get_settings
+
+    get_settings.cache_clear()
+    from apps.api.main import create_app
+
+    async def fake_decide(self, request):
+        del self, request
+        raise AiProviderRequestError("provider timed out")
+
+    monkeypatch.setattr(OpenAiCompatibleDecisionProvider, "decide", fake_decide)
+
+    settings = _settings(database_url)
+    upgrade_database(database_url)
+    engine = create_database_engine(database_url)
+    session_factory = create_session_factory(engine)
+    control_store = TraderControlPlaneStore(session_factory)
+    service = ApiControlPlaneService(
+        settings=settings,
+        session_factory=session_factory,
+        control_store=control_store,
+        market_gateway_factory=lambda: FakeHistoricalBarGateway(
+            [
+                _bar(
+                    index=index,
+                    close=str(Decimal("39.47") + Decimal("0.03") * index),
+                    previous_close="39.47",
+                )
+                for index in range(12)
+            ]
+        ),
+    )
+    app = create_app(settings=settings, control_plane_service=service)
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/v1/research/ai-snapshot",
+                json={
+                    "symbol": "600036.SH",
+                    "timeframe": "15m",
+                    "limit": 12,
+                    "provider": "openai_compatible",
+                    "model": "gpt-5.4",
+                    "baseUrl": "https://openai.test/v1",
+                    "apiKey": "sk-test",
+                },
+            )
+    finally:
+        engine.dispose()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["comparison"]["candidateKind"] == "ai_strategy"
+    assert payload["decisions"][-1]["audit"]["providerId"] == "heuristic_stub"
+    assert payload["decisions"][-1]["audit"]["modelOrPolicyVersion"] == "heuristic_stub_v1"
+    assert payload["decisions"][-1]["audit"]["fallbackUsed"] is True
+    assert "provider timed out" in payload["decisions"][-1]["audit"]["fallbackReason"]

@@ -28,6 +28,10 @@ from src.domain.portfolio.ledger import (
     release_position_sellable_qty,
 )
 from src.domain.strategy import Signal
+from src.domain.strategy.audit import (
+    infer_strategy_decision_audit_summary,
+    serialize_strategy_decision_audit_summary,
+)
 from src.infra.exchanges import PaperExecutionAdapter, PaperExecutionScenario, PaperFillSlice
 from src.services.backtest.models import (
     BacktestCostAssumptions,
@@ -201,7 +205,13 @@ class BacktestService:
                 received_at=received_at,
             )
             signal = await self._strategy.on_bar(event, context)
-            input_snapshot, signal_snapshot, reason_summary, skip_reason = _resolve_strategy_audit(
+            (
+                input_snapshot,
+                signal_snapshot,
+                reason_summary,
+                skip_reason,
+                audit_summary,
+            ) = _resolve_strategy_audit(
                 strategy=self._strategy,
                 event=event,
                 signal=signal,
@@ -276,6 +286,7 @@ class BacktestService:
                     input_snapshot=input_snapshot,
                     signal_snapshot=signal_snapshot,
                     reason_summary=reason_summary,
+                    audit_summary=audit_summary,
                     signal=signal,
                     order_plan=(
                         {}
@@ -446,11 +457,18 @@ def _resolve_strategy_audit(
     strategy: object,
     event: BarEvent,
     signal: Signal | None,
-) -> tuple[dict[str, str | None], dict[str, str] | None, str | None, str | None]:
+) -> tuple[
+    dict[str, str | None],
+    dict[str, str] | None,
+    str | None,
+    str | None,
+    dict[str, str | bool | None] | None,
+]:
     input_snapshot = _default_strategy_input_snapshot(event)
     signal_snapshot = None if signal is None else _default_signal_snapshot(signal)
     reason_summary = None if signal is None else signal.reason_summary
     skip_reason = None
+    strategy_id = _resolve_strategy_id(strategy=strategy, signal=signal)
 
     if signal is None:
         non_signal_builder = getattr(strategy, "build_non_signal_decision", None)
@@ -461,7 +479,36 @@ def _resolve_strategy_audit(
                 signal_snapshot = dict(non_signal_decision.audit.signal_snapshot)
                 reason_summary = non_signal_decision.audit.reason_summary
                 skip_reason = non_signal_decision.skip_reason
-        return input_snapshot, signal_snapshot, reason_summary, skip_reason
+                summary = (
+                    non_signal_decision.audit.summary
+                    or infer_strategy_decision_audit_summary(
+                        strategy_id=strategy_id,
+                        input_snapshot=input_snapshot,
+                        signal_snapshot=signal_snapshot,
+                        reason_summary=reason_summary,
+                    )
+                )
+                return (
+                    input_snapshot,
+                    signal_snapshot,
+                    reason_summary,
+                    skip_reason,
+                    serialize_strategy_decision_audit_summary(summary),
+                )
+
+        summary = infer_strategy_decision_audit_summary(
+            strategy_id=strategy_id,
+            input_snapshot=input_snapshot,
+            signal_snapshot=signal_snapshot,
+            reason_summary=reason_summary,
+        )
+        return (
+            input_snapshot,
+            signal_snapshot,
+            reason_summary,
+            skip_reason,
+            serialize_strategy_decision_audit_summary(summary),
+        )
 
     audit_builder = getattr(strategy, "build_decision_audit", None)
     if callable(audit_builder):
@@ -469,7 +516,46 @@ def _resolve_strategy_audit(
         input_snapshot = dict(audit.input_snapshot)
         signal_snapshot = dict(audit.signal_snapshot)
         reason_summary = audit.reason_summary
-    return input_snapshot, signal_snapshot, reason_summary, skip_reason
+        summary = audit.summary or infer_strategy_decision_audit_summary(
+            strategy_id=strategy_id,
+            input_snapshot=input_snapshot,
+            signal_snapshot=signal_snapshot,
+            reason_summary=reason_summary,
+            fallback_decision=signal.signal_type.value,
+            confidence=signal.confidence,
+        )
+        return (
+            input_snapshot,
+            signal_snapshot,
+            reason_summary,
+            skip_reason,
+            serialize_strategy_decision_audit_summary(summary),
+        )
+
+    summary = infer_strategy_decision_audit_summary(
+        strategy_id=strategy_id,
+        input_snapshot=input_snapshot,
+        signal_snapshot=signal_snapshot,
+        reason_summary=reason_summary,
+        fallback_decision=signal.signal_type.value,
+        confidence=signal.confidence,
+    )
+    return (
+        input_snapshot,
+        signal_snapshot,
+        reason_summary,
+        skip_reason,
+        serialize_strategy_decision_audit_summary(summary),
+    )
+
+
+def _resolve_strategy_id(*, strategy: object, signal: Signal | None) -> str:
+    if signal is not None:
+        return signal.strategy_id
+    strategy_id = getattr(strategy, "_strategy_id", None)
+    if isinstance(strategy_id, str) and strategy_id.strip():
+        return strategy_id
+    return type(strategy).__name__
 
 
 def _default_strategy_input_snapshot(event: BarEvent) -> dict[str, str | None]:

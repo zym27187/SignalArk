@@ -81,9 +81,20 @@ export interface BacktestDecisionSnapshot {
   executionAction: "BUY" | "SELL" | "SKIP";
   targetPosition: number | null;
   reasonSummary: string;
+  audit?: StrategyDecisionAuditSummarySnapshot | null;
   skipReason: string | null;
   fillCount: number;
   orderPlanSide: string | null;
+}
+
+export interface StrategyDecisionAuditSummarySnapshot {
+  providerId: string | null;
+  modelOrPolicyVersion: string | null;
+  decision: string | null;
+  confidence: string | null;
+  reasonSummary: string | null;
+  fallbackUsed: boolean | null;
+  fallbackReason: string | null;
 }
 
 export type ResearchAiProvider = "heuristic_stub" | "openai_compatible";

@@ -15,6 +15,10 @@ from src.config import Settings
 from src.config.settings import AshareSymbolRule
 from src.domain.events import BarEvent
 from src.domain.strategy import Signal, build_strategy
+from src.domain.strategy.audit import (
+    infer_strategy_decision_audit_summary,
+    serialize_strategy_decision_audit_summary,
+)
 from src.infra.db import create_database_engine, create_session_factory
 from src.infra.messaging import InProcessEventBus
 from src.infra.observability import build_observability
@@ -170,6 +174,7 @@ class OmsSignalRiskRouter:
             strategy_input_snapshot=context.runtime_state.last_strategy_input_snapshot,
             strategy_signal_snapshot=context.runtime_state.last_strategy_signal_snapshot,
             strategy_reason_summary=context.runtime_state.last_strategy_reason_summary,
+            strategy_audit_summary=context.runtime_state.last_strategy_audit,
             control_state=control_state,
             submission_guard=submission_guard,
             received_at=context.received_at,
@@ -477,6 +482,7 @@ class TraderService:
             self._record_strategy_decision(
                 strategy=self._pipeline.strategy,
                 event=event,
+                context=context,
                 signal=signal,
             )
             if signal is not None and self._pipeline.risk is not None:
@@ -498,41 +504,102 @@ class TraderService:
         *,
         strategy: StrategyPort,
         event: BarEvent,
+        context: TraderEventContext,
         signal: object | None,
     ) -> None:
-        if not isinstance(signal, Signal):
-            return
-
+        strategy_id = _resolve_strategy_id(strategy=strategy, signal=signal)
+        decision_at = context.received_at
         input_snapshot = _default_strategy_input_snapshot(event)
-        signal_snapshot = _default_signal_snapshot(signal)
-        reason_summary = signal.reason_summary
+        signal_snapshot: dict[str, str] = {}
+        reason_summary: str | None = None
+        audit_summary = None
 
-        audit_builder = getattr(strategy, "build_decision_audit", None)
-        if callable(audit_builder):
-            audit = audit_builder(event, signal)
-            input_snapshot = audit.input_snapshot
-            signal_snapshot = audit.signal_snapshot
-            reason_summary = audit.reason_summary
+        if isinstance(signal, Signal):
+            decision_at = signal.created_at
+            signal_snapshot = _default_signal_snapshot(signal)
+            reason_summary = signal.reason_summary
+
+            audit_builder = getattr(strategy, "build_decision_audit", None)
+            if callable(audit_builder):
+                audit = audit_builder(event, signal)
+                input_snapshot = audit.input_snapshot
+                signal_snapshot = audit.signal_snapshot
+                reason_summary = audit.reason_summary
+                resolved_summary = audit.summary or infer_strategy_decision_audit_summary(
+                    strategy_id=strategy_id,
+                    input_snapshot=input_snapshot,
+                    signal_snapshot=signal_snapshot,
+                    reason_summary=reason_summary,
+                    fallback_decision=signal.signal_type.value,
+                    confidence=signal.confidence,
+                )
+                audit_summary = serialize_strategy_decision_audit_summary(resolved_summary)
+            else:
+                audit_summary = serialize_strategy_decision_audit_summary(
+                    infer_strategy_decision_audit_summary(
+                        strategy_id=strategy_id,
+                        input_snapshot=input_snapshot,
+                        signal_snapshot=signal_snapshot,
+                        reason_summary=reason_summary,
+                        fallback_decision=signal.signal_type.value,
+                        confidence=signal.confidence,
+                    )
+                )
+        else:
+            non_signal_builder = getattr(strategy, "build_non_signal_decision", None)
+            if not callable(non_signal_builder):
+                return
+            non_signal_decision = non_signal_builder(event)
+            if non_signal_decision is None:
+                return
+            input_snapshot = non_signal_decision.audit.input_snapshot
+            signal_snapshot = non_signal_decision.audit.signal_snapshot
+            reason_summary = non_signal_decision.audit.reason_summary
+            resolved_summary = (
+                non_signal_decision.audit.summary
+                or infer_strategy_decision_audit_summary(
+                    strategy_id=strategy_id,
+                    input_snapshot=input_snapshot,
+                    signal_snapshot=signal_snapshot,
+                    reason_summary=reason_summary,
+                )
+            )
+            audit_summary = serialize_strategy_decision_audit_summary(resolved_summary)
 
         self._runtime_state.record_strategy_decision(
-            strategy_id=signal.strategy_id,
-            decision_at=signal.created_at,
+            strategy_id=strategy_id,
+            decision_at=decision_at,
             input_snapshot=input_snapshot,
             signal_snapshot=signal_snapshot,
             reason_summary=reason_summary,
+            audit_summary=audit_summary,
         )
         self._logger.info(
-            "strategy_signal_generated",
+            "strategy_decision_recorded",
             trader_run_id=self._runtime_state.trader_run_id,
             instance_id=self._runtime_state.instance_id,
-            strategy_id=signal.strategy_id,
-            exchange=signal.exchange,
-            symbol=signal.symbol,
-            timeframe=signal.timeframe,
+            strategy_id=strategy_id,
+            exchange=event.exchange,
+            symbol=event.symbol,
+            timeframe=event.timeframe,
             input_snapshot=input_snapshot,
             signal_snapshot=signal_snapshot,
             reason_summary=reason_summary,
+            audit_summary=audit_summary,
         )
+
+
+def _resolve_strategy_id(
+    *,
+    strategy: StrategyPort,
+    signal: object | None,
+) -> str:
+    if isinstance(signal, Signal):
+        return signal.strategy_id
+    strategy_id = getattr(strategy, "_strategy_id", None)
+    if isinstance(strategy_id, str) and strategy_id.strip():
+        return strategy_id
+    return type(strategy).__name__
 
 
 def build_default_trader_service(

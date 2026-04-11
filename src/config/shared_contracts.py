@@ -6,7 +6,7 @@ from typing import Any
 
 from .settings import Settings
 
-V2_SHARED_CONTRACT_VERSION = "v2.phase3.2026-04-11"
+V2_SHARED_CONTRACT_VERSION = "v2.phase5.2026-04-11"
 PHASE_0_SHARED_CONTRACT_ENDPOINT = "/v1/contracts/shared"
 
 CONTROL_ACTION_REASON_OPERATOR_REQUEST = "OPERATOR_REQUEST"
@@ -102,6 +102,7 @@ def _build_naming_conventions() -> dict[str, object]:
             "balance_summary",
             "control_action_result",
             "runtime_bar_audit_summary",
+            "strategy_decision_audit_summary",
             "degraded_mode_status",
             "research_manifest_summary",
         ],
@@ -302,6 +303,35 @@ def _build_fact_contracts() -> dict[str, dict[str, Any]]:
                 "was actually forwarded into strategy evaluation.",
                 "Phase 3 adds degraded_mode so runtime audit consumers can see when the audit "
                 "itself should not be treated as fully reliable.",
+            ],
+        },
+        "strategy_decision_audit_summary": {
+            "status": "active",
+            "delivery_phase": "phase_5",
+            "owner_plane": "trading_plane",
+            "machine_fields": [
+                "provider_id",
+                "model_or_policy_version",
+                "decision",
+                "confidence",
+                "fallback_used",
+            ],
+            "human_fields": ["reason_summary", "fallback_reason"],
+            "current_surface_paths": [
+                "GET /v1/status -> last_strategy_audit",
+                "GET /v1/research/ai-snapshot -> decisions[].audit",
+                "GET /v1/research/snapshot -> decisions[].audit",
+            ],
+            "surface_aliases": {
+                "providerId": "provider_id",
+                "modelOrPolicyVersion": "model_or_policy_version",
+                "reasonSummary": "reason_summary",
+                "fallbackUsed": "fallback_used",
+                "fallbackReason": "fallback_reason",
+            },
+            "notes": [
+                "Phase 5 standardizes one operator-facing summary across baseline and AI strategies.",
+                "Operational payloads stay snake_case; research payloads keep camelCase aliases.",
             ],
         },
         "degraded_mode_status": {

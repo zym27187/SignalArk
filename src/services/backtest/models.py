@@ -82,6 +82,7 @@ class BacktestDecisionRecord(DomainModel):
     input_snapshot: dict[str, str | None] = Field(default_factory=dict)
     signal_snapshot: dict[str, str] | None = None
     reason_summary: str | None = None
+    audit_summary: dict[str, str | bool | None] | None = None
     signal: Signal | None = None
     order_plan: dict[str, Any] = Field(default_factory=dict)
     order_intent: OrderIntent | None = None

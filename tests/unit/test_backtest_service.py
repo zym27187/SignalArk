@@ -78,6 +78,12 @@ class HoldOnlyAiProvider:
             provider_name="scripted_provider",
         )
 
+    def metadata(self) -> dict[str, str]:
+        return {
+            "provider_id": "scripted_provider",
+            "model_or_policy_version": "scripted_provider_v1",
+        }
+
 
 @pytest.mark.asyncio
 async def test_baseline_strategy_accepts_backtest_context_with_same_signal_semantics() -> None:
@@ -161,8 +167,12 @@ async def test_ai_backtest_preserves_non_signal_skip_reasons() -> None:
     assert result.decisions[0].skip_reason == "ai_lookback_warmup"
     assert result.decisions[0].reason_summary is not None
     assert "1/2 bars collected" in result.decisions[0].reason_summary
+    assert result.decisions[0].audit_summary is not None
+    assert result.decisions[0].audit_summary["decision"] == "hold"
     assert result.decisions[1].skip_reason == "ai_decision_hold"
     assert result.decisions[1].reason_summary == "market regime is mixed"
+    assert result.decisions[1].audit_summary is not None
+    assert result.decisions[1].audit_summary["provider_id"] == "scripted_provider"
 
 
 @pytest.mark.asyncio
