@@ -2,6 +2,7 @@ import { startTransition, useEffect, useRef, useState } from "react";
 
 import {
   fetchActiveOrders,
+  fetchBalanceSummary,
   fetchFillHistory,
   fetchOrderHistory,
   fetchPositions,
@@ -14,6 +15,7 @@ import { getControlActionDefinition } from "../lib/control-actions";
 import { localizeMessage } from "../lib/format";
 import type {
   ActiveOrder,
+  BalanceSummaryPayload,
   DashboardControlActionResult,
   DashboardActivityFilters,
   DashboardSectionKey,
@@ -36,6 +38,7 @@ const DEFAULT_ACTIVITY_FILTERS: DashboardActivityFilters = {
 };
 
 interface DashboardSnapshot {
+  balanceSummary: BalanceSummaryPayload | null;
   status: StatusPayload | null;
   positions: Position[];
   orders: ActiveOrder[];
@@ -47,6 +50,7 @@ interface DashboardSnapshot {
 }
 
 const EMPTY_SNAPSHOT: DashboardSnapshot = {
+  balanceSummary: null,
   status: null,
   positions: [],
   orders: [],
@@ -154,6 +158,7 @@ export function useDashboardData() {
     }
 
     const [
+      balanceSummaryResult,
       statusResult,
       positionsResult,
       ordersResult,
@@ -162,6 +167,7 @@ export function useDashboardData() {
       eventsResult,
     ] =
       await Promise.allSettled([
+        fetchBalanceSummary(),
         fetchStatus(),
         fetchPositions(),
         fetchActiveOrders(),
@@ -178,6 +184,10 @@ export function useDashboardData() {
 
     startTransition(() => {
       setSnapshot((previous) => ({
+        balanceSummary:
+          balanceSummaryResult.status === "fulfilled"
+            ? balanceSummaryResult.value
+            : previous.balanceSummary,
         status:
           statusResult.status === "fulfilled" ? statusResult.value : previous.status,
         positions:
@@ -195,6 +205,10 @@ export function useDashboardData() {
         events:
           eventsResult.status === "fulfilled" ? eventsResult.value.events : previous.events,
         sectionErrors: {
+          balanceSummary:
+            balanceSummaryResult.status === "rejected"
+              ? toErrorMessage(balanceSummaryResult.reason)
+              : undefined,
           status:
             statusResult.status === "rejected"
               ? toErrorMessage(statusResult.reason)
@@ -246,7 +260,9 @@ export function useDashboardData() {
         controlState: response.control_state,
         requestedAt,
         effectiveAt: response.effective_at,
+        effectiveScope: response.effective_scope,
         message: localizeMessage(response.message),
+        reasonCode: response.reason_code ?? null,
         requestedOrderCount: response.requested_order_count ?? null,
         cancelledOrderCount: response.cancelled_order_count ?? null,
         skippedOrderCount: response.skipped_order_count ?? null,
@@ -264,7 +280,9 @@ export function useDashboardData() {
         controlState: snapshotRef.current.status?.control_state ?? null,
         requestedAt,
         effectiveAt: null,
+        effectiveScope: null,
         message: toErrorMessage(error),
+        reasonCode: null,
         requestedOrderCount: null,
         cancelledOrderCount: null,
         skippedOrderCount: null,

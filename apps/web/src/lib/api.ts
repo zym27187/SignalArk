@@ -1,5 +1,6 @@
 import type {
   ActiveOrdersPayload,
+  BalanceSummaryPayload,
   ControlActionResponse,
   EquityCurvePayload,
   FillHistoryPayload,
@@ -8,6 +9,7 @@ import type {
   PositionsPayload,
   ReplayEventsPayload,
   RuntimeBarsPayload,
+  RuntimeSymbolRequestResponse,
   SharedContractsPayload,
   SymbolInspectionPayload,
   StatusPayload,
@@ -129,6 +131,10 @@ export async function fetchStatus(): Promise<StatusPayload> {
   return requestJson<StatusPayload>("/v1/status");
 }
 
+export async function fetchBalanceSummary(): Promise<BalanceSummaryPayload> {
+  return requestJson<BalanceSummaryPayload>("/v1/balance/summary");
+}
+
 export async function fetchSharedContracts(): Promise<SharedContractsPayload> {
   return requestJson<SharedContractsPayload>("/v1/contracts/shared");
 }
@@ -141,6 +147,22 @@ export async function inspectSymbol(symbol: string): Promise<SymbolInspectionPay
   const query = new URLSearchParams();
   query.set("symbol", symbol);
   return requestJson<SymbolInspectionPayload>(`/v1/symbols/inspect?${query.toString()}`);
+}
+
+export async function submitRuntimeSymbolRequest(params: {
+  symbol: string;
+  confirm: boolean;
+}): Promise<RuntimeSymbolRequestResponse> {
+  return requestJson<RuntimeSymbolRequestResponse>("/v1/symbols/runtime-requests", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      symbol: params.symbol,
+      confirm: params.confirm,
+    }),
+  });
 }
 
 export async function fetchActiveOrders(): Promise<ActiveOrdersPayload> {

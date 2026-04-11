@@ -700,6 +700,53 @@ select {
   font-weight: 500;
 }
 
+.balance-summary,
+.balance-summary__explanations {
+  display: grid;
+  gap: 12px;
+}
+
+.balance-summary__hero,
+.balance-summary__explanation {
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 252, 245, 0.82);
+  border: 1px solid rgba(18, 40, 61, 0.08);
+}
+
+.balance-summary__hero strong,
+.balance-summary__explanation strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.balance-summary__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 10px;
+  color: var(--ink-muted);
+  font-size: 0.92rem;
+}
+
+.balance-summary__explanation p,
+.balance-summary__error {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.balance-summary__error {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  color: #7e2d2d;
+  background: rgba(177, 63, 63, 0.1);
+}
+
+.balance-summary--empty {
+  display: grid;
+  gap: 8px;
+}
+
 .filter-form {
   display: grid;
   gap: 14px;

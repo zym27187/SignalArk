@@ -29,6 +29,7 @@ LEASE_TABLE_NAME = "trader_account_leases"
 CONTROL_TABLE_NAME = "trader_controls"
 RUNTIME_STATUS_TABLE_NAME = "trader_runtime_status"
 RESEARCH_AI_SETTINGS_TABLE_NAME = "research_ai_settings"
+RUNTIME_SYMBOL_REQUESTS_TABLE_NAME = "runtime_symbol_requests"
 DEFAULT_RESEARCH_AI_PROVIDER = "openai_compatible"
 DEFAULT_RESEARCH_AI_MODEL = "gpt-5.4"
 DEFAULT_RESEARCH_AI_BASE_URL = "https://api.openai.com/v1"
@@ -38,6 +39,7 @@ CONTROL_PLANE_TABLE_NAMES = frozenset(
         LEASE_TABLE_NAME,
         RUNTIME_STATUS_TABLE_NAME,
         RESEARCH_AI_SETTINGS_TABLE_NAME,
+        RUNTIME_SYMBOL_REQUESTS_TABLE_NAME,
     }
 )
 
@@ -126,6 +128,20 @@ class ResearchAiSettingsRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class RuntimeSymbolRequestRecord(Base):
+    """Persist operator requests to widen the runtime symbol boundary."""
+
+    __tablename__ = RUNTIME_SYMBOL_REQUESTS_TABLE_NAME
+
+    account_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(32), primary_key=True)
+    requested_action: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    apply_mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class TraderControlSnapshot:
     """Typed operator-control view shared between trader and API."""
@@ -210,6 +226,19 @@ class ResearchAiSettingsSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class RuntimeSymbolRequestSnapshot:
+    """One persisted request to add a symbol into the runtime boundary."""
+
+    account_id: str
+    symbol: str
+    requested_action: str = "enable_runtime"
+    status: str = "pending_reload"
+    apply_mode: str = "requires_reload"
+    requested_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class LeaseActionResult:
     """Result of one acquire/heartbeat/release lease operation."""
 
@@ -282,6 +311,20 @@ def _research_ai_settings_from_record(
         base_url=record.base_url,
         api_key=record.api_key,
         created_at=_shanghai_datetime(record.created_at),
+        updated_at=_shanghai_datetime(record.updated_at),
+    )
+
+
+def _runtime_symbol_request_from_record(
+    record: RuntimeSymbolRequestRecord,
+) -> RuntimeSymbolRequestSnapshot:
+    return RuntimeSymbolRequestSnapshot(
+        account_id=record.account_id,
+        symbol=record.symbol,
+        requested_action=record.requested_action,
+        status=record.status,
+        apply_mode=record.apply_mode,
+        requested_at=_shanghai_datetime(record.requested_at),
         updated_at=_shanghai_datetime(record.updated_at),
     )
 
@@ -661,6 +704,66 @@ class TraderControlPlaneStore:
         with session_scope(self._session_factory) as session:
             record = session.get(TraderRuntimeStatusRecord, account_id)
             return None if record is None else _runtime_status_from_record(record)
+
+    def get_runtime_symbol_request(
+        self,
+        *,
+        account_id: str,
+        symbol: str,
+    ) -> RuntimeSymbolRequestSnapshot | None:
+        self.ensure_schema()
+        normalized_symbol = symbol.strip().upper()
+        with session_scope(self._session_factory) as session:
+            record = session.get(
+                RuntimeSymbolRequestRecord,
+                {
+                    "account_id": account_id,
+                    "symbol": normalized_symbol,
+                },
+            )
+            return None if record is None else _runtime_symbol_request_from_record(record)
+
+    def save_runtime_symbol_request(
+        self,
+        *,
+        account_id: str,
+        symbol: str,
+    ) -> RuntimeSymbolRequestSnapshot:
+        self.ensure_schema()
+        normalized_symbol = symbol.strip().upper()
+        if not normalized_symbol:
+            raise ValueError("symbol is required")
+
+        now = self._clock()
+        with session_scope(self._session_factory) as session:
+            record = session.get(
+                RuntimeSymbolRequestRecord,
+                {
+                    "account_id": account_id,
+                    "symbol": normalized_symbol,
+                },
+            )
+            if record is None:
+                record = RuntimeSymbolRequestRecord(
+                    account_id=account_id,
+                    symbol=normalized_symbol,
+                    requested_action="enable_runtime",
+                    status="pending_reload",
+                    apply_mode="requires_reload",
+                    requested_at=now,
+                    updated_at=now,
+                )
+                session.add(record)
+                session.flush()
+                return _runtime_symbol_request_from_record(record)
+
+            record.requested_action = "enable_runtime"
+            record.status = "pending_reload"
+            record.apply_mode = "requires_reload"
+            record.requested_at = now
+            record.updated_at = now
+            session.flush()
+            return _runtime_symbol_request_from_record(record)
 
     def get_research_ai_settings(self, account_id: str) -> ResearchAiSettingsSnapshot:
         self.ensure_schema()

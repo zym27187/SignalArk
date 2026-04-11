@@ -24,7 +24,7 @@ from src.domain.execution import (
     create_order_from_intent,
 )
 from src.domain.market import MarketStateSnapshot, SuspensionStatus, TradingPhase
-from src.domain.portfolio import Position, PositionStatus
+from src.domain.portfolio import BalanceSnapshot, Position, PositionStatus
 from src.domain.risk import RiskControlState
 from src.domain.strategy import Signal, SignalType
 from src.infra.db import (
@@ -91,6 +91,25 @@ def _position() -> Position:
         realized_pnl=Decimal("0"),
         status=PositionStatus.OPEN,
         updated_at=NOW - timedelta(minutes=10),
+    )
+
+
+def _balance_snapshot(
+    *,
+    snapshot_time: datetime,
+    total: str,
+    available: str,
+    locked: str,
+) -> BalanceSnapshot:
+    return BalanceSnapshot(
+        account_id="paper_account_001",
+        exchange="cn_equity",
+        asset="CNY",
+        total=Decimal(total),
+        available=Decimal(available),
+        locked=Decimal(locked),
+        snapshot_time=snapshot_time,
+        created_at=snapshot_time,
     )
 
 
@@ -162,6 +181,14 @@ def test_api_exposes_status_controls_and_cancel_all_boundaries(tmp_path: Path) -
     with session_factory.begin() as session:
         repositories = SqlAlchemyRepositories.from_session(session)
         repositories.positions.save(_position())
+        repositories.balance_snapshots.save(
+            _balance_snapshot(
+                snapshot_time=NOW - timedelta(minutes=2),
+                total="98000",
+                available="97500",
+                locked="500",
+            )
+        )
         buy_signal = _signal(
             signal_id=UUID("22222222-2222-4222-8222-222222222222"),
             target_position=Decimal("400"),
@@ -222,6 +249,7 @@ def test_api_exposes_status_controls_and_cancel_all_boundaries(tmp_path: Path) -
         live = client.get("/health/live")
         ready = client.get("/health/ready")
         status = client.get("/v1/status")
+        balance_summary = client.get("/v1/balance/summary")
         positions = client.get("/v1/positions")
         active_orders = client.get("/v1/orders/active")
 
@@ -231,6 +259,14 @@ def test_api_exposes_status_controls_and_cancel_all_boundaries(tmp_path: Path) -
         assert ready.json()["lease_owner_instance_id"] == "instance-A"
         assert status.json()["control_state"] == "normal"
         assert status.json()["trader_run_id"] == "runtime-run-001"
+        assert balance_summary.status_code == 200
+        assert balance_summary.json()["cash_balance"] == "98000"
+        assert balance_summary.json()["available_cash"] == "97500"
+        assert balance_summary.json()["frozen_cash"] == "500"
+        assert balance_summary.json()["market_value"] == "11850"
+        assert balance_summary.json()["equity"] == "109850"
+        assert balance_summary.json()["position_count"] == 1
+        assert "账户权益由现金余额和持仓市值共同组成" in balance_summary.json()["summary_message"]
         assert len(positions.json()["positions"]) == 1
         assert len(active_orders.json()["orders"]) == 2
 
@@ -238,10 +274,14 @@ def test_api_exposes_status_controls_and_cancel_all_boundaries(tmp_path: Path) -
         assert pause.status_code == 200
         assert pause.json()["accepted"] is True
         assert pause.json()["control_state"] == "strategy_paused"
+        assert pause.json()["effective_scope"] == "strategy_submission"
+        assert pause.json()["reason_code"] == "OPERATOR_REQUEST"
 
         enable_kill_switch = client.post("/v1/controls/kill-switch/enable")
         assert enable_kill_switch.status_code == 200
         assert enable_kill_switch.json()["control_state"] == "kill_switch"
+        assert enable_kill_switch.json()["effective_scope"] == "opening_order_gate"
+        assert enable_kill_switch.json()["reason_code"] == "OPERATOR_REQUEST"
 
         cancel_all = client.post("/v1/controls/cancel-all")
         assert cancel_all.status_code == 200
@@ -249,6 +289,8 @@ def test_api_exposes_status_controls_and_cancel_all_boundaries(tmp_path: Path) -
         assert cancel_all.json()["cancelled_order_count"] == 1
         assert cancel_all.json()["skipped_order_count"] == 1
         assert cancel_all.json()["control_state"] == "kill_switch"
+        assert cancel_all.json()["effective_scope"] == "active_orders"
+        assert cancel_all.json()["reason_code"] == "OPERATOR_REQUEST"
         assert [event.event_name for event in alert_sink.events] == [
             "control.kill_switch_enabled",
             "control.cancel_all_requested",
@@ -295,9 +337,14 @@ def test_api_inspects_symbol_layers_and_validation_state(tmp_path: Path) -> None
         "message": "该股票代码已进入当前 trader 运行范围，可能影响自动交易判断。",
         "runtime_activation": {
             "requires_confirmation": True,
-            "phase": "phase_1_preview_only",
+            "phase": "phase_2_runtime_request",
             "can_apply_now": False,
-            "message": "当前前端只提供影响说明，不会直接修改 trader 运行范围。",
+            "effective_scope": "runtime_symbols",
+            "activation_mode": "already_live",
+            "request_status": "already_enabled",
+            "last_requested_at": None,
+            "requested_runtime_symbols_preview": ["600036.SH"],
+            "message": "该股票代码已在当前 runtime 范围内，无需再次申请。",
         },
     }
 
@@ -308,6 +355,17 @@ def test_api_inspects_symbol_layers_and_validation_state(tmp_path: Path) -> None
         "runtime_enabled": False,
     }
     assert supported_symbol.json()["reason_code"] == "SYMBOL_SUPPORTED_NOT_RUNTIME"
+    assert supported_symbol.json()["runtime_activation"] == {
+        "requires_confirmation": True,
+        "phase": "phase_2_runtime_request",
+        "can_apply_now": True,
+        "effective_scope": "runtime_symbols",
+        "activation_mode": "requires_reload",
+        "request_status": "not_requested",
+        "last_requested_at": None,
+        "requested_runtime_symbols_preview": ["600036.SH", "000001.SZ"],
+        "message": "确认后可以记录运行范围变更请求，但需要重载 trader 才会真正生效。",
+    }
 
     assert observed_only_symbol.status_code == 200
     assert observed_only_symbol.json()["display_name"] is None
@@ -318,6 +376,17 @@ def test_api_inspects_symbol_layers_and_validation_state(tmp_path: Path) -> None
         "runtime_enabled": False,
     }
     assert observed_only_symbol.json()["reason_code"] == "SYMBOL_OBSERVED_ONLY"
+    assert observed_only_symbol.json()["runtime_activation"] == {
+        "requires_confirmation": True,
+        "phase": "phase_2_runtime_request",
+        "can_apply_now": False,
+        "effective_scope": "runtime_symbols",
+        "activation_mode": "unavailable",
+        "request_status": "unsupported_symbol",
+        "last_requested_at": None,
+        "requested_runtime_symbols_preview": ["600036.SH"],
+        "message": "该股票代码尚未进入 supported_symbols，暂时不能申请加入 runtime。",
+    }
 
     assert invalid_symbol.status_code == 200
     assert invalid_symbol.json() == {
@@ -339,10 +408,70 @@ def test_api_inspects_symbol_layers_and_validation_state(tmp_path: Path) -> None
         "message": "代码格式不符合 A 股约定，请使用 6 位数字加 .SH 或 .SZ 后缀。",
         "runtime_activation": {
             "requires_confirmation": True,
-            "phase": "phase_1_preview_only",
+            "phase": "phase_2_runtime_request",
             "can_apply_now": False,
-            "message": "当前前端只提供影响说明，不会直接修改 trader 运行范围。",
+            "effective_scope": "runtime_symbols",
+            "activation_mode": "unavailable",
+            "request_status": "invalid_symbol",
+            "last_requested_at": None,
+            "requested_runtime_symbols_preview": ["600036.SH"],
+            "message": "代码格式不合法，暂时不能进入 runtime 范围申请。",
         },
+    }
+
+
+def test_api_records_runtime_symbol_requests_and_exposes_pending_reload_state(
+    tmp_path: Path,
+) -> None:
+    from apps.api.main import create_app
+
+    database_url = _database_url(tmp_path)
+    settings = _settings(database_url)
+    upgrade_database(database_url)
+    app = create_app(settings=settings)
+
+    with TestClient(app) as client:
+        request = client.post(
+            "/v1/symbols/runtime-requests",
+            json={
+                "symbol": "000001.SZ",
+                "confirm": True,
+            },
+        )
+        inspected = client.get("/v1/symbols/inspect", params={"symbol": "000001.SZ"})
+
+    request_payload = request.json()
+    assert request.status_code == 200
+    assert request_payload == {
+        "accepted": True,
+        "symbol": "000001.SZ",
+        "normalized_symbol": "000001.SZ",
+        "control_state": "normal",
+        "trader_run_id": None,
+        "instance_id": None,
+        "effective_at": request_payload["effective_at"],
+        "effective_scope": "runtime_symbols",
+        "activation_mode": "requires_reload",
+        "request_status": "pending_reload",
+        "message": "已记录运行范围变更请求；需要重载 trader 后才会真正进入运行范围。",
+        "reason_code": "RUNTIME_CHANGE_REQUIRES_RELOAD",
+        "current_runtime_symbols": ["600036.SH"],
+        "requested_runtime_symbols": ["600036.SH", "000001.SZ"],
+        "last_requested_at": request_payload["last_requested_at"],
+    }
+    assert request_payload["last_requested_at"] is not None
+
+    assert inspected.status_code == 200
+    assert inspected.json()["runtime_activation"] == {
+        "requires_confirmation": True,
+        "phase": "phase_2_runtime_request",
+        "can_apply_now": False,
+        "effective_scope": "runtime_symbols",
+        "activation_mode": "requires_reload",
+        "request_status": "pending_reload",
+        "last_requested_at": request_payload["last_requested_at"],
+        "requested_runtime_symbols_preview": ["600036.SH", "000001.SZ"],
+        "message": "该股票代码的运行范围变更请求已记录，等待 trader 重载后生效。",
     }
 
 

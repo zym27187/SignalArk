@@ -211,12 +211,21 @@ export function ControlPanel({
             </div>
           ) : null}
           <div className="control-panel__result-meta">
+            <span>
+              影响范围：
+              {titleCase(lastActionResult.effectiveScope ?? "account_scope")}
+            </span>
             <span>控制状态：{titleCase(lastActionResult.controlState)}</span>
             <span>
               {lastActionResult.effectiveAt ? "生效时间" : "记录时间"}：
               {formatDateTime(lastActionResult.effectiveAt ?? lastActionResult.requestedAt)}
             </span>
           </div>
+          {lastActionResult.reasonCode ? (
+            <p className="control-panel__message">
+              原因分类：{titleCase(lastActionResult.reasonCode)}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

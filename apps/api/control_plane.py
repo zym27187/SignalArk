@@ -17,6 +17,7 @@ from src.config.shared_contracts import build_shared_contracts_payload
 from src.domain.events import BarEvent
 from src.domain.execution import OrderSide, OrderStatus
 from src.domain.market import NormalizedBar
+from src.domain.portfolio import BalanceSnapshot, Position
 from src.domain.reconciliation import ReplayEventFilters
 from src.domain.strategy import AI_BAR_JUDGE_V1, load_ai_bar_judge_config
 from src.domain.strategy.ai import (
@@ -47,6 +48,7 @@ from apps.research.snapshot import build_web_snapshot_payload
 from apps.trader.control_plane import (
     MissingControlPlaneSchemaError,
     ResearchAiSettingsSnapshot,
+    RuntimeSymbolRequestSnapshot,
     TraderControlPlaneStore,
 )
 from apps.trader.oms import build_default_trader_oms_service
@@ -198,6 +200,15 @@ class ApiControlPlaneService:
             if format_valid and normalized_symbol in self._settings.symbol_names
             else None
         )
+        request_snapshot: RuntimeSymbolRequestSnapshot | None = None
+        if format_valid:
+            try:
+                request_snapshot = self._control_store.get_runtime_symbol_request(
+                    account_id=self._settings.account_id,
+                    symbol=normalized_symbol,
+                )
+            except MissingControlPlaneSchemaError:
+                request_snapshot = None
 
         if not format_valid:
             reason_code = "INVALID_SYMBOL_FORMAT"
@@ -237,13 +248,170 @@ class ApiControlPlaneService:
             "layers": layers,
             "reason_code": reason_code,
             "message": message,
-            "runtime_activation": {
-                "requires_confirmation": True,
-                "phase": "phase_1_preview_only",
-                "can_apply_now": False,
-                "message": "当前前端只提供影响说明，不会直接修改 trader 运行范围。",
-            },
+            "runtime_activation": _build_runtime_activation_payload(
+                normalized_symbol=normalized_symbol,
+                format_valid=format_valid,
+                layers=layers,
+                request_snapshot=request_snapshot,
+                runtime_symbols=self._settings.symbols,
+            ),
         }
+
+    def balance_summary_payload(self) -> dict[str, object]:
+        try:
+            with session_scope(self._session_factory) as session:
+                recovery_state = SqlAlchemyRepositories.from_session(
+                    session
+                ).recovery.load_runtime_state(
+                    account_id=self._settings.account_id,
+                    event_limit=0,
+                )
+                latest_balance_snapshots = recovery_state.latest_balance_snapshots
+                positions = recovery_state.open_positions
+        except Exception as exc:
+            if _is_missing_persistence_table_error(exc):
+                latest_balance_snapshots = ()
+                positions = ()
+            else:
+                raise
+
+        return _build_balance_summary_payload(
+            account_id=self._settings.account_id,
+            latest_balance_snapshots=latest_balance_snapshots,
+            positions=positions,
+        )
+
+    def request_runtime_symbol(
+        self,
+        *,
+        symbol: str,
+        confirm: bool,
+    ) -> dict[str, object]:
+        inspection = self.inspect_symbol_payload(symbol)
+        normalized_symbol = str(inspection["normalized_symbol"])
+        layers = dict(inspection["layers"])
+        runtime_symbols = list(self._settings.symbols)
+        requested_runtime_symbols = list(runtime_symbols)
+        if (
+            normalized_symbol
+            and bool(inspection["format_valid"])
+            and bool(layers["supported"])
+            and normalized_symbol not in requested_runtime_symbols
+        ):
+            requested_runtime_symbols.append(normalized_symbol)
+
+        status_payload = self._control_store.build_status_view(
+            account_id=self._settings.account_id,
+            timeframe=self._settings.primary_timeframe,
+            market_stale_threshold_seconds=self._settings.market_stale_threshold_seconds,
+        )
+        response = {
+            "accepted": False,
+            "symbol": symbol,
+            "normalized_symbol": normalized_symbol,
+            "control_state": status_payload.get("control_state"),
+            "trader_run_id": status_payload.get("trader_run_id"),
+            "instance_id": status_payload.get("instance_id"),
+            "effective_at": shanghai_now().isoformat(),
+            "effective_scope": "runtime_symbols",
+            "activation_mode": "requires_reload",
+            "request_status": "rejected",
+            "message": "",
+            "reason_code": "",
+            "current_runtime_symbols": runtime_symbols,
+            "requested_runtime_symbols": requested_runtime_symbols,
+            "last_requested_at": None,
+        }
+
+        if not confirm:
+            response.update(
+                {
+                    "request_status": "confirmation_required",
+                    "message": "请先确认该变更会影响下一次 trader 运行范围后再提交。",
+                    "reason_code": "RUNTIME_REQUEST_CONFIRMATION_REQUIRED",
+                }
+            )
+            return response
+
+        if not bool(inspection["format_valid"]):
+            response.update(
+                {
+                    "request_status": "invalid_symbol",
+                    "message": str(inspection["message"]),
+                    "reason_code": "INVALID_SYMBOL_FORMAT",
+                }
+            )
+            return response
+
+        if bool(layers["runtime_enabled"]):
+            existing_request = self._control_store.get_runtime_symbol_request(
+                account_id=self._settings.account_id,
+                symbol=normalized_symbol,
+            )
+            response.update(
+                {
+                    "accepted": True,
+                    "activation_mode": "already_live",
+                    "request_status": "already_enabled",
+                    "message": "该股票代码已经在当前 runtime 范围内，无需重复申请。",
+                    "reason_code": "SYMBOL_RUNTIME_ENABLED",
+                    "last_requested_at": (
+                        None
+                        if existing_request is None or existing_request.requested_at is None
+                        else existing_request.requested_at.isoformat()
+                    ),
+                }
+            )
+            return response
+
+        if not bool(layers["supported"]):
+            response.update(
+                {
+                    "request_status": "unsupported_symbol",
+                    "message": "该股票代码还不在 supported_symbols 范围内，不能直接加入 runtime。",
+                    "reason_code": "SYMBOL_NOT_SUPPORTED",
+                }
+            )
+            return response
+
+        existing_request = self._control_store.get_runtime_symbol_request(
+            account_id=self._settings.account_id,
+            symbol=normalized_symbol,
+        )
+        if existing_request is not None:
+            response.update(
+                {
+                    "accepted": True,
+                    "request_status": existing_request.status,
+                    "message": "该股票代码的运行范围变更请求已记录，等待 trader 重载后生效。",
+                    "reason_code": "RUNTIME_CHANGE_REQUIRES_RELOAD",
+                    "last_requested_at": (
+                        None
+                        if existing_request.requested_at is None
+                        else existing_request.requested_at.isoformat()
+                    ),
+                }
+            )
+            return response
+
+        request_snapshot = self._control_store.save_runtime_symbol_request(
+            account_id=self._settings.account_id,
+            symbol=normalized_symbol,
+        )
+        response.update(
+            {
+                "accepted": True,
+                "request_status": request_snapshot.status,
+                "message": "已记录运行范围变更请求；需要重载 trader 后才会真正进入运行范围。",
+                "reason_code": "RUNTIME_CHANGE_REQUIRES_RELOAD",
+                "last_requested_at": (
+                    None
+                    if request_snapshot.requested_at is None
+                    else request_snapshot.requested_at.isoformat()
+                ),
+            }
+        )
+        return response
 
     def positions_payload(self) -> dict[str, object]:
         try:
@@ -694,10 +862,8 @@ class ApiControlPlaneService:
             notes.append(str(sample_metadata["warning"]))
         if segment_analyses:
             notes.append(
-                
-                    f"时间分段评估会把样本按时间切成 {len(segment_analyses)} 段，"
-                    "并在同一起始资金下分别比较阶段表现。"
-                
+                f"时间分段评估会把样本按时间切成 {len(segment_analyses)} 段，"
+                "并在同一起始资金下分别比较阶段表现。"
             )
         return build_web_snapshot_payload(
             result=result,
@@ -877,6 +1043,7 @@ class ApiControlPlaneService:
             accepted=True,
             message="Strategy paused.",
             control_state=snapshot.control_state.value,
+            effective_scope="strategy_submission",
             event_name="control.strategy_paused",
             reason_code="OPERATOR_REQUEST",
         )
@@ -890,6 +1057,7 @@ class ApiControlPlaneService:
             accepted=True,
             message="Strategy resumed.",
             control_state=snapshot.control_state.value,
+            effective_scope="strategy_submission",
             event_name="control.strategy_resumed",
             reason_code="OPERATOR_REQUEST",
         )
@@ -903,6 +1071,7 @@ class ApiControlPlaneService:
             accepted=True,
             message="Kill switch enabled; only reducing or flattening actions remain allowed.",
             control_state=snapshot.control_state.value,
+            effective_scope="opening_order_gate",
             event_name="control.kill_switch_enabled",
             severity="warning",
             notify=True,
@@ -918,6 +1087,7 @@ class ApiControlPlaneService:
             accepted=True,
             message="Kill switch disabled; protection mode, if active, is unchanged.",
             control_state=snapshot.control_state.value,
+            effective_scope="opening_order_gate",
             event_name="control.kill_switch_disabled",
             notify=True,
             reason_code="OPERATOR_REQUEST",
@@ -955,6 +1125,7 @@ class ApiControlPlaneService:
             accepted=True,
             message="Cancel-all request applied to active orders.",
             control_state=snapshot.control_state.value,
+            effective_scope="active_orders",
             event_name="control.cancel_all_requested",
             severity="warning",
             notify=True,
@@ -1065,6 +1236,7 @@ class ApiControlPlaneService:
         accepted: bool,
         message: str,
         control_state: str,
+        effective_scope: str,
         event_name: str | None = None,
         severity: str = "info",
         notify: bool = False,
@@ -1082,8 +1254,11 @@ class ApiControlPlaneService:
             "trader_run_id": status_payload.get("trader_run_id"),
             "instance_id": status_payload.get("instance_id"),
             "effective_at": shanghai_now().isoformat(),
+            "effective_scope": effective_scope,
             "message": message,
         }
+        if reason_code is not None:
+            response["reason_code"] = reason_code
         if event_name is not None:
             self._observability.emit(
                 event_name=event_name,
@@ -1099,6 +1274,200 @@ class ApiControlPlaneService:
                 details=details,
             )
         return response
+
+
+def _build_runtime_activation_payload(
+    *,
+    normalized_symbol: str,
+    format_valid: bool,
+    layers: dict[str, bool],
+    request_snapshot: RuntimeSymbolRequestSnapshot | None,
+    runtime_symbols: list[str] | tuple[str, ...],
+) -> dict[str, object]:
+    requested_runtime_symbols_preview = list(runtime_symbols)
+    if (
+        format_valid
+        and layers["supported"]
+        and not layers["runtime_enabled"]
+        and normalized_symbol
+        and normalized_symbol not in requested_runtime_symbols_preview
+    ):
+        requested_runtime_symbols_preview.append(normalized_symbol)
+
+    if not format_valid:
+        return {
+            "requires_confirmation": True,
+            "phase": "phase_2_runtime_request",
+            "can_apply_now": False,
+            "effective_scope": "runtime_symbols",
+            "activation_mode": "unavailable",
+            "request_status": "invalid_symbol",
+            "last_requested_at": None,
+            "requested_runtime_symbols_preview": requested_runtime_symbols_preview,
+            "message": "代码格式不合法，暂时不能进入 runtime 范围申请。",
+        }
+
+    if layers["runtime_enabled"]:
+        return {
+            "requires_confirmation": True,
+            "phase": "phase_2_runtime_request",
+            "can_apply_now": False,
+            "effective_scope": "runtime_symbols",
+            "activation_mode": "already_live",
+            "request_status": "already_enabled",
+            "last_requested_at": (
+                None
+                if request_snapshot is None or request_snapshot.requested_at is None
+                else request_snapshot.requested_at.isoformat()
+            ),
+            "requested_runtime_symbols_preview": requested_runtime_symbols_preview,
+            "message": "该股票代码已在当前 runtime 范围内，无需再次申请。",
+        }
+
+    if request_snapshot is not None:
+        return {
+            "requires_confirmation": True,
+            "phase": "phase_2_runtime_request",
+            "can_apply_now": False,
+            "effective_scope": "runtime_symbols",
+            "activation_mode": request_snapshot.apply_mode,
+            "request_status": request_snapshot.status,
+            "last_requested_at": (
+                None
+                if request_snapshot.requested_at is None
+                else request_snapshot.requested_at.isoformat()
+            ),
+            "requested_runtime_symbols_preview": requested_runtime_symbols_preview,
+            "message": "该股票代码的运行范围变更请求已记录，等待 trader 重载后生效。",
+        }
+
+    if layers["supported"]:
+        return {
+            "requires_confirmation": True,
+            "phase": "phase_2_runtime_request",
+            "can_apply_now": True,
+            "effective_scope": "runtime_symbols",
+            "activation_mode": "requires_reload",
+            "request_status": "not_requested",
+            "last_requested_at": None,
+            "requested_runtime_symbols_preview": requested_runtime_symbols_preview,
+            "message": "确认后可以记录运行范围变更请求，但需要重载 trader 才会真正生效。",
+        }
+
+    return {
+        "requires_confirmation": True,
+        "phase": "phase_2_runtime_request",
+        "can_apply_now": False,
+        "effective_scope": "runtime_symbols",
+        "activation_mode": "unavailable",
+        "request_status": "unsupported_symbol",
+        "last_requested_at": None,
+        "requested_runtime_symbols_preview": requested_runtime_symbols_preview,
+        "message": "该股票代码尚未进入 supported_symbols，暂时不能申请加入 runtime。",
+    }
+
+
+def _build_balance_summary_payload(
+    *,
+    account_id: str,
+    latest_balance_snapshots: tuple[BalanceSnapshot, ...],
+    positions: tuple[Position, ...],
+) -> dict[str, object]:
+    latest_cash_snapshot = next(
+        (snapshot for snapshot in latest_balance_snapshots if snapshot.asset == "CNY"),
+        None,
+    )
+    cash_balance = Decimal("0") if latest_cash_snapshot is None else latest_cash_snapshot.total
+    available_cash = (
+        Decimal("0") if latest_cash_snapshot is None else latest_cash_snapshot.available
+    )
+    frozen_cash = Decimal("0") if latest_cash_snapshot is None else latest_cash_snapshot.locked
+
+    market_value = Decimal("0")
+    unrealized_pnl = Decimal("0")
+    realized_pnl = Decimal("0")
+    fallback_mark_count = 0
+    latest_position_time: datetime | None = None
+    for position in positions:
+        if latest_position_time is None or position.updated_at > latest_position_time:
+            latest_position_time = position.updated_at
+        mark_price = position.mark_price or position.avg_entry_price
+        if position.mark_price is None and mark_price is not None:
+            fallback_mark_count += 1
+        if mark_price is not None:
+            market_value += position.qty * mark_price
+        unrealized_pnl += position.unrealized_pnl
+        realized_pnl += position.realized_pnl
+
+    equity = cash_balance + market_value
+    cash_as_of_time = None if latest_cash_snapshot is None else latest_cash_snapshot.snapshot_time
+    as_of_time = max(
+        (
+            candidate
+            for candidate in (cash_as_of_time, latest_position_time)
+            if candidate is not None
+        ),
+        default=None,
+    )
+
+    if latest_cash_snapshot is None and not positions:
+        summary_message = "当前还没有账户资金快照，暂时无法解释现金、持仓和权益之间的关系。"
+    elif latest_cash_snapshot is None:
+        summary_message = (
+            "当前缺少最新现金快照，下面的权益只按持仓估值近似展示，不建议据此判断真实可用资金。"
+        )
+    elif not positions:
+        summary_message = (
+            "当前没有持仓，账户权益等于现金余额；可用资金和冻结资金已经直接体现在现金拆分里。"
+        )
+    else:
+        summary_message = (
+            "当前账户权益由现金余额和持仓市值共同组成；"
+            "可用资金可以继续下单，冻结资金说明还有资金被订单占用。"
+        )
+
+    cash_explanation = (
+        "现金余额 = 可用资金 + 冻结资金。可用资金还能继续下单，冻结资金通常表示仍有订单占用资金。"
+        if latest_cash_snapshot is not None
+        else "现金快照暂缺，因此当前还不能准确解释可用资金和冻结资金。"
+    )
+    position_explanation = (
+        "持仓市值按当前持仓数量乘以最新标记价格估算。"
+        if fallback_mark_count == 0
+        else "部分持仓缺少最新标记价格时，会暂时回退到成本价估算持仓市值。"
+    )
+    equity_explanation = (
+        "账户权益 = 现金余额 + 持仓市值。"
+        "未实现盈亏来自持仓价格波动，已实现盈亏来自已经完成的买卖结果。"
+    )
+
+    return {
+        "account_id": account_id,
+        "cash_balance": _decimal_to_string(cash_balance),
+        "available_cash": _decimal_to_string(available_cash),
+        "frozen_cash": _decimal_to_string(frozen_cash),
+        "market_value": _decimal_to_string(market_value),
+        "equity": _decimal_to_string(equity),
+        "unrealized_pnl": _decimal_to_string(unrealized_pnl),
+        "realized_pnl": _decimal_to_string(realized_pnl),
+        "position_count": len(positions),
+        "cash_as_of_time": None if cash_as_of_time is None else cash_as_of_time.isoformat(),
+        "positions_as_of_time": (
+            None if latest_position_time is None else latest_position_time.isoformat()
+        ),
+        "as_of_time": None if as_of_time is None else as_of_time.isoformat(),
+        "summary_message": summary_message,
+        "cash_explanation": cash_explanation,
+        "position_explanation": position_explanation,
+        "equity_explanation": equity_explanation,
+    }
+
+
+def _decimal_to_string(value: Decimal) -> str:
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
 
 
 class HistoricalBarGateway(Protocol):
@@ -1328,9 +1697,7 @@ def _build_runtime_stream_summaries(
         summaries,
         key=lambda summary: (
             str(
-                summary.get("last_seen_event_time")
-                or summary.get("last_strategy_event_time")
-                or ""
+                summary.get("last_seen_event_time") or summary.get("last_strategy_event_time") or ""
             ),
             str(summary.get("stream_key") or ""),
         ),

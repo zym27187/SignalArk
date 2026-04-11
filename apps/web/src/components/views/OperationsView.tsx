@@ -1,6 +1,7 @@
 import { useDeferredValue } from "react";
 
 import { ActivityFiltersPanel } from "../ActivityFiltersPanel";
+import { BalanceSummaryPanel } from "../BalanceSummaryPanel";
 import { ControlPanel } from "../ControlPanel";
 import { EventTimeline } from "../EventTimeline";
 import { FillHistoryTable } from "../FillHistoryTable";
@@ -75,6 +76,17 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
             tone="default"
           />
         </section>
+
+        <SectionCard
+          eyebrow="账户"
+          title="资金与权益"
+          description="这里解释现金余额、冻结资金和持仓市值是怎样一起组成当前账户权益的。"
+        >
+          <BalanceSummaryPanel
+            summary={dashboard.snapshot.balanceSummary}
+            error={dashboard.snapshot.sectionErrors.balanceSummary}
+          />
+        </SectionCard>
 
         <SectionCard
           eyebrow="账户"

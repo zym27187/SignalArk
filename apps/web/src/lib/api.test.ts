@@ -5,6 +5,7 @@ import {
   AI_RESEARCH_REQUEST_TIMEOUT_PER_DECISION_MS,
   DEFAULT_AI_RESEARCH_PREVIEW_LIMIT,
   DEFAULT_AI_RESEARCH_LOOKBACK_BARS,
+  fetchBalanceSummary,
   fetchResearchAiSettings,
   fetchFillHistory,
   fetchMarketBars,
@@ -14,6 +15,7 @@ import {
   fetchRuntimeBars,
   fetchSharedContracts,
   inspectSymbol,
+  submitRuntimeSymbolRequest,
   resolveAiResearchRequestTimeoutMs,
   fetchStatus,
   postControlAction,
@@ -168,7 +170,9 @@ describe("api helpers", () => {
           trader_run_id: null,
           instance_id: null,
           effective_at: "2026-04-02T10:00:00+08:00",
+          effective_scope: "strategy_submission",
           message: "Strategy paused.",
+          reason_code: "OPERATOR_REQUEST",
         }),
         {
           status: 200,
@@ -209,9 +213,14 @@ describe("api helpers", () => {
           message: "该股票代码已进入当前 trader 运行范围，可能影响自动交易判断。",
           runtime_activation: {
             requires_confirmation: true,
-            phase: "phase_1_preview_only",
+            phase: "phase_2_runtime_request",
             can_apply_now: false,
-            message: "当前前端只提供影响说明，不会直接修改 trader 运行范围。",
+            effective_scope: "runtime_symbols",
+            activation_mode: "already_live",
+            request_status: "already_enabled",
+            last_requested_at: null,
+            requested_runtime_symbols_preview: ["600036.SH"],
+            message: "该股票代码已在当前 runtime 范围内，无需再次申请。",
           },
         }),
         {
@@ -229,6 +238,94 @@ describe("api helpers", () => {
         headers: {
           Accept: "application/json",
         },
+      }),
+    );
+  });
+
+  it("loads the balance summary from the dedicated endpoint", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          account_id: "paper_account_001",
+          cash_balance: "98000",
+          available_cash: "97500",
+          frozen_cash: "500",
+          market_value: "11850",
+          equity: "109850",
+          unrealized_pnl: "90",
+          realized_pnl: "0",
+          position_count: 1,
+          cash_as_of_time: "2026-04-02T10:03:00+08:00",
+          positions_as_of_time: "2026-04-02T10:00:00+08:00",
+          as_of_time: "2026-04-02T10:03:00+08:00",
+          summary_message: "账户权益由现金余额和持仓市值共同组成。",
+          cash_explanation: "cash",
+          position_explanation: "position",
+          equity_explanation: "equity",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await fetchBalanceSummary();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/balance/summary",
+      expect.objectContaining({
+        headers: {
+          Accept: "application/json",
+        },
+      }),
+    );
+  });
+
+  it("posts runtime-symbol requests as JSON", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          accepted: true,
+          symbol: "000001.SZ",
+          normalized_symbol: "000001.SZ",
+          control_state: "normal",
+          trader_run_id: null,
+          instance_id: null,
+          effective_at: "2026-04-11T10:10:00+08:00",
+          effective_scope: "runtime_symbols",
+          activation_mode: "requires_reload",
+          request_status: "pending_reload",
+          message: "已记录运行范围变更请求；需要重载 trader 后才会真正进入运行范围。",
+          reason_code: "RUNTIME_CHANGE_REQUIRES_RELOAD",
+          current_runtime_symbols: ["600036.SH"],
+          requested_runtime_symbols: ["600036.SH", "000001.SZ"],
+          last_requested_at: "2026-04-11T10:10:00+08:00",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await submitRuntimeSymbolRequest({
+      symbol: "000001.SZ",
+      confirm: true,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/symbols/runtime-requests",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          symbol: "000001.SZ",
+          confirm: true,
+        }),
       }),
     );
   });

@@ -40,6 +40,24 @@ describe("App", () => {
     window.history.replaceState(null, "", "/");
     mockedUseDashboardData.mockReturnValue({
       snapshot: {
+        balanceSummary: {
+          account_id: "paper_account_001",
+          cash_balance: "98000",
+          available_cash: "97500",
+          frozen_cash: "500",
+          market_value: "0",
+          equity: "98000",
+          unrealized_pnl: "0",
+          realized_pnl: "0",
+          position_count: 0,
+          cash_as_of_time: "2026-04-02T10:00:00+08:00",
+          positions_as_of_time: null,
+          as_of_time: "2026-04-02T10:00:00+08:00",
+          summary_message: "当前没有持仓，账户权益等于现金余额。",
+          cash_explanation: "cash",
+          position_explanation: "position",
+          equity_explanation: "equity",
+        },
         status: {
           trader_run_id: "run-001",
           instance_id: "instance-A",
@@ -220,6 +238,7 @@ describe("App", () => {
     render(<App />);
 
     expect(screen.getByRole("heading", { name: "股票代码管理" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "资金与权益" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "常见术语" })).toBeInTheDocument();
 
     expect(mockedUseMarketData).toHaveBeenLastCalledWith({

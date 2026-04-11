@@ -64,7 +64,9 @@ describe("ControlPanel", () => {
           controlState: "kill_switch",
           requestedAt: "2026-04-02T10:06:00+08:00",
           effectiveAt: "2026-04-02T10:06:01+08:00",
+          effectiveScope: "active_orders",
           message: "全撤请求已应用到当前活动订单。",
+          reasonCode: "OPERATOR_REQUEST",
           requestedOrderCount: 5,
           cancelledOrderCount: 3,
           skippedOrderCount: 2,
@@ -90,6 +92,8 @@ describe("ControlPanel", () => {
     expect(
       within(resultPanel as HTMLElement).getByText("这意味着系统已经开始撤销当前排队订单，但保护性减仓单可能继续保留。"),
     ).toBeInTheDocument();
+    expect(within(resultPanel as HTMLElement).getByText("影响范围：活动订单")).toBeInTheDocument();
+    expect(within(resultPanel as HTMLElement).getByText("原因分类：人工操作请求")).toBeInTheDocument();
     expect(within(resultPanel as HTMLElement).getByText("5")).toBeInTheDocument();
     expect(within(resultPanel as HTMLElement).getByText("3")).toBeInTheDocument();
     expect(within(resultPanel as HTMLElement).getByText("2")).toBeInTheDocument();

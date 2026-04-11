@@ -1,8 +1,12 @@
 import { useState } from "react";
 
-import { inspectSymbol } from "../lib/api";
+import { inspectSymbol, submitRuntimeSymbolRequest } from "../lib/api";
 import { formatSymbolList, localizeMessage, titleCase } from "../lib/format";
-import type { SymbolInspectionPayload, SymbolNameMap } from "../types/api";
+import type {
+  RuntimeSymbolRequestResponse,
+  SymbolInspectionPayload,
+  SymbolNameMap,
+} from "../types/api";
 import { DefinitionGrid } from "./DefinitionGrid";
 
 const ASHARE_SYMBOL_PATTERN = /^\d{6}\.(SH|SZ)$/;
@@ -38,9 +42,14 @@ function buildFallbackInspection(rawInput: string): SymbolInspectionPayload {
       : "代码格式不符合 A 股约定，请使用 6 位数字加 .SH 或 .SZ 后缀。",
     runtime_activation: {
       requires_confirmation: true,
-      phase: "phase_1_preview_only",
+      phase: "phase_2_runtime_request",
       can_apply_now: false,
-      message: "当前前端只提供影响说明，不会直接修改 trader 运行范围。",
+      effective_scope: "runtime_symbols",
+      activation_mode: "unavailable",
+      request_status: "invalid_symbol",
+      last_requested_at: null,
+      requested_runtime_symbols_preview: [],
+      message: "代码格式不合法，暂时不能进入 runtime 范围申请。",
     },
   };
 }
@@ -76,9 +85,10 @@ export function SymbolInspectorPanel({
   const [draft, setDraft] = useState("");
   const [inspection, setInspection] = useState<SymbolInspectionPayload | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRequestingRuntime, setIsRequestingRuntime] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [wantsRuntimeActivation, setWantsRuntimeActivation] = useState(false);
   const [runtimeImpactAcknowledged, setRuntimeImpactAcknowledged] = useState(false);
+  const [requestResult, setRequestResult] = useState<RuntimeSymbolRequestResponse | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -86,14 +96,14 @@ export function SymbolInspectorPanel({
     if (!draft.trim()) {
       setInspection(null);
       setError("请先输入想检查的股票代码。");
-      setWantsRuntimeActivation(false);
       setRuntimeImpactAcknowledged(false);
+      setRequestResult(null);
       return;
     }
 
     setIsSubmitting(true);
-    setWantsRuntimeActivation(false);
     setRuntimeImpactAcknowledged(false);
+    setRequestResult(null);
     try {
       const nextInspection = await inspectSymbol(draft);
       setInspection(nextInspection);
@@ -105,6 +115,29 @@ export function SymbolInspectorPanel({
       setError(`系统层状态暂时未确认：${localizeMessage(message)}`);
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleRuntimeRequest() {
+    if (!inspection) {
+      return;
+    }
+
+    setIsRequestingRuntime(true);
+    try {
+      const response = await submitRuntimeSymbolRequest({
+        symbol: inspection.normalized_symbol,
+        confirm: true,
+      });
+      setRequestResult(response);
+      setError(null);
+      setInspection(await inspectSymbol(inspection.normalized_symbol));
+    } catch (requestError) {
+      const message =
+        requestError instanceof Error ? requestError.message : "运行范围请求提交失败。";
+      setError(`运行范围请求提交失败：${localizeMessage(message)}`);
+    } finally {
+      setIsRequestingRuntime(false);
     }
   }
 
@@ -194,45 +227,78 @@ export function SymbolInspectorPanel({
 
           {inspection.format_valid ? (
             <div className="symbol-inspector__runtime-request">
-              <label className="symbol-inspector__toggle">
-                <input
-                  type="checkbox"
-                  checked={wantsRuntimeActivation}
-                  onChange={(event) => {
-                    setWantsRuntimeActivation(event.target.checked);
-                    setRuntimeImpactAcknowledged(false);
-                  }}
-                  aria-label="后续希望把它加入运行范围"
-                />
-                <span>后续希望把它加入运行范围</span>
-              </label>
-              <p className="symbol-inspector__runtime-note">
-                这一步只是表达后续意图，不会直接修改当前 trader 配置。
-              </p>
+              <DefinitionGrid
+                items={[
+                  {
+                    label: "运行范围动作",
+                    value: titleCase(inspection.runtime_activation.request_status),
+                    hint: inspection.runtime_activation.message,
+                  },
+                  {
+                    label: "影响范围",
+                    value: titleCase(inspection.runtime_activation.effective_scope),
+                    hint: "这里指的是 trader 的运行标的范围，而不是观察层或系统支持边界。",
+                  },
+                  {
+                    label: "生效方式",
+                    value: titleCase(inspection.runtime_activation.activation_mode),
+                    hint: inspection.runtime_activation.can_apply_now
+                      ? "当前系统会先记录请求，真正进入运行范围仍需要后续重载。"
+                      : "当前状态会直接告诉你能不能继续进入 runtime 变更流程。",
+                  },
+                  {
+                    label: "变更后预览",
+                    value: formatSymbolList(
+                      inspection.runtime_activation.requested_runtime_symbols_preview,
+                      symbolNames,
+                    ),
+                    hint: "这里展示的是提交成功后期望进入的运行标的范围预览。",
+                  },
+                ]}
+              />
 
-              {wantsRuntimeActivation ? (
+              {inspection.runtime_activation.can_apply_now ? (
                 <div className="symbol-inspector__confirmation" role="alert">
-                  <strong>当前不会立即生效，也不会立刻修改 trader 的实际交易范围。</strong>
+                  <strong>这一步会记录运行范围变更请求，但不会立即热更新当前 trader。</strong>
                   <p>{inspection.runtime_activation.message}</p>
-                  <p>
-                    进入运行层会影响自动交易范围，因此必须在后续阶段走显式确认和结果回显。
-                  </p>
+                  <label className="symbol-inspector__toggle">
+                    <input
+                      type="checkbox"
+                      checked={runtimeImpactAcknowledged}
+                      onChange={(event) => {
+                        setRuntimeImpactAcknowledged(event.target.checked);
+                      }}
+                      aria-label="我确认这会影响下一次 runtime 运行范围"
+                    />
+                    <span>我确认这会影响下一次 runtime 运行范围</span>
+                  </label>
                   <button
                     type="button"
                     className="symbol-inspector__acknowledge"
                     onClick={() => {
-                      setRuntimeImpactAcknowledged(true);
+                      void handleRuntimeRequest();
                     }}
+                    disabled={!runtimeImpactAcknowledged || isRequestingRuntime}
                   >
-                    我已理解影响
+                    {isRequestingRuntime ? "记录中..." : "记录运行范围变更请求"}
                   </button>
                 </div>
               ) : null}
 
-              {runtimeImpactAcknowledged ? (
-                <p className="symbol-inspector__acknowledged">
-                  已记录为本次会话中的运行范围申请意向，真正生效需要后续 Phase 2 闭环。
-                </p>
+              {requestResult ? (
+                <div className="symbol-inspector__acknowledged">
+                  <strong>{requestResult.message}</strong>
+                  <p>
+                    当前范围：{formatSymbolList(requestResult.current_runtime_symbols, symbolNames)}
+                  </p>
+                  <p>
+                    请求后范围：{formatSymbolList(requestResult.requested_runtime_symbols, symbolNames)}
+                  </p>
+                  <p>
+                    作用范围：{titleCase(requestResult.effective_scope)}，生效方式：
+                    {titleCase(requestResult.activation_mode)}
+                  </p>
+                </div>
               ) : null}
             </div>
           ) : (

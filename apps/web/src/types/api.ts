@@ -160,8 +160,31 @@ export interface SymbolInspectionPayload {
     requires_confirmation: boolean;
     phase: string;
     can_apply_now: boolean;
+    effective_scope: string;
+    activation_mode: string;
+    request_status: string;
+    last_requested_at: string | null;
+    requested_runtime_symbols_preview: string[];
     message: string;
   };
+}
+
+export interface RuntimeSymbolRequestResponse {
+  accepted: boolean;
+  symbol: string;
+  normalized_symbol: string;
+  control_state: string | null;
+  trader_run_id: string | null;
+  instance_id: string | null;
+  effective_at: string;
+  effective_scope: string;
+  activation_mode: string;
+  request_status: string;
+  message: string;
+  reason_code: string;
+  current_runtime_symbols: string[];
+  requested_runtime_symbols: string[];
+  last_requested_at: string | null;
 }
 
 export interface ActiveOrder {
@@ -260,6 +283,25 @@ export interface ReplayEventsPayload {
   events: ReplayEvent[];
 }
 
+export interface BalanceSummaryPayload {
+  account_id: string;
+  cash_balance: string;
+  available_cash: string;
+  frozen_cash: string;
+  market_value: string;
+  equity: string;
+  unrealized_pnl: string;
+  realized_pnl: string;
+  position_count: number;
+  cash_as_of_time: string | null;
+  positions_as_of_time: string | null;
+  as_of_time: string | null;
+  summary_message: string;
+  cash_explanation: string;
+  position_explanation: string;
+  equity_explanation: string;
+}
+
 export interface MarketBarsPayload {
   symbol: string;
   timeframe: string;
@@ -337,7 +379,9 @@ export interface ControlActionResponse {
   trader_run_id: string | null;
   instance_id: string | null;
   effective_at: string;
+  effective_scope: string;
   message: string;
+  reason_code?: string;
   requested_order_count?: number;
   cancelled_order_count?: number;
   skipped_order_count?: number;
@@ -350,7 +394,9 @@ export interface DashboardControlActionResult {
   controlState: string | null;
   requestedAt: string;
   effectiveAt: string | null;
+  effectiveScope: string | null;
   message: string;
+  reasonCode: string | null;
   requestedOrderCount: number | null;
   cancelledOrderCount: number | null;
   skippedOrderCount: number | null;
@@ -367,6 +413,7 @@ export interface DashboardActivityFilters {
 }
 
 export type DashboardSectionKey =
+  | "balanceSummary"
   | "status"
   | "positions"
   | "orders"

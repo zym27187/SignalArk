@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDashboardData } from "./use-dashboard-data";
 import {
   fetchActiveOrders,
+  fetchBalanceSummary,
   fetchFillHistory,
   fetchOrderHistory,
   fetchPositions,
@@ -14,6 +15,7 @@ import {
 
 vi.mock("../lib/api", () => ({
   fetchStatus: vi.fn(),
+  fetchBalanceSummary: vi.fn(),
   fetchPositions: vi.fn(),
   fetchActiveOrders: vi.fn(),
   fetchOrderHistory: vi.fn(),
@@ -23,6 +25,7 @@ vi.mock("../lib/api", () => ({
 }));
 
 const mockedFetchStatus = vi.mocked(fetchStatus);
+const mockedFetchBalanceSummary = vi.mocked(fetchBalanceSummary);
 const mockedFetchPositions = vi.mocked(fetchPositions);
 const mockedFetchActiveOrders = vi.mocked(fetchActiveOrders);
 const mockedFetchOrderHistory = vi.mocked(fetchOrderHistory);
@@ -40,6 +43,26 @@ describe("useDashboardData", () => {
   });
 
   it("preserves previous section data when a refresh only partially succeeds", async () => {
+    mockedFetchBalanceSummary
+      .mockResolvedValueOnce({
+        account_id: "paper_account_001",
+        cash_balance: "98000",
+        available_cash: "97500",
+        frozen_cash: "500",
+        market_value: "11850",
+        equity: "109850",
+        unrealized_pnl: "90",
+        realized_pnl: "0",
+        position_count: 1,
+        cash_as_of_time: "2026-04-02T10:03:00+08:00",
+        positions_as_of_time: "2026-04-02T10:00:00+08:00",
+        as_of_time: "2026-04-02T10:03:00+08:00",
+        summary_message: "账户权益由现金余额和持仓市值共同组成。",
+        cash_explanation: "cash",
+        position_explanation: "position",
+        equity_explanation: "equity",
+      })
+      .mockRejectedValueOnce(new Error("balance summary unavailable"));
     mockedFetchStatus
       .mockResolvedValueOnce({
         trader_run_id: "run-001",
@@ -198,6 +221,7 @@ describe("useDashboardData", () => {
     });
 
     expect(result.current.snapshot.status?.trader_run_id).toBe("run-001");
+    expect(result.current.snapshot.balanceSummary?.equity).toBe("109850");
     expect(result.current.snapshot.positions).toHaveLength(1);
     expect(result.current.snapshot.orders).toHaveLength(0);
     expect(result.current.snapshot.orderHistory).toHaveLength(0);
@@ -213,11 +237,15 @@ describe("useDashboardData", () => {
     });
 
     expect(result.current.snapshot.status?.trader_run_id).toBe("run-001");
+    expect(result.current.snapshot.balanceSummary?.equity).toBe("109850");
     expect(result.current.snapshot.positions).toHaveLength(1);
     expect(result.current.snapshot.orders).toHaveLength(1);
     expect(result.current.snapshot.orderHistory).toHaveLength(1);
     expect(result.current.snapshot.fills).toHaveLength(1);
     expect(result.current.snapshot.events).toHaveLength(1);
+    expect(result.current.snapshot.sectionErrors.balanceSummary).toBe(
+      "balance summary unavailable",
+    );
     expect(result.current.snapshot.sectionErrors.status).toBe("status feed unavailable");
     expect(result.current.snapshot.sectionErrors.positions).toBe("positions feed unavailable");
     expect(result.current.snapshot.sectionErrors.fillHistory).toBe("fills feed unavailable");
@@ -225,6 +253,24 @@ describe("useDashboardData", () => {
   });
 
   it("localizes control-action responses and refreshes the dashboard", async () => {
+    mockedFetchBalanceSummary.mockResolvedValue({
+      account_id: "paper_account_001",
+      cash_balance: "98000",
+      available_cash: "97500",
+      frozen_cash: "500",
+      market_value: "0",
+      equity: "98000",
+      unrealized_pnl: "0",
+      realized_pnl: "0",
+      position_count: 0,
+      cash_as_of_time: "2026-04-02T10:00:00+08:00",
+      positions_as_of_time: null,
+      as_of_time: "2026-04-02T10:00:00+08:00",
+      summary_message: "当前没有持仓，账户权益等于现金余额。",
+      cash_explanation: "cash",
+      position_explanation: "position",
+      equity_explanation: "equity",
+    });
     mockedFetchStatus.mockResolvedValue({
       trader_run_id: "run-001",
       instance_id: "instance-A",
@@ -275,7 +321,9 @@ describe("useDashboardData", () => {
       trader_run_id: "run-001",
       instance_id: "instance-A",
       effective_at: "2026-04-02T10:02:00+08:00",
+      effective_scope: "strategy_submission",
       message: "Strategy paused.",
+      reason_code: "OPERATOR_REQUEST",
     });
 
     const { result } = renderHook(() => useDashboardData());
@@ -295,7 +343,9 @@ describe("useDashboardData", () => {
       accepted: true,
       controlState: "strategy_paused",
       effectiveAt: "2026-04-02T10:02:00+08:00",
+      effectiveScope: "strategy_submission",
       message: "策略已暂停。",
+      reasonCode: "OPERATOR_REQUEST",
       requestedOrderCount: null,
       cancelledOrderCount: null,
       skippedOrderCount: null,
@@ -304,6 +354,24 @@ describe("useDashboardData", () => {
   });
 
   it("applies shared activity filters to history and replay requests", async () => {
+    mockedFetchBalanceSummary.mockResolvedValue({
+      account_id: "paper_account_001",
+      cash_balance: "98000",
+      available_cash: "97500",
+      frozen_cash: "500",
+      market_value: "0",
+      equity: "98000",
+      unrealized_pnl: "0",
+      realized_pnl: "0",
+      position_count: 0,
+      cash_as_of_time: "2026-04-02T10:00:00+08:00",
+      positions_as_of_time: null,
+      as_of_time: "2026-04-02T10:00:00+08:00",
+      summary_message: "当前没有持仓，账户权益等于现金余额。",
+      cash_explanation: "cash",
+      position_explanation: "position",
+      equity_explanation: "equity",
+    });
     mockedFetchStatus.mockResolvedValue({
       trader_run_id: "run-001",
       instance_id: "instance-A",

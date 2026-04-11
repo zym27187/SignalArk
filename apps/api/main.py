@@ -46,6 +46,15 @@ class ResearchAiSettingsUpdateRequest(BaseModel):
     clear_api_key: bool = Field(default=False, alias="clearApiKey")
 
 
+class RuntimeSymbolRequest(BaseModel):
+    """Body contract for recording one runtime-symbol change request."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    symbol: str
+    confirm: bool = False
+
+
 def build_control_plane_service(settings) -> ApiControlPlaneService:
     """Create the shared DB-backed control-plane service."""
     engine = create_database_engine(settings=settings)
@@ -118,6 +127,20 @@ def create_app(
     @app.get("/v1/symbols/inspect")
     async def inspect_symbol(symbol: str) -> dict[str, object]:
         return service.inspect_symbol_payload(symbol)
+
+    @app.post("/v1/symbols/runtime-requests")
+    async def request_runtime_symbol(request: RuntimeSymbolRequest) -> dict[str, object]:
+        try:
+            return service.request_runtime_symbol(
+                symbol=request.symbol,
+                confirm=request.confirm,
+            )
+        except MissingControlPlaneSchemaError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get("/v1/balance/summary")
+    async def balance_summary() -> dict[str, object]:
+        return service.balance_summary_payload()
 
     @app.get("/v1/positions")
     async def positions() -> dict[str, object]:
