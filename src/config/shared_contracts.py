@@ -330,7 +330,8 @@ def _build_fact_contracts() -> dict[str, dict[str, Any]]:
                 "fallbackReason": "fallback_reason",
             },
             "notes": [
-                "Phase 5 standardizes one operator-facing summary across baseline and AI strategies.",
+                "Phase 5 standardizes one operator-facing summary across baseline and AI "
+                "strategies.",
                 "Operational payloads stay snake_case; research payloads keep camelCase aliases.",
             ],
         },
