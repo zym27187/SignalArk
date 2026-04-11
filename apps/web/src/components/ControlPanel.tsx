@@ -28,6 +28,48 @@ function hasOrderStats(result: DashboardControlActionResult | null): boolean {
   );
 }
 
+function describeCurrentControlImpact(status: StatusPayload | null): string {
+  if (!status) {
+    return "状态尚未加载完成前，不要默认系统还在正常自动交易。";
+  }
+  if (status.control_state === "kill_switch") {
+    return "当前已经处于紧急刹车状态，新的开仓不会继续放行。";
+  }
+  if (status.control_state === "protection_mode") {
+    return "当前正在风险保护中，系统会更保守地限制动作。";
+  }
+  return "当前控制状态正常，人工动作会直接影响在线控制服务。";
+}
+
+function describeConfirmationImpact(action: ControlActionDefinition): string {
+  if (action.key === "enableKillSwitch") {
+    return "开启后，系统会阻止新的开仓，只保留减仓或清仓相关动作。";
+  }
+  if (action.key === "disableKillSwitch") {
+    return "关闭后会恢复开仓通道，但不会自动解除其他风险保护。";
+  }
+  if (action.key === "cancelAll") {
+    return "系统会尝试撤掉当前排队订单，但保护性减仓订单可能会被保留。";
+  }
+  return "该操作会立即作用到当前在线控制服务。";
+}
+
+function describeResultImpact(result: DashboardControlActionResult | null): string | null {
+  if (!result || !result.accepted) {
+    return null;
+  }
+  if (result.actionKey === "cancelAll") {
+    return "这意味着系统已经开始撤销当前排队订单，但保护性减仓单可能继续保留。";
+  }
+  if (result.actionKey === "enableKillSwitch") {
+    return "这意味着新的开仓已经被拦住，后续只会保留更保守的处理动作。";
+  }
+  if (result.actionKey === "pauseStrategy") {
+    return "这意味着系统不会继续自动下新单，但你仍然可以查看状态和人工处理。";
+  }
+  return "这次动作已经写入控制面，后续状态刷新会继续反映实际结果。";
+}
+
 export function ControlPanel({
   status,
   pendingAction,
@@ -71,6 +113,7 @@ export function ControlPanel({
           <strong>{formatDateTime(status?.last_cancel_all_at)}</strong>
         </div>
       </div>
+      <p className="control-panel__state-help">{describeCurrentControlImpact(status)}</p>
 
       <div className="control-panel__actions">
         {CONTROL_ACTIONS.map((action) => {
@@ -101,6 +144,7 @@ export function ControlPanel({
           <span className="mini-label">危险动作确认</span>
           <strong>{confirmingAction.confirmationTitle}</strong>
           <p>{confirmingAction.confirmationDescription}</p>
+          <p className="control-panel__impact">{describeConfirmationImpact(confirmingAction)}</p>
           <div className="control-panel__confirmation-actions">
             <button
               type="button"
@@ -147,6 +191,9 @@ export function ControlPanel({
             </div>
           </div>
           <p className="control-panel__message">{lastActionResult.message}</p>
+          {describeResultImpact(lastActionResult) ? (
+            <p className="control-panel__impact">{describeResultImpact(lastActionResult)}</p>
+          ) : null}
           {hasOrderStats(lastActionResult) ? (
             <div className="control-panel__result-stats">
               <div>

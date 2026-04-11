@@ -13,6 +13,7 @@ import {
   fetchResearchSnapshot,
   fetchRuntimeBars,
   fetchSharedContracts,
+  inspectSymbol,
   resolveAiResearchRequestTimeoutMs,
   fetchStatus,
   postControlAction,
@@ -182,6 +183,52 @@ describe("api helpers", () => {
       "http://127.0.0.1:8000/v1/controls/strategy/pause",
       expect.objectContaining({
         method: "POST",
+      }),
+    );
+  });
+
+  it("builds symbol inspection queries from the raw input", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          raw_input: "600036.sh",
+          normalized_symbol: "600036.SH",
+          format_valid: true,
+          market: "a_share",
+          market_label: "A 股",
+          venue: "SH",
+          venue_label: "上海证券交易所",
+          display_name: "招商银行",
+          name_status: "available",
+          layers: {
+            observed: true,
+            supported: true,
+            runtime_enabled: true,
+          },
+          reason_code: "SYMBOL_RUNTIME_ENABLED",
+          message: "该股票代码已进入当前 trader 运行范围，可能影响自动交易判断。",
+          runtime_activation: {
+            requires_confirmation: true,
+            phase: "phase_1_preview_only",
+            can_apply_now: false,
+            message: "当前前端只提供影响说明，不会直接修改 trader 运行范围。",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await inspectSymbol("600036.sh");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/symbols/inspect?symbol=600036.sh",
+      expect.objectContaining({
+        headers: {
+          Accept: "application/json",
+        },
       }),
     );
   });

@@ -9,6 +9,7 @@ import type {
   ReplayEventsPayload,
   RuntimeBarsPayload,
   SharedContractsPayload,
+  SymbolInspectionPayload,
   StatusPayload,
 } from "../types/api";
 import type {
@@ -134,6 +135,12 @@ export async function fetchSharedContracts(): Promise<SharedContractsPayload> {
 
 export async function fetchPositions(): Promise<PositionsPayload> {
   return requestJson<PositionsPayload>("/v1/positions");
+}
+
+export async function inspectSymbol(symbol: string): Promise<SymbolInspectionPayload> {
+  const query = new URLSearchParams();
+  query.set("symbol", symbol);
+  return requestJson<SymbolInspectionPayload>(`/v1/symbols/inspect?${query.toString()}`);
 }
 
 export async function fetchActiveOrders(): Promise<ActiveOrdersPayload> {

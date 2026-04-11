@@ -139,6 +139,31 @@ export interface PositionsPayload {
   positions: Position[];
 }
 
+export interface SymbolInspectionPayload {
+  raw_input: string;
+  normalized_symbol: string;
+  format_valid: boolean;
+  market: string;
+  market_label: string;
+  venue: string | null;
+  venue_label: string;
+  display_name: string | null;
+  name_status: "available" | "missing";
+  layers: {
+    observed: boolean;
+    supported: boolean;
+    runtime_enabled: boolean;
+  };
+  reason_code: string;
+  message: string;
+  runtime_activation: {
+    requires_confirmation: boolean;
+    phase: string;
+    can_apply_now: boolean;
+    message: string;
+  };
+}
+
 export interface ActiveOrder {
   order_id: string;
   order_intent_id: string;

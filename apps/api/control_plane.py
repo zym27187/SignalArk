@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
@@ -55,6 +56,7 @@ READ_ONLY_MARKET_TIMEFRAMES = frozenset({"15m", "1h"})
 DEFAULT_RESEARCH_INITIAL_CASH = Decimal("100000")
 DEFAULT_RESEARCH_SLIPPAGE_BPS = Decimal("5")
 DEFAULT_AI_RESEARCH_PROVIDER_TIMEOUT_SECONDS = 30.0
+ASHARE_SYMBOL_PATTERN = re.compile(r"^\d{6}\.(SH|SZ)$")
 
 
 def _is_missing_persistence_table_error(exc: Exception) -> bool:
@@ -174,6 +176,74 @@ class ApiControlPlaneService:
     def shared_contracts_payload(self) -> dict[str, object]:
         """Return the Phase 0 shared contract catalog for cross-surface alignment."""
         return build_shared_contracts_payload(self._settings)
+
+    def inspect_symbol_payload(self, symbol: str) -> dict[str, object]:
+        """Inspect one user-entered symbol against Phase 0 layering semantics."""
+        raw_input = symbol
+        normalized_symbol = symbol.strip().upper()
+        format_valid = bool(ASHARE_SYMBOL_PATTERN.fullmatch(normalized_symbol))
+        venue = normalized_symbol[-2:] if format_valid else None
+
+        layers = {
+            "observed": bool(normalized_symbol),
+            "supported": (
+                normalized_symbol in self._settings.supported_symbols if format_valid else False
+            ),
+            "runtime_enabled": (
+                normalized_symbol in self._settings.symbols if format_valid else False
+            ),
+        }
+        display_name = (
+            self._settings.symbol_names.get(normalized_symbol)
+            if format_valid and normalized_symbol in self._settings.symbol_names
+            else None
+        )
+
+        if not format_valid:
+            reason_code = "INVALID_SYMBOL_FORMAT"
+            message = "代码格式不符合 A 股约定，请使用 6 位数字加 .SH 或 .SZ 后缀。"
+            market = "unknown"
+            market_label = "待确认"
+            venue_label = "待确认"
+        elif layers["runtime_enabled"]:
+            reason_code = "SYMBOL_RUNTIME_ENABLED"
+            message = "该股票代码已进入当前 trader 运行范围，可能影响自动交易判断。"
+            market = "a_share"
+            market_label = "A 股"
+            venue_label = _venue_label(venue)
+        elif layers["supported"]:
+            reason_code = "SYMBOL_SUPPORTED_NOT_RUNTIME"
+            message = "该股票代码已被系统支持，但当前还没有进入 trader 运行范围。"
+            market = "a_share"
+            market_label = "A 股"
+            venue_label = _venue_label(venue)
+        else:
+            reason_code = "SYMBOL_OBSERVED_ONLY"
+            message = "该股票代码当前只处于观察层，可继续校验或纳入后续支持评估。"
+            market = "a_share"
+            market_label = "A 股"
+            venue_label = _venue_label(venue)
+
+        return {
+            "raw_input": raw_input,
+            "normalized_symbol": normalized_symbol,
+            "format_valid": format_valid,
+            "market": market,
+            "market_label": market_label,
+            "venue": venue,
+            "venue_label": venue_label,
+            "display_name": display_name,
+            "name_status": "available" if display_name else "missing",
+            "layers": layers,
+            "reason_code": reason_code,
+            "message": message,
+            "runtime_activation": {
+                "requires_confirmation": True,
+                "phase": "phase_1_preview_only",
+                "can_apply_now": False,
+                "message": "当前前端只提供影响说明，不会直接修改 trader 运行范围。",
+            },
+        }
 
     def positions_payload(self) -> dict[str, object]:
         try:
@@ -1052,6 +1122,14 @@ def _as_shanghai_datetime(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=SHANGHAI_TIMEZONE)
     return value.astimezone(SHANGHAI_TIMEZONE)
+
+
+def _venue_label(venue: str | None) -> str:
+    if venue == "SH":
+        return "上海证券交易所"
+    if venue == "SZ":
+        return "深圳证券交易所"
+    return "待确认"
 
 
 def _build_portfolio_equity_curve_points(

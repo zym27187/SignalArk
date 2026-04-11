@@ -219,6 +219,9 @@ describe("App", () => {
   it("shares the selected symbol across market and research views", async () => {
     render(<App />);
 
+    expect(screen.getByRole("heading", { name: "股票代码管理" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "常见术语" })).toBeInTheDocument();
+
     expect(mockedUseMarketData).toHaveBeenLastCalledWith({
       enabled: false,
       symbol: "600036.SH",

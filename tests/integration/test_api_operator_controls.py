@@ -262,6 +262,90 @@ def test_api_exposes_status_controls_and_cancel_all_boundaries(tmp_path: Path) -
     engine.dispose()
 
 
+def test_api_inspects_symbol_layers_and_validation_state(tmp_path: Path) -> None:
+    from apps.api.main import create_app
+
+    database_url = _database_url(tmp_path)
+    settings = _settings(database_url)
+    app = create_app(settings=settings)
+
+    with TestClient(app) as client:
+        runtime_symbol = client.get("/v1/symbols/inspect", params={"symbol": "600036.sh"})
+        supported_symbol = client.get("/v1/symbols/inspect", params={"symbol": "000001.SZ"})
+        observed_only_symbol = client.get("/v1/symbols/inspect", params={"symbol": "300750.SZ"})
+        invalid_symbol = client.get("/v1/symbols/inspect", params={"symbol": "abc"})
+
+    assert runtime_symbol.status_code == 200
+    assert runtime_symbol.json() == {
+        "raw_input": "600036.sh",
+        "normalized_symbol": "600036.SH",
+        "format_valid": True,
+        "market": "a_share",
+        "market_label": "A 股",
+        "venue": "SH",
+        "venue_label": "上海证券交易所",
+        "display_name": "招商银行",
+        "name_status": "available",
+        "layers": {
+            "observed": True,
+            "supported": True,
+            "runtime_enabled": True,
+        },
+        "reason_code": "SYMBOL_RUNTIME_ENABLED",
+        "message": "该股票代码已进入当前 trader 运行范围，可能影响自动交易判断。",
+        "runtime_activation": {
+            "requires_confirmation": True,
+            "phase": "phase_1_preview_only",
+            "can_apply_now": False,
+            "message": "当前前端只提供影响说明，不会直接修改 trader 运行范围。",
+        },
+    }
+
+    assert supported_symbol.status_code == 200
+    assert supported_symbol.json()["layers"] == {
+        "observed": True,
+        "supported": True,
+        "runtime_enabled": False,
+    }
+    assert supported_symbol.json()["reason_code"] == "SYMBOL_SUPPORTED_NOT_RUNTIME"
+
+    assert observed_only_symbol.status_code == 200
+    assert observed_only_symbol.json()["display_name"] is None
+    assert observed_only_symbol.json()["name_status"] == "missing"
+    assert observed_only_symbol.json()["layers"] == {
+        "observed": True,
+        "supported": False,
+        "runtime_enabled": False,
+    }
+    assert observed_only_symbol.json()["reason_code"] == "SYMBOL_OBSERVED_ONLY"
+
+    assert invalid_symbol.status_code == 200
+    assert invalid_symbol.json() == {
+        "raw_input": "abc",
+        "normalized_symbol": "ABC",
+        "format_valid": False,
+        "market": "unknown",
+        "market_label": "待确认",
+        "venue": None,
+        "venue_label": "待确认",
+        "display_name": None,
+        "name_status": "missing",
+        "layers": {
+            "observed": True,
+            "supported": False,
+            "runtime_enabled": False,
+        },
+        "reason_code": "INVALID_SYMBOL_FORMAT",
+        "message": "代码格式不符合 A 股约定，请使用 6 位数字加 .SH 或 .SZ 后缀。",
+        "runtime_activation": {
+            "requires_confirmation": True,
+            "phase": "phase_1_preview_only",
+            "can_apply_now": False,
+            "message": "当前前端只提供影响说明，不会直接修改 trader 运行范围。",
+        },
+    }
+
+
 def test_api_allows_configured_frontend_origin_via_cors_preflight(tmp_path: Path) -> None:
     from apps.api.main import create_app
 

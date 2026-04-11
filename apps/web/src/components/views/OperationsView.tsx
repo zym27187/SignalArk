@@ -9,7 +9,9 @@ import { OrderHistoryTable } from "../OrderHistoryTable";
 import { OrdersTable } from "../OrdersTable";
 import { PositionsTable } from "../PositionsTable";
 import { SectionCard } from "../SectionCard";
+import { SymbolInspectorPanel } from "../SymbolInspectorPanel";
 import { StatusHero } from "../StatusHero";
+import { TradingGlossaryPanel } from "../TradingGlossaryPanel";
 import { compactId, titleCase } from "../../lib/format";
 import type { DashboardDataState } from "../../hooks/use-dashboard-data";
 import type { SymbolNameMap } from "../../types/api";
@@ -138,6 +140,14 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
         </SectionCard>
 
         <SectionCard
+          eyebrow="股票代码"
+          title="股票代码管理"
+          description="先检查它属于观察层、支持层还是运行层，再决定后续要不要继续推进。"
+        >
+          <SymbolInspectorPanel runtimeSymbols={availableSymbols} symbolNames={symbolNames} />
+        </SectionCard>
+
+        <SectionCard
           eyebrow="查看范围"
           title="筛选条件"
           description="设置时间、标的和状态后，下面各块会一起切到同一批数据。"
@@ -150,6 +160,14 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
             onApply={dashboard.applyActivityFilters}
             onReset={dashboard.resetActivityFilters}
           />
+        </SectionCard>
+
+        <SectionCard
+          eyebrow="名词解释"
+          title="常见术语"
+          description="先理解这些术语在说什么，再看账户和订单数据会更直观。"
+        >
+          <TradingGlossaryPanel />
         </SectionCard>
 
         <SectionCard

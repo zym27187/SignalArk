@@ -43,6 +43,9 @@ describe("ControlPanel", () => {
 
     expect(onAction).not.toHaveBeenCalled();
     expect(screen.getByText("确认开启熔断开关")).toBeInTheDocument();
+    expect(
+      screen.getByText("开启后，系统会阻止新的开仓，只保留减仓或清仓相关动作。"),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /确认执行/ }));
 
@@ -84,6 +87,9 @@ describe("ControlPanel", () => {
     expect(within(resultPanel as HTMLElement).getByText("请求数")).toBeInTheDocument();
     expect(within(resultPanel as HTMLElement).getByText("成功撤单")).toBeInTheDocument();
     expect(within(resultPanel as HTMLElement).getByText("跳过数")).toBeInTheDocument();
+    expect(
+      within(resultPanel as HTMLElement).getByText("这意味着系统已经开始撤销当前排队订单，但保护性减仓单可能继续保留。"),
+    ).toBeInTheDocument();
     expect(within(resultPanel as HTMLElement).getByText("5")).toBeInTheDocument();
     expect(within(resultPanel as HTMLElement).getByText("3")).toBeInTheDocument();
     expect(within(resultPanel as HTMLElement).getByText("2")).toBeInTheDocument();

@@ -115,6 +115,10 @@ def create_app(
     async def shared_contracts() -> dict[str, object]:
         return service.shared_contracts_payload()
 
+    @app.get("/v1/symbols/inspect")
+    async def inspect_symbol(symbol: str) -> dict[str, object]:
+        return service.inspect_symbol_payload(symbol)
+
     @app.get("/v1/positions")
     async def positions() -> dict[str, object]:
         return service.positions_payload()

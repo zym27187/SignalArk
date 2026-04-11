@@ -37,7 +37,10 @@ describe("StatusHero", () => {
 
     expect(screen.getByRole("heading", { name: "交易运行总览" })).toBeInTheDocument();
     expect(
-      screen.getByText("当前已紧急暂停，系统运行中，暂时等待中。自动策略已开启。"),
+      screen.getByText("系统当前处于紧急保护状态。自动策略虽然仍处于开启状态，但新的开仓动作会被拦住。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("当前影响：你仍然可以查看状态、处理撤单和减仓，但不能把系统当成正常自动交易中。"),
     ).toBeInTheDocument();
     expect(screen.getByText("状态读取失败：状态查询失败")).toBeInTheDocument();
     expect(screen.getByText("开发环境")).toBeInTheDocument();
