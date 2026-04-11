@@ -200,6 +200,7 @@ describe("useDashboardData", () => {
             event_id: "event-001",
             event_type: "runtime.ready",
             source: "trader",
+            reason_code: null,
             trader_run_id: "run-001",
             account_id: "paper_account_001",
             exchange: "cn_equity",
@@ -211,6 +212,15 @@ describe("useDashboardData", () => {
             payload_json: { ready: true },
           },
         ],
+        degraded_mode: {
+          status: "normal",
+          reason_code: "LIVE_DATA_READY",
+          message: "当前系统使用真实数据，关键诊断状态没有发现明显降级。",
+          data_source: "eastmoney",
+          effective_at: "2026-04-02T10:00:00+08:00",
+          impact: "runtime bars、replay events 和控制状态可以作为当前值守判断的主要依据。",
+          suggested_action: "继续查看控制台即可。",
+        },
       })
       .mockRejectedValueOnce(new Error("events feed unavailable"));
 
@@ -314,6 +324,15 @@ describe("useDashboardData", () => {
       filters: {},
       count: 0,
       events: [],
+      degraded_mode: {
+        status: "normal",
+        reason_code: "LIVE_DATA_READY",
+        message: "当前系统使用真实数据，关键诊断状态没有发现明显降级。",
+        data_source: "eastmoney",
+        effective_at: "2026-04-02T10:00:00+08:00",
+        impact: "runtime bars、replay events 和控制状态可以作为当前值守判断的主要依据。",
+        suggested_action: "继续查看控制台即可。",
+      },
     });
     mockedPostControlAction.mockResolvedValue({
       accepted: true,
@@ -416,6 +435,15 @@ describe("useDashboardData", () => {
       filters: {},
       count: 0,
       events: [],
+      degraded_mode: {
+        status: "normal",
+        reason_code: "LIVE_DATA_READY",
+        message: "当前系统使用真实数据，关键诊断状态没有发现明显降级。",
+        data_source: "eastmoney",
+        effective_at: "2026-04-02T10:00:00+08:00",
+        impact: "runtime bars、replay events 和控制状态可以作为当前值守判断的主要依据。",
+        suggested_action: "继续查看控制台即可。",
+      },
     });
 
     const { result } = renderHook(() => useDashboardData());

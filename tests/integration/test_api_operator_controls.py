@@ -257,8 +257,11 @@ def test_api_exposes_status_controls_and_cancel_all_boundaries(tmp_path: Path) -
         assert live.json()["status"] == "alive"
         assert ready.json()["status"] == "ready"
         assert ready.json()["lease_owner_instance_id"] == "instance-A"
+        assert ready.json()["degraded_mode"]["status"] == "normal"
+        assert ready.json()["degraded_mode"]["reason_code"] == "LIVE_DATA_READY"
         assert status.json()["control_state"] == "normal"
         assert status.json()["trader_run_id"] == "runtime-run-001"
+        assert status.json()["degraded_mode"]["data_source"] == "eastmoney"
         assert balance_summary.status_code == 200
         assert balance_summary.json()["cash_balance"] == "98000"
         assert balance_summary.json()["available_cash"] == "97500"
@@ -473,6 +476,38 @@ def test_api_records_runtime_symbol_requests_and_exposes_pending_reload_state(
         "requested_runtime_symbols_preview": ["600036.SH", "000001.SZ"],
         "message": "该股票代码的运行范围变更请求已记录，等待 trader 重载后生效。",
     }
+
+
+def test_api_degraded_mode_distinguishes_fixture_data_source(tmp_path: Path) -> None:
+    from apps.api.main import create_app
+
+    database_url = _database_url(tmp_path)
+    settings = Settings(
+        postgres_dsn=database_url,
+        api_port=8010,
+        market_data_source="fixture",
+    )
+    upgrade_database(database_url)
+    app = create_app(settings=settings)
+
+    with TestClient(app) as client:
+        degraded_mode = client.get("/v1/diagnostics/degraded-mode")
+        status = client.get("/v1/status")
+
+    assert degraded_mode.status_code == 200
+    assert degraded_mode.json() == {
+        "status": "fixture",
+        "reason_code": "FIXTURE_DATA_IN_USE",
+        "message": "当前系统正在使用 fixture 行情，诊断和价格只适合演练，不应视为真实市场。",
+        "data_source": "fixture",
+        "effective_at": degraded_mode.json()["effective_at"],
+        "impact": (
+            "你看到的价格、runtime audit 和后续判断都基于示例数据，不适合据此判断真实盘中状态。"
+        ),
+        "suggested_action": "如需确认真实市场状态，请切回 eastmoney 数据源后再查看控制台。",
+    }
+    assert status.status_code == 200
+    assert status.json()["degraded_mode"]["reason_code"] == "FIXTURE_DATA_IN_USE"
 
 
 def test_api_allows_configured_frontend_origin_via_cors_preflight(tmp_path: Path) -> None:

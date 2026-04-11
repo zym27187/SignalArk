@@ -97,4 +97,7 @@ def test_api_replay_events_supports_time_range_trader_run_account_and_symbol_fil
     assert payload["filters"]["account_id"] == settings.account_id
     assert payload["filters"]["symbol"] == "600036.SH"
     assert payload["events"][0]["event_type"] == "reconciliation.drift_detected"
+    assert payload["events"][0]["reason_code"] is None
+    assert payload["degraded_mode"]["status"] == "missing"
+    assert payload["degraded_mode"]["reason_code"] == "MARKET_DATA_MISSING"
     engine.dispose()

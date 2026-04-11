@@ -6,7 +6,7 @@ from typing import Any
 
 from .settings import Settings
 
-V2_SHARED_CONTRACT_VERSION = "v2.phase0.2026-04-11"
+V2_SHARED_CONTRACT_VERSION = "v2.phase3.2026-04-11"
 PHASE_0_SHARED_CONTRACT_ENDPOINT = "/v1/contracts/shared"
 
 CONTROL_ACTION_REASON_OPERATOR_REQUEST = "OPERATOR_REQUEST"
@@ -206,9 +206,7 @@ def _build_symbol_layer_contract(settings: Settings) -> dict[str, object]:
                     if settings.supported_symbols[0] in runtime_set
                     else "SYMBOL_SUPPORTED_NOT_RUNTIME"
                 ),
-                "message": (
-                    "Supported symbol example aligned with the current runtime boundary."
-                ),
+                "message": ("Supported symbol example aligned with the current runtime boundary."),
             },
         ],
     }
@@ -217,7 +215,7 @@ def _build_symbol_layer_contract(settings: Settings) -> dict[str, object]:
 def _build_fact_contracts() -> dict[str, dict[str, Any]]:
     return {
         "balance_summary": {
-            "status": "planned",
+            "status": "active",
             "delivery_phase": "phase_2",
             "owner_plane": "control_plane",
             "machine_fields": [
@@ -227,9 +225,14 @@ def _build_fact_contracts() -> dict[str, dict[str, Any]]:
                 "equity",
                 "as_of_time",
             ],
-            "human_fields": ["summary_message"],
+            "human_fields": [
+                "summary_message",
+                "cash_explanation",
+                "position_explanation",
+                "equity_explanation",
+            ],
+            "current_surface_paths": ["GET /v1/balance/summary"],
             "notes": [
-                "Phase 0 fixes the field semantics but does not add the full balance endpoint yet.",
                 "available_cash and frozen_cash must explain why total cash differs from equity.",
             ],
         },
@@ -284,15 +287,25 @@ def _build_fact_contracts() -> dict[str, dict[str, Any]]:
                 "last_seen_bars",
                 "last_strategy_bars",
             ],
-            "current_surface_paths": ["GET /v1/market/runtime-bars"],
+            "optional_machine_fields": [
+                "degraded_mode.status",
+                "degraded_mode.reason_code",
+                "degraded_mode.data_source",
+            ],
+            "current_surface_paths": [
+                "GET /v1/market/runtime-bars",
+                "MCP get_runtime_bars",
+            ],
             "notes": [
                 "available_streams summarizes per-stream freshness.",
                 "last_seen_bars captures what runtime observed; last_strategy_bars captures what "
                 "was actually forwarded into strategy evaluation.",
+                "Phase 3 adds degraded_mode so runtime audit consumers can see when the audit "
+                "itself should not be treated as fully reliable.",
             ],
         },
         "degraded_mode_status": {
-            "status": "planned",
+            "status": "active",
             "delivery_phase": "phase_3",
             "owner_plane": "control_plane",
             "machine_fields": [
@@ -301,10 +314,43 @@ def _build_fact_contracts() -> dict[str, dict[str, Any]]:
                 "data_source",
                 "effective_at",
             ],
-            "human_fields": ["message"],
+            "human_fields": ["message", "impact", "suggested_action"],
+            "current_surface_paths": [
+                "GET /v1/diagnostics/degraded-mode",
+                "GET /v1/status -> degraded_mode",
+                "GET /v1/market/runtime-bars -> degraded_mode",
+                "GET /v1/diagnostics/replay-events -> degraded_mode",
+                "MCP get_degraded_mode",
+            ],
             "notes": [
-                "Phase 0 fixes the field names and reason code families for later implementation.",
+                "Phase 3 activates the degraded mode contract across API, MCP, and frontend.",
                 "degraded mode must distinguish fixture data, missing data, and uncertain state.",
+            ],
+        },
+        "diagnostic_replay_summary": {
+            "status": "active",
+            "delivery_phase": "phase_3",
+            "owner_plane": "control_plane",
+            "machine_fields": [
+                "filters",
+                "count",
+                "events.event_type",
+                "events.reason_code",
+                "events.event_time",
+            ],
+            "optional_machine_fields": [
+                "degraded_mode.status",
+                "degraded_mode.reason_code",
+            ],
+            "current_surface_paths": [
+                "GET /v1/diagnostics/replay-events",
+                "MCP replay_events",
+            ],
+            "notes": [
+                (
+                    "Replay consumers should not have to parse payload_json first "
+                    "just to see the primary reason_code."
+                ),
             ],
         },
         "research_manifest_summary": {
@@ -367,8 +413,7 @@ def _build_reason_code_catalog() -> dict[str, list[dict[str, str]]]:
             {
                 "reason_code": "SYMBOL_OBSERVED_ONLY",
                 "meaning": (
-                    "The symbol is tracked or entered but not yet part of "
-                    "supported_symbols."
+                    "The symbol is tracked or entered but not yet part of supported_symbols."
                 ),
             },
             {
@@ -400,6 +445,13 @@ def _build_reason_code_catalog() -> dict[str, list[dict[str, str]]]:
         ],
         "degraded_mode": [
             {
+                "reason_code": "LIVE_DATA_READY",
+                "meaning": (
+                    "The current runtime diagnostics are backed by live data "
+                    "without a known degraded state."
+                ),
+            },
+            {
                 "reason_code": "CONTROL_PLANE_SCHEMA_MISSING",
                 "meaning": "The control-plane persistence schema is not initialized yet.",
             },
@@ -408,34 +460,39 @@ def _build_reason_code_catalog() -> dict[str, list[dict[str, str]]]:
                 "meaning": "Market data is present but too old to trust as fresh runtime input.",
             },
             {
+                "reason_code": "MARKET_DATA_MISSING",
+                "meaning": "No current market data is available for the active runtime state.",
+            },
+            {
                 "reason_code": "LEASE_NOT_HELD",
                 "meaning": "The active runtime no longer owns the account lease.",
             },
             {
                 "reason_code": "PROTECTION_MODE_ACTIVE",
                 "meaning": (
-                    "Trading is constrained because reconciliation or runtime health is "
-                    "not safe."
+                    "Trading is constrained because reconciliation or runtime health is not safe."
                 ),
             },
             {
                 "reason_code": "FIXTURE_DATA_IN_USE",
                 "meaning": "The system is running with fixture data instead of live market data.",
             },
+            {
+                "reason_code": "RUNTIME_STATUS_MISSING",
+                "meaning": "No active trader runtime status is available yet.",
+            },
         ],
         "research": [
             {
                 "reason_code": "RESEARCH_SAMPLE_TOO_SHORT",
                 "meaning": (
-                    "The requested bar window is too short for the intended comparison "
-                    "mode."
+                    "The requested bar window is too short for the intended comparison mode."
                 ),
             },
             {
                 "reason_code": "RESEARCH_DATA_UNAVAILABLE",
                 "meaning": (
-                    "No finalized bars are available to build the requested research "
-                    "snapshot."
+                    "No finalized bars are available to build the requested research snapshot."
                 ),
             },
         ],

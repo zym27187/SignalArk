@@ -83,6 +83,15 @@ describe("App", () => {
             "600036.SH": "招商银行",
             "000001.SZ": "平安银行",
           },
+          degraded_mode: {
+            status: "normal",
+            reason_code: "LIVE_DATA_READY",
+            message: "当前系统使用真实数据，关键诊断状态没有发现明显降级。",
+            data_source: "eastmoney",
+            effective_at: "2026-04-02T10:00:00+08:00",
+            impact: "runtime bars、replay events 和控制状态可以作为当前值守判断的主要依据。",
+            suggested_action: "继续查看当前控制台即可。",
+          },
         },
         positions: [],
         orders: [],
@@ -132,6 +141,15 @@ describe("App", () => {
           available_streams: [],
           last_seen_bars: [],
           last_strategy_bars: [],
+          degraded_mode: {
+            status: "normal",
+            reason_code: "LIVE_DATA_READY",
+            message: "当前系统使用真实数据，关键诊断状态没有发现明显降级。",
+            data_source: "eastmoney",
+            effective_at: "2026-04-02T10:00:00+08:00",
+            impact: "runtime bars、replay events 和控制状态可以作为当前值守判断的主要依据。",
+            suggested_action: "继续查看当前控制台即可。",
+          },
         },
         sectionErrors: {},
         fetchedAt: null,
@@ -291,6 +309,142 @@ describe("App", () => {
     });
     expect(screen.getByText(/paper_account_001 \/ 平安银行 \(000001\.SZ\)/)).toBeInTheDocument();
     expect(screen.getByText("模型实验台")).toBeInTheDocument();
+  });
+
+  it("shows explicit degraded-mode guidance in the market view", async () => {
+    mockedUseDashboardData.mockReturnValue({
+      snapshot: {
+        status: {
+          trader_run_id: "run-001",
+          instance_id: "instance-A",
+          account_id: "paper_account_001",
+          control_state: "normal",
+          strategy_enabled: true,
+          kill_switch_active: false,
+          protection_mode_active: false,
+          ready: false,
+          status: "not_ready",
+          health_status: "alive",
+          lifecycle_status: "running",
+          market_data_fresh: false,
+          market_state_available: true,
+          latest_final_bar_time: null,
+          current_trading_phase: "CONTINUOUS_AUCTION",
+          lease_owner_instance_id: "instance-A",
+          lease_expires_at: "2026-04-02T10:00:15+08:00",
+          last_heartbeat_at: "2026-04-02T10:00:05+08:00",
+          fencing_token: 3,
+          env: "dev",
+          execution_mode: "paper",
+          exchange: "cn_equity",
+          symbols: ["600036.SH", "000001.SZ"],
+          symbol_names: {
+            "600036.SH": "招商银行",
+            "000001.SZ": "平安银行",
+          },
+          degraded_mode: {
+            status: "fixture",
+            reason_code: "FIXTURE_DATA_IN_USE",
+            message: "当前系统正在使用 fixture 行情，诊断和价格只适合演练，不应视为真实市场。",
+            data_source: "fixture",
+            effective_at: "2026-04-02T10:00:00+08:00",
+            impact: "你看到的价格、runtime audit 和后续判断都基于示例数据，不适合据此判断真实盘中状态。",
+            suggested_action: "如需确认真实市场状态，请切回 eastmoney 数据源后再查看控制台。",
+          },
+        },
+        positions: [],
+        orders: [],
+        orderHistory: [],
+        fills: [],
+        events: [],
+        sectionErrors: {},
+        fetchedAt: "2026-04-02T10:00:00+08:00",
+        balanceSummary: {
+          account_id: "paper_account_001",
+          cash_balance: "98000",
+          available_cash: "97500",
+          frozen_cash: "500",
+          market_value: "0",
+          equity: "98000",
+          unrealized_pnl: "0",
+          realized_pnl: "0",
+          position_count: 0,
+          cash_as_of_time: "2026-04-02T10:00:00+08:00",
+          positions_as_of_time: null,
+          as_of_time: "2026-04-02T10:00:00+08:00",
+          summary_message: "当前没有持仓，账户权益等于现金余额。",
+          cash_explanation: "cash",
+          position_explanation: "position",
+          equity_explanation: "equity",
+        },
+      },
+      isLoading: false,
+      isRefreshing: false,
+      pendingAction: null,
+      lastActionResult: null,
+      activityFilters: {
+        symbol: "",
+        status: "",
+        orderId: "",
+        traderRunId: "",
+        startTime: "",
+        endTime: "",
+        limit: 12,
+      },
+      refresh: vi.fn(),
+      applyActivityFilters: vi.fn(),
+      resetActivityFilters: vi.fn(),
+      performAction: vi.fn(),
+    });
+    mockedUseMarketData.mockImplementation(() => ({
+      snapshot: {
+        symbol: null,
+        timeframe: null,
+        bars: [],
+        equityCurve: [],
+        runtimeBars: {
+          filters: {},
+          source: "trader_runtime_status",
+          trader_run_id: null,
+          instance_id: null,
+          lifecycle_status: null,
+          health_status: null,
+          readiness_status: null,
+          updated_at: null,
+          count: {
+            last_seen: 0,
+            last_strategy: 0,
+          },
+          available_streams: [],
+          last_seen_bars: [],
+          last_strategy_bars: [],
+          degraded_mode: {
+            status: "fixture",
+            reason_code: "FIXTURE_DATA_IN_USE",
+            message: "当前系统正在使用 fixture 行情，诊断和价格只适合演练，不应视为真实市场。",
+            data_source: "fixture",
+            effective_at: "2026-04-02T10:00:00+08:00",
+            impact: "你看到的价格、runtime audit 和后续判断都基于示例数据，不适合据此判断真实盘中状态。",
+            suggested_action: "如需确认真实市场状态，请切回 eastmoney 数据源后再查看控制台。",
+          },
+        },
+        sectionErrors: {},
+        fetchedAt: null,
+      },
+      isLoading: false,
+      isRefreshing: false,
+      refresh: vi.fn(),
+    }));
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /市场/ }));
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#market");
+    });
+
+    expect(screen.getByText("当前系统正在使用 fixture 行情，诊断和价格只适合演练，不应视为真实市场。")).toBeInTheDocument();
+    expect(screen.getByText(/如需确认真实市场状态，请切回 eastmoney 数据源后再查看控制台。/)).toBeInTheDocument();
   });
 
   it("switches baseline research between evaluation and preview modes", async () => {

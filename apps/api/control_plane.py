@@ -114,7 +114,7 @@ class ApiControlPlaneService:
 
     def _default_status_payload(self, *, message: str | None = None) -> dict[str, object]:
         """Keep `/health/ready` and `/v1/status` shape stable during empty-state startup."""
-        return {
+        payload = {
             "trader_run_id": None,
             "instance_id": None,
             "account_id": self._settings.account_id,
@@ -138,6 +138,12 @@ class ApiControlPlaneService:
             "cancel_all_token": 0,
             "message": message,
         }
+        payload["degraded_mode"] = _build_fallback_degraded_mode_payload(
+            settings=self._settings,
+            effective_at=shanghai_now().isoformat(),
+            message=message,
+        )
+        return payload
 
     def live_payload(self) -> dict[str, object]:
         database_connected = False
@@ -153,13 +159,27 @@ class ApiControlPlaneService:
 
     def ready_payload(self) -> dict[str, object]:
         try:
-            return self._control_store.build_status_view(
+            return self._status_view_with_diagnostics()
+        except Exception as exc:
+            return self._default_status_payload(message=str(exc))
+
+    def degraded_mode_payload(self) -> dict[str, object]:
+        try:
+            status_payload = self._control_store.build_status_view(
                 account_id=self._settings.account_id,
                 timeframe=self._settings.primary_timeframe,
                 market_stale_threshold_seconds=self._settings.market_stale_threshold_seconds,
             )
+            return _build_degraded_mode_payload(
+                settings=self._settings,
+                status_payload=status_payload,
+            )
         except Exception as exc:
-            return self._default_status_payload(message=str(exc))
+            return _build_fallback_degraded_mode_payload(
+                settings=self._settings,
+                effective_at=shanghai_now().isoformat(),
+                message=str(exc),
+            )
 
     def status_payload(self) -> dict[str, object]:
         payload = self.ready_payload()
@@ -172,6 +192,18 @@ class ApiControlPlaneService:
                 "symbols": self._settings.symbols,
                 "symbol_names": self._settings.symbol_names,
             }
+        )
+        return payload
+
+    def _status_view_with_diagnostics(self) -> dict[str, object]:
+        payload = self._control_store.build_status_view(
+            account_id=self._settings.account_id,
+            timeframe=self._settings.primary_timeframe,
+            market_stale_threshold_seconds=self._settings.market_stale_threshold_seconds,
+        )
+        payload["degraded_mode"] = _build_degraded_mode_payload(
+            settings=self._settings,
+            status_payload=payload,
         )
         return payload
 
@@ -733,6 +765,7 @@ class ApiControlPlaneService:
                 symbol=normalized_symbol,
                 timeframe=normalized_timeframe,
             ),
+            "degraded_mode": self.degraded_mode_payload(),
         }
 
     async def equity_curve_payload(
@@ -1173,7 +1206,14 @@ class ApiControlPlaneService:
         return {
             "filters": filters.model_dump(mode="json"),
             "count": len(events),
-            "events": [event.model_dump(mode="json") for event in events],
+            "events": [
+                {
+                    **event.model_dump(mode="json"),
+                    "reason_code": _extract_event_reason_code(event.payload_json),
+                }
+                for event in events
+            ],
+            "degraded_mode": self.degraded_mode_payload(),
         }
 
     def _resolve_symbol(self, symbol: str | None) -> str:
@@ -1274,6 +1314,173 @@ class ApiControlPlaneService:
                 details=details,
             )
         return response
+
+
+def _build_degraded_mode_payload(
+    *,
+    settings: Settings,
+    status_payload: dict[str, object],
+) -> dict[str, object]:
+    effective_at = str(status_payload.get("as_of") or shanghai_now().isoformat())
+    control_state = str(status_payload.get("control_state") or "normal")
+    instance_id = status_payload.get("instance_id")
+    lease_owner_instance_id = status_payload.get("lease_owner_instance_id")
+    trader_run_id = status_payload.get("trader_run_id")
+    lifecycle_status = str(status_payload.get("lifecycle_status") or "stopped")
+    market_data_fresh = bool(status_payload.get("market_data_fresh"))
+    latest_final_bar_time = status_payload.get("latest_final_bar_time")
+
+    if settings.market_data_source == "fixture":
+        return {
+            "status": "fixture",
+            "reason_code": "FIXTURE_DATA_IN_USE",
+            "message": "当前系统正在使用 fixture 行情，诊断和价格只适合演练，不应视为真实市场。",
+            "data_source": "fixture",
+            "effective_at": effective_at,
+            "impact": (
+                "你看到的价格、runtime audit 和后续判断都基于示例数据，不适合据此判断真实盘中状态。"
+            ),
+            "suggested_action": "如需确认真实市场状态，请切回 eastmoney 数据源后再查看控制台。",
+        }
+
+    if control_state == "protection_mode" or bool(status_payload.get("protection_mode_active")):
+        return {
+            "status": "degraded",
+            "reason_code": "PROTECTION_MODE_ACTIVE",
+            "message": "系统当前处于 protection mode，交易动作已经被收紧。",
+            "data_source": settings.market_data_source,
+            "effective_at": effective_at,
+            "impact": (
+                "自动交易虽然可能仍在运行，但新的动作会被更保守地限制，不能把系统当成完全正常状态。"
+            ),
+            "suggested_action": (
+                "先查看 replay events 和 runtime bars，"
+                "确认是 reconciliation 还是 runtime 健康问题触发了保护模式。"
+            ),
+        }
+
+    if (
+        instance_id is not None
+        and lifecycle_status == "running"
+        and lease_owner_instance_id != instance_id
+    ):
+        return {
+            "status": "degraded",
+            "reason_code": "LEASE_NOT_HELD",
+            "message": "当前 trader 不再持有账户 lease，运行状态不能再被当成可安全提交新单。",
+            "data_source": settings.market_data_source,
+            "effective_at": effective_at,
+            "impact": "即使页面还能看到历史状态，也不能假设当前实例仍然拥有提交新订单的资格。",
+            "suggested_action": (
+                "先确认当前 lease owner，再决定是否需要等待恢复或人工切换运行实例。"
+            ),
+        }
+
+    if not market_data_fresh:
+        if latest_final_bar_time is None:
+            return {
+                "status": "missing",
+                "reason_code": "MARKET_DATA_MISSING",
+                "message": "当前还没有拿到可用的最新行情，系统无法确认盘中状态是否可信。",
+                "data_source": "missing",
+                "effective_at": effective_at,
+                "impact": (
+                    "页面上的大部分市场相关解释只能基于历史或空状态，不应被当成实时判断依据。"
+                ),
+                "suggested_action": (
+                    "先检查 collector、市场数据源配置和 runtime bar audit，"
+                    "确认为什么没有任何最新 bar。"
+                ),
+            }
+        return {
+            "status": "degraded",
+            "reason_code": "MARKET_DATA_STALE",
+            "message": "当前行情存在但已经不新鲜，系统读取到的盘中状态可能落后于真实市场。",
+            "data_source": settings.market_data_source,
+            "effective_at": effective_at,
+            "impact": (
+                "你仍然可以查看历史轨迹，但不能把当前价格、权益变化和自动判断当成最新盘中事实。"
+            ),
+            "suggested_action": (
+                "优先查看 runtime bar audit 的最后时间，并确认 collector 是否持续产出 closed bar。"
+            ),
+        }
+
+    if trader_run_id is None or lifecycle_status != "running":
+        return {
+            "status": "missing",
+            "reason_code": "RUNTIME_STATUS_MISSING",
+            "message": "当前还没有活跃 trader runtime 状态，控制台只能显示配置和历史事实。",
+            "data_source": "missing",
+            "effective_at": effective_at,
+            "impact": "当前页面不能证明交易链路正在正常跑，只能说明控制面本身还能访问。",
+            "suggested_action": (
+                "先确认 trader 进程是否已启动、是否成功绑定 runtime status，并再刷新控制台。"
+            ),
+        }
+
+    return {
+        "status": "normal",
+        "reason_code": "LIVE_DATA_READY",
+        "message": "当前系统使用真实数据，关键诊断状态没有发现明显降级。",
+        "data_source": settings.market_data_source,
+        "effective_at": effective_at,
+        "impact": "runtime bars、replay events 和控制状态可以作为当前值守判断的主要依据。",
+        "suggested_action": "继续按当前控制台查看持仓、订单、事件和 runtime audit 即可。",
+    }
+
+
+def _build_fallback_degraded_mode_payload(
+    *,
+    settings: Settings,
+    effective_at: str,
+    message: str | None,
+) -> dict[str, object]:
+    if message and "missing required tables" in message.lower():
+        return {
+            "status": "degraded",
+            "reason_code": "CONTROL_PLANE_SCHEMA_MISSING",
+            "message": (
+                "控制面 schema 还没有初始化完成，当前状态只代表服务可访问，不代表诊断事实完整。"
+            ),
+            "data_source": "unknown",
+            "effective_at": effective_at,
+            "impact": "很多运行状态、lease 和诊断数据还无法可靠读取，因此页面上的结论不完整。",
+            "suggested_action": "先执行数据库 migration，再重新读取控制面状态。",
+        }
+
+    return {
+        "status": "missing",
+        "reason_code": "RUNTIME_STATUS_MISSING",
+        "message": message or "当前还没有可用的 runtime 诊断状态。",
+        "data_source": ("fixture" if settings.market_data_source == "fixture" else "missing"),
+        "effective_at": effective_at,
+        "impact": "当前只能看到部分控制面信息，不能据此判断完整的 runtime 健康状态。",
+        "suggested_action": "先确认 trader 运行状态和数据源连通性，再重新刷新控制台。",
+    }
+
+
+def _extract_event_reason_code(payload: dict[str, object] | None) -> str | None:
+    if not payload:
+        return None
+
+    reason_code = payload.get("reason_code")
+    if isinstance(reason_code, str) and reason_code.strip():
+        return reason_code
+
+    risk_result = payload.get("risk_result")
+    if isinstance(risk_result, dict):
+        nested_reason_code = risk_result.get("reason_code")
+        if isinstance(nested_reason_code, str) and nested_reason_code.strip():
+            return nested_reason_code
+
+    diagnostics = payload.get("diagnostics")
+    if isinstance(diagnostics, dict):
+        nested_reason_code = diagnostics.get("reason_code")
+        if isinstance(nested_reason_code, str) and nested_reason_code.strip():
+            return nested_reason_code
+
+    return None
 
 
 def _build_runtime_activation_payload(

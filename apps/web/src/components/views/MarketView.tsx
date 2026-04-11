@@ -1,6 +1,7 @@
 import { AreaChart } from "../AreaChart";
 import { CandlestickChart } from "../CandlestickChart";
 import { DatasetSwitcher } from "../DatasetSwitcher";
+import { DegradedModeCallout } from "../DegradedModeCallout";
 import { DefinitionGrid } from "../DefinitionGrid";
 import { MetricCard } from "../MetricCard";
 import { SectionCard } from "../SectionCard";
@@ -76,6 +77,9 @@ export function MarketView({
     fallbackSnapshot.sourceLabel,
   );
   const runtimeAudit = marketData.snapshot.runtimeBars;
+  const degradedMode = marketData.isLoading
+    ? status?.degraded_mode ?? runtimeAudit.degraded_mode ?? null
+    : runtimeAudit.degraded_mode ?? status?.degraded_mode ?? null;
   const runtimeSeenBar = runtimeAudit.last_seen_bars[0] ?? null;
   const runtimeStrategyBar = runtimeAudit.last_strategy_bars[0] ?? null;
   const sessionMove = lastBar.close - firstBar.open;
@@ -152,6 +156,12 @@ export function MarketView({
           tone="default"
         />
       </section>
+
+      <DegradedModeCallout
+        diagnostics={degradedMode}
+        title="市场与诊断状态"
+        alwaysShow
+      />
 
       <section className="page-grid">
         <div className="page-grid__main">

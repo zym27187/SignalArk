@@ -118,6 +118,7 @@ export interface StatusPayload {
   exchange?: string;
   symbols?: string[];
   symbol_names?: SymbolNameMap;
+  degraded_mode?: DegradedModeStatusPayload;
 }
 
 export interface Position {
@@ -266,6 +267,7 @@ export interface ReplayEvent {
   event_id: string;
   event_type: string;
   source: string;
+  reason_code: string | null;
   trader_run_id: string | null;
   account_id: string | null;
   exchange: string | null;
@@ -281,6 +283,7 @@ export interface ReplayEventsPayload {
   filters: Record<string, unknown>;
   count: number;
   events: ReplayEvent[];
+  degraded_mode: DegradedModeStatusPayload;
 }
 
 export interface BalanceSummaryPayload {
@@ -359,6 +362,17 @@ export interface RuntimeBarsPayload {
   available_streams: RuntimeBarStreamSummary[];
   last_seen_bars: RuntimeBarSnapshot[];
   last_strategy_bars: RuntimeBarSnapshot[];
+  degraded_mode: DegradedModeStatusPayload;
+}
+
+export interface DegradedModeStatusPayload {
+  status: string;
+  reason_code: string;
+  message: string;
+  data_source: string;
+  effective_at: string;
+  impact: string;
+  suggested_action: string;
 }
 
 export interface EquityCurvePayload {

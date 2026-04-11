@@ -82,6 +82,7 @@ def test_api_read_endpoints_return_empty_payloads_before_core_tables_exist(
         with TestClient(app) as client:
             ready = client.get("/health/ready")
             status = client.get("/v1/status")
+            degraded_mode = client.get("/v1/diagnostics/degraded-mode")
             positions = client.get("/v1/positions")
             active_orders = client.get("/v1/orders/active")
             order_history = client.get("/v1/orders/history", params={"limit": 20})
@@ -91,7 +92,7 @@ def test_api_read_endpoints_return_empty_payloads_before_core_tables_exist(
             replay_events = client.get("/v1/diagnostics/replay-events", params={"limit": 20})
 
         assert ready.status_code == 200
-        assert ready.json() == {
+        expected_ready = {
             "trader_run_id": None,
             "instance_id": None,
             "account_id": settings.account_id,
@@ -113,23 +114,46 @@ def test_api_read_endpoints_return_empty_payloads_before_core_tables_exist(
             "fencing_token": None,
             "last_cancel_all_at": None,
             "cancel_all_token": 0,
-            "message": (
-                "Control-plane schema is missing required tables: "
-                "research_ai_settings, trader_account_leases, trader_controls, "
-                "trader_runtime_status. "
-                "Run `.venv/bin/alembic -c migrations/alembic.ini upgrade head` first."
-            ),
+                "message": (
+                    "Control-plane schema is missing required tables: "
+                    "research_ai_settings, runtime_symbol_requests, "
+                    "trader_account_leases, trader_controls, trader_runtime_status. "
+                    "Run `.venv/bin/alembic -c migrations/alembic.ini upgrade head` first."
+                ),
+            "degraded_mode": {
+                "status": "degraded",
+                "reason_code": "CONTROL_PLANE_SCHEMA_MISSING",
+                "message": (
+                    "控制面 schema 还没有初始化完成，当前状态只代表服务可访问，不代表诊断事实完整。"
+                ),
+                "data_source": "unknown",
+                "effective_at": ready.json()["degraded_mode"]["effective_at"],
+                "impact": "很多运行状态、lease 和诊断数据还无法可靠读取，因此页面上的结论不完整。",
+                "suggested_action": "先执行数据库 migration，再重新读取控制面状态。",
+            },
         }
+        assert ready.json() == expected_ready
 
         assert status.status_code == 200
-        assert status.json() == {
-            **ready.json(),
+        expected_status = {
+            **expected_ready,
+            "degraded_mode": {
+                **expected_ready["degraded_mode"],
+                "effective_at": status.json()["degraded_mode"]["effective_at"],
+            },
             "service": settings.app_name,
             "env": settings.env,
             "execution_mode": settings.execution_mode,
             "exchange": settings.exchange,
             "symbols": settings.symbols,
             "symbol_names": settings.symbol_names,
+        }
+        assert status.json() == expected_status
+
+        assert degraded_mode.status_code == 200
+        assert degraded_mode.json() == {
+            **expected_ready["degraded_mode"],
+            "effective_at": degraded_mode.json()["effective_at"],
         }
 
         assert positions.status_code == 200
@@ -209,6 +233,10 @@ def test_api_read_endpoints_return_empty_payloads_before_core_tables_exist(
         assert replay_events.json()["filters"]["account_id"] == settings.account_id
         assert replay_events.json()["count"] == 0
         assert replay_events.json()["events"] == []
+        assert replay_events.json()["degraded_mode"] == {
+            **expected_ready["degraded_mode"],
+            "effective_at": replay_events.json()["degraded_mode"]["effective_at"],
+        }
         assert inspect(engine).get_table_names() == []
     finally:
         get_settings.cache_clear()

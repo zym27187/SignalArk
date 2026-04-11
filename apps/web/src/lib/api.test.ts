@@ -6,6 +6,7 @@ import {
   DEFAULT_AI_RESEARCH_PREVIEW_LIMIT,
   DEFAULT_AI_RESEARCH_LOOKBACK_BARS,
   fetchBalanceSummary,
+  fetchDegradedMode,
   fetchResearchAiSettings,
   fetchFillHistory,
   fetchMarketBars,
@@ -85,6 +86,15 @@ describe("api helpers", () => {
           available_streams: [],
           last_seen_bars: [],
           last_strategy_bars: [],
+          degraded_mode: {
+            status: "normal",
+            reason_code: "LIVE_DATA_READY",
+            message: "当前系统使用真实数据，关键诊断状态没有发现明显降级。",
+            data_source: "eastmoney",
+            effective_at: "2026-04-03T09:45:00+08:00",
+            impact: "runtime bars、replay events 和控制状态可以作为当前值守判断的主要依据。",
+            suggested_action: "继续查看控制台即可。",
+          },
         }),
         {
           status: 200,
@@ -282,6 +292,37 @@ describe("api helpers", () => {
     );
   });
 
+  it("loads the degraded-mode fact from the dedicated endpoint", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "fixture",
+          reason_code: "FIXTURE_DATA_IN_USE",
+          message: "当前系统正在使用 fixture 行情，诊断和价格只适合演练，不应视为真实市场。",
+          data_source: "fixture",
+          effective_at: "2026-04-11T10:10:00+08:00",
+          impact: "你看到的价格、runtime audit 和后续判断都基于示例数据，不适合据此判断真实盘中状态。",
+          suggested_action: "如需确认真实市场状态，请切回 eastmoney 数据源后再查看控制台。",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await fetchDegradedMode();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/diagnostics/degraded-mode",
+      expect.objectContaining({
+        headers: {
+          Accept: "application/json",
+        },
+      }),
+    );
+  });
+
   it("posts runtime-symbol requests as JSON", async () => {
     fetchMock.mockResolvedValue(
       new Response(
@@ -385,6 +426,15 @@ describe("api helpers", () => {
             filters: {},
             count: 0,
             events: [],
+            degraded_mode: {
+              status: "normal",
+              reason_code: "LIVE_DATA_READY",
+              message: "当前系统使用真实数据，关键诊断状态没有发现明显降级。",
+              data_source: "eastmoney",
+              effective_at: "2026-04-03T09:45:00+08:00",
+              impact: "runtime bars、replay events 和控制状态可以作为当前值守判断的主要依据。",
+              suggested_action: "继续查看控制台即可。",
+            },
           }),
           {
             status: 200,

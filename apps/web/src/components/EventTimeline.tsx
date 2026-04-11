@@ -39,6 +39,9 @@ export function EventTimeline({ events, symbolNames, error }: EventTimelineProps
               <p className="event-list__meta">
                 来源 {event.source} · {formatSymbolLabel(event.symbol, symbolNames, "账户")} · 批次 {compactId(event.trader_run_id)}
               </p>
+              {event.reason_code ? (
+                <p className="event-list__meta">原因分类：{titleCase(event.reason_code)}</p>
+              ) : null}
               <p className="event-list__payload">{summarizePayload(event.payload_json)}</p>
             </li>
           ))}

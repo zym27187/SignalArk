@@ -29,6 +29,15 @@ describe("StatusHero", () => {
           fencing_token: 3,
           env: "dev",
           execution_mode: "paper",
+          degraded_mode: {
+            status: "degraded",
+            reason_code: "MARKET_DATA_STALE",
+            message: "当前行情存在但已经不新鲜，系统读取到的盘中状态可能落后于真实市场。",
+            data_source: "eastmoney",
+            effective_at: "2026-04-02T10:00:00+08:00",
+            impact: "你仍然可以查看历史轨迹，但不能把当前价格、权益变化和自动判断当成最新盘中事实。",
+            suggested_action: "优先查看 runtime bar audit 的最后时间，并确认 collector 是否持续产出 closed bar。",
+          },
         }}
         isLoading={false}
         error="状态查询失败"
@@ -37,10 +46,16 @@ describe("StatusHero", () => {
 
     expect(screen.getByRole("heading", { name: "交易运行总览" })).toBeInTheDocument();
     expect(
-      screen.getByText("系统当前处于紧急保护状态。自动策略虽然仍处于开启状态，但新的开仓动作会被拦住。"),
+      screen.getByText("系统当前存在明确的诊断降级，下面会直接说明原因、影响和建议动作。"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("当前影响：你仍然可以查看状态、处理撤单和减仓，但不能把系统当成正常自动交易中。"),
+      screen.getByText("当前行情存在但已经不新鲜，系统读取到的盘中状态可能落后于真实市场。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("当前影响：你仍然可以查看历史轨迹，但不能把当前价格、权益变化和自动判断当成最新盘中事实。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("建议动作：优先查看 runtime bar audit 的最后时间，并确认 collector 是否持续产出 closed bar。"),
     ).toBeInTheDocument();
     expect(screen.getByText("状态读取失败：状态查询失败")).toBeInTheDocument();
     expect(screen.getByText("开发环境")).toBeInTheDocument();

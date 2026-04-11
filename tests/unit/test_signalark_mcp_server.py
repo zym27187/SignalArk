@@ -18,7 +18,31 @@ from src.shared.types import SHANGHAI_TIMEZONE
 
 class StubControlPlaneService:
     def status_payload(self) -> dict[str, object]:
-        return {"status": "ready", "account_id": "paper_account_001", "ready": True}
+        return {
+            "status": "ready",
+            "account_id": "paper_account_001",
+            "ready": True,
+            "degraded_mode": {
+                "status": "normal",
+                "reason_code": "LIVE_DATA_READY",
+                "message": "当前系统使用真实数据，关键诊断状态没有发现明显降级。",
+                "data_source": "eastmoney",
+                "effective_at": "2026-04-11T09:00:00+08:00",
+                "impact": "runtime bars、replay events 和控制状态可以作为当前值守判断的主要依据。",
+                "suggested_action": "继续查看当前控制台即可。",
+            },
+        }
+
+    def degraded_mode_payload(self) -> dict[str, object]:
+        return {
+            "status": "normal",
+            "reason_code": "LIVE_DATA_READY",
+            "message": "当前系统使用真实数据，关键诊断状态没有发现明显降级。",
+            "data_source": "eastmoney",
+            "effective_at": "2026-04-11T09:00:00+08:00",
+            "impact": "runtime bars、replay events 和控制状态可以作为当前值守判断的主要依据。",
+            "suggested_action": "继续查看当前控制台即可。",
+        }
 
     def shared_contracts_payload(self) -> dict[str, object]:
         return {
@@ -40,10 +64,32 @@ class StubControlPlaneService:
         return {"account_id": "paper_account_001", "orders": []}
 
     def replay_events_payload(self, **_: object) -> dict[str, object]:
-        return {"filters": {}, "count": 0, "events": []}
+        return {
+            "filters": {},
+            "count": 0,
+            "events": [],
+            "degraded_mode": self.degraded_mode_payload(),
+        }
 
     async def market_bars_payload(self, **_: object) -> dict[str, object]:
         return {"symbol": "600036.SH", "timeframe": "15m", "count": 1, "bars": []}
+
+    def market_runtime_bars_payload(self, **_: object) -> dict[str, object]:
+        return {
+            "filters": {},
+            "source": "trader_runtime_status",
+            "trader_run_id": "run-001",
+            "instance_id": "instance-A",
+            "lifecycle_status": "running",
+            "health_status": "alive",
+            "readiness_status": "ready",
+            "updated_at": "2026-04-11T09:00:00+08:00",
+            "count": {"last_seen": 1, "last_strategy": 1},
+            "available_streams": [],
+            "last_seen_bars": [],
+            "last_strategy_bars": [],
+            "degraded_mode": self.degraded_mode_payload(),
+        }
 
     async def research_snapshot_payload(self, **_: object) -> dict[str, object]:
         return {"sourceMode": "live", "manifest": {"symbols": ["600036.SH"]}}
@@ -107,6 +153,8 @@ def test_signalark_mcp_server_initializes_and_lists_tools(tmp_path: Path) -> Non
     assert tools_response is not None
     names = [tool["name"] for tool in tools_response["result"]["tools"]]
     assert "get_shared_contracts" in names
+    assert "get_degraded_mode" in names
+    assert "get_runtime_bars" in names
     assert "list_order_history" in names
     assert "run_research_snapshot" in names
 
@@ -164,18 +212,29 @@ def test_market_and_research_tools_delegate_to_control_plane_service(tmp_path: P
     backend = _make_backend(tmp_path, create_tables=False, service=StubControlPlaneService())
 
     shared_contracts_result = asyncio.run(backend.call_tool("get_shared_contracts", {}))
+    degraded_mode_result = asyncio.run(backend.call_tool("get_degraded_mode", {}))
     market_result = asyncio.run(
         backend.call_tool("get_market_bars", {"symbol": "600036.SH", "limit": 1})
+    )
+    runtime_bars_result = asyncio.run(
+        backend.call_tool("get_runtime_bars", {"symbol": "600036.SH", "timeframe": "15m"})
     )
     research_result = asyncio.run(
         backend.call_tool("run_research_snapshot", {"symbol": "600036.SH", "limit": 10})
     )
 
     assert shared_contracts_result["isError"] is False
+    assert degraded_mode_result["isError"] is False
     assert market_result["isError"] is False
+    assert runtime_bars_result["isError"] is False
     assert research_result["isError"] is False
     assert _decode_tool_payload(shared_contracts_result)["phase"] == "phase_0"
+    assert _decode_tool_payload(degraded_mode_result)["reason_code"] == "LIVE_DATA_READY"
     assert _decode_tool_payload(market_result)["count"] == 1
+    assert (
+        _decode_tool_payload(runtime_bars_result)["degraded_mode"]["reason_code"]
+        == "LIVE_DATA_READY"
+    )
     assert _decode_tool_payload(research_result)["sourceMode"] == "live"
 
 

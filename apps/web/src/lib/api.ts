@@ -2,6 +2,7 @@ import type {
   ActiveOrdersPayload,
   BalanceSummaryPayload,
   ControlActionResponse,
+  DegradedModeStatusPayload,
   EquityCurvePayload,
   FillHistoryPayload,
   MarketBarsPayload,
@@ -133,6 +134,10 @@ export async function fetchStatus(): Promise<StatusPayload> {
 
 export async function fetchBalanceSummary(): Promise<BalanceSummaryPayload> {
   return requestJson<BalanceSummaryPayload>("/v1/balance/summary");
+}
+
+export async function fetchDegradedMode(): Promise<DegradedModeStatusPayload> {
+  return requestJson<DegradedModeStatusPayload>("/v1/diagnostics/degraded-mode");
 }
 
 export async function fetchSharedContracts(): Promise<SharedContractsPayload> {

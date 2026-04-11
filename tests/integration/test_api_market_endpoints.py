@@ -266,7 +266,10 @@ def test_api_market_endpoints_return_live_bars_and_reconstructed_equity_curve(
     upgrade_database(database_url)
     engine = create_database_engine(database_url)
     session_factory = create_session_factory(engine)
-    control_store = TraderControlPlaneStore(session_factory)
+    control_store = TraderControlPlaneStore(
+        session_factory,
+        clock=lambda: BUY_TIME + timedelta(minutes=1),
+    )
 
     with session_factory.begin() as session:
         repositories = SqlAlchemyRepositories.from_session(session)
@@ -298,6 +301,12 @@ def test_api_market_endpoints_return_live_bars_and_reconstructed_equity_curve(
     runtime_event = bars_15m[-1].to_bar_event()
     runtime_state.record_seen_bar(runtime_event)
     runtime_state.record_strategy_bar(runtime_event)
+    lease_result = control_store.acquire_lease(
+        account_id=settings.account_id,
+        instance_id=runtime_state.instance_id,
+        ttl_seconds=settings.lease_ttl_seconds,
+        now=runtime_event.ingest_time,
+    )
     control_store.save_runtime_status(
         TraderRuntimeStatusSnapshot(
             account_id=settings.account_id,
@@ -321,7 +330,7 @@ def test_api_market_endpoints_return_live_bars_and_reconstructed_equity_curve(
                 stream_key: dict(snapshot)
                 for stream_key, snapshot in runtime_state.last_strategy_bars_by_stream.items()
             },
-            fencing_token=3,
+            fencing_token=lease_result.snapshot.fencing_token,
             last_status_message="bar_observed",
             updated_at=runtime_event.ingest_time,
         )
@@ -498,6 +507,15 @@ def test_api_market_endpoints_return_live_bars_and_reconstructed_equity_curve(
                     "trading_phase": "CONTINUOUS_AUCTION",
                 }
             ],
+            "degraded_mode": {
+                "status": "normal",
+                "reason_code": "LIVE_DATA_READY",
+                "message": "当前系统使用真实数据，关键诊断状态没有发现明显降级。",
+                "data_source": "eastmoney",
+                "effective_at": runtime_bars_response.json()["degraded_mode"]["effective_at"],
+                "impact": "runtime bars、replay events 和控制状态可以作为当前值守判断的主要依据。",
+                "suggested_action": "继续按当前控制台查看持仓、订单、事件和 runtime audit 即可。",
+            },
         }
     finally:
         get_settings.cache_clear()

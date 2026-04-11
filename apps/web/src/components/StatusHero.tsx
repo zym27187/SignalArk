@@ -1,5 +1,6 @@
 import { compactId, formatDateTime, titleCase } from "../lib/format";
 import type { StatusPayload } from "../types/api";
+import { DegradedModeCallout } from "./DegradedModeCallout";
 
 interface StatusHeroProps {
   status: StatusPayload | null;
@@ -10,9 +11,18 @@ interface StatusHeroProps {
 function statusTone(
   ready: boolean | undefined,
   controlState: string | undefined,
+  degradedStatus: string | undefined,
 ): "positive" | "warning" | "danger" {
   if (controlState === "kill_switch" || controlState === "protection_mode") {
     return "danger";
+  }
+
+  if (
+    degradedStatus === "degraded"
+    || degradedStatus === "missing"
+    || degradedStatus === "fixture"
+  ) {
+    return "warning";
   }
 
   if (ready) {
@@ -27,6 +37,13 @@ function buildStatusSummary(status: StatusPayload | null): { summary: string; im
     return {
       summary: "系统状态还没接通。连上数据服务后，这里会先告诉你系统能不能继续工作。",
       impact: "当前影响：在状态恢复前，不要默认自动策略仍在正常运行。",
+    };
+  }
+
+  if (status.degraded_mode && status.degraded_mode.status !== "normal") {
+    return {
+      summary: "系统当前存在明确的诊断降级，下面会直接说明原因、影响和建议动作。",
+      impact: `当前影响：${status.degraded_mode.impact}`,
     };
   }
 
@@ -60,7 +77,11 @@ function buildStatusSummary(status: StatusPayload | null): { summary: string; im
 }
 
 export function StatusHero({ status, isLoading, error }: StatusHeroProps) {
-  const tone = statusTone(status?.ready, status?.control_state);
+  const tone = statusTone(
+    status?.ready,
+    status?.control_state,
+    status?.degraded_mode?.status,
+  );
   const { summary, impact } = buildStatusSummary(status);
 
   return (
@@ -72,6 +93,7 @@ export function StatusHero({ status, isLoading, error }: StatusHeroProps) {
         </h1>
         <p className="status-hero__summary">{summary}</p>
         <p className="status-hero__impact">{impact}</p>
+        <DegradedModeCallout diagnostics={status?.degraded_mode} title="诊断结论" />
         {error ? <p className="status-hero__error">状态读取失败：{error}</p> : null}
       </div>
 

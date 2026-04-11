@@ -37,6 +37,15 @@ const EMPTY_RUNTIME_BARS: RuntimeBarsPayload = {
   available_streams: [],
   last_seen_bars: [],
   last_strategy_bars: [],
+  degraded_mode: {
+    status: "missing",
+    reason_code: "RUNTIME_STATUS_MISSING",
+    message: "当前还没有活跃 trader runtime 状态。",
+    data_source: "missing",
+    effective_at: "",
+    impact: "市场页当前只能展示空状态或前端补位结果。",
+    suggested_action: "先等待 runtime 启动并落下最新状态。",
+  },
 };
 
 const EMPTY_MARKET_SNAPSHOT: MarketSnapshot = {

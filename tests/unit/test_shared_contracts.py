@@ -47,9 +47,7 @@ def test_shared_contract_catalog_exposes_phase_0_symbol_layers() -> None:
 
 
 def test_shared_contract_catalog_documents_fact_aliases_and_reason_codes() -> None:
-    payload = build_shared_contracts_payload(
-        Settings(postgres_dsn="sqlite+pysqlite:///:memory:")
-    )
+    payload = build_shared_contracts_payload(Settings(postgres_dsn="sqlite+pysqlite:///:memory:"))
 
     fact_contracts = payload["fact_contracts"]
     research_manifest_summary = fact_contracts["research_manifest_summary"]
@@ -57,9 +55,21 @@ def test_shared_contract_catalog_documents_fact_aliases_and_reason_codes() -> No
     assert research_manifest_summary["surface_aliases"]["runId"] == "run_id"
     assert "run_id" in research_manifest_summary["machine_fields"]
 
+    balance_summary = fact_contracts["balance_summary"]
+    assert balance_summary["status"] == "active"
+    assert "GET /v1/balance/summary" in balance_summary["current_surface_paths"]
+
     control_action_result = fact_contracts["control_action_result"]
     assert "effective_scope" in control_action_result["optional_machine_fields"]
     assert "reason_code" in control_action_result["optional_machine_fields"]
+
+    degraded_mode_status = fact_contracts["degraded_mode_status"]
+    assert degraded_mode_status["status"] == "active"
+    assert "impact" in degraded_mode_status["human_fields"]
+    assert "GET /v1/diagnostics/degraded-mode" in degraded_mode_status["current_surface_paths"]
+
+    diagnostic_replay_summary = fact_contracts["diagnostic_replay_summary"]
+    assert "events.reason_code" in diagnostic_replay_summary["machine_fields"]
 
     control_action_reasons = payload["reason_code_catalog"]["control_actions"]
     assert control_action_reasons == [
@@ -72,3 +82,7 @@ def test_shared_contract_catalog_documents_fact_aliases_and_reason_codes() -> No
             "meaning": "Cancel-all did not complete for every eligible active order.",
         },
     ]
+
+    degraded_mode_reasons = payload["reason_code_catalog"]["degraded_mode"]
+    assert any(entry["reason_code"] == "LIVE_DATA_READY" for entry in degraded_mode_reasons)
+    assert any(entry["reason_code"] == "MARKET_DATA_MISSING" for entry in degraded_mode_reasons)

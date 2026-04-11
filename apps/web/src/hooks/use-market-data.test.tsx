@@ -106,6 +106,15 @@ describe("useMarketData", () => {
           trading_phase: "CONTINUOUS_AUCTION",
         },
       ],
+      degraded_mode: {
+        status: "normal",
+        reason_code: "LIVE_DATA_READY",
+        message: "当前系统使用真实数据，关键诊断状态没有发现明显降级。",
+        data_source: "eastmoney",
+        effective_at: "2026-04-02T10:00:02+08:00",
+        impact: "runtime bars、replay events 和控制状态可以作为当前值守判断的主要依据。",
+        suggested_action: "继续查看控制台即可。",
+      },
     };
 
     mockedFetchMarketBars

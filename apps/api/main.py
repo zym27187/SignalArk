@@ -124,6 +124,10 @@ def create_app(
     async def shared_contracts() -> dict[str, object]:
         return service.shared_contracts_payload()
 
+    @app.get("/v1/diagnostics/degraded-mode")
+    async def degraded_mode() -> dict[str, object]:
+        return service.degraded_mode_payload()
+
     @app.get("/v1/symbols/inspect")
     async def inspect_symbol(symbol: str) -> dict[str, object]:
         return service.inspect_symbol_payload(symbol)

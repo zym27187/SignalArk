@@ -91,6 +91,13 @@ class MarketReadArguments(BaseToolArguments):
     limit: int = Field(default=96, ge=1, le=200)
 
 
+class RuntimeBarAuditArguments(BaseToolArguments):
+    """Filtering options for runtime bar audit snapshots."""
+
+    symbol: str | None = None
+    timeframe: str | None = None
+
+
 ToolHandler = Callable[[BaseModel], dict[str, object] | Awaitable[dict[str, object]]]
 
 
@@ -151,6 +158,15 @@ class SignalArkMcpBackend:
                     handler=self._list_positions,
                 ),
                 ToolDefinition(
+                    name="get_degraded_mode",
+                    description=(
+                        "Return the current degraded-mode fact, including reason code, "
+                        "data source, and operator-facing impact."
+                    ),
+                    arguments_model=NoArguments,
+                    handler=self._get_degraded_mode,
+                ),
+                ToolDefinition(
                     name="list_active_orders",
                     description="Return currently active orders for the configured account.",
                     arguments_model=NoArguments,
@@ -187,6 +203,15 @@ class SignalArkMcpBackend:
                     ),
                     arguments_model=MarketReadArguments,
                     handler=self._get_market_bars,
+                ),
+                ToolDefinition(
+                    name="get_runtime_bars",
+                    description=(
+                        "Return the trader runtime bar audit summary, including degraded-mode "
+                        "status for the current diagnostics context."
+                    ),
+                    arguments_model=RuntimeBarAuditArguments,
+                    handler=self._get_runtime_bars,
                 ),
                 ToolDefinition(
                     name="run_research_snapshot",
@@ -248,9 +273,7 @@ class SignalArkMcpBackend:
         except ValueError as exc:
             return _tool_error_result(str(exc))
         except Exception as exc:
-            return _tool_error_result(
-                f"Unexpected SignalArk error while running `{name}`: {exc}"
-            )
+            return _tool_error_result(f"Unexpected SignalArk error while running `{name}`: {exc}")
 
         return _tool_success_result(payload)
 
@@ -262,6 +285,9 @@ class SignalArkMcpBackend:
 
     def _list_positions(self, _: NoArguments) -> dict[str, object]:
         return self._control_plane_service.positions_payload()
+
+    def _get_degraded_mode(self, _: NoArguments) -> dict[str, object]:
+        return self._control_plane_service.degraded_mode_payload()
 
     def _list_active_orders(self, _: NoArguments) -> dict[str, object]:
         return self._control_plane_service.active_orders_payload()
@@ -397,6 +423,12 @@ class SignalArkMcpBackend:
             symbol=args.symbol,
             timeframe=args.timeframe,
             limit=args.limit,
+        )
+
+    def _get_runtime_bars(self, args: RuntimeBarAuditArguments) -> dict[str, object]:
+        return self._control_plane_service.market_runtime_bars_payload(
+            symbol=args.symbol,
+            timeframe=args.timeframe,
         )
 
     async def _run_research_snapshot(self, args: MarketReadArguments) -> dict[str, object]:
