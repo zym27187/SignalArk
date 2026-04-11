@@ -93,6 +93,7 @@ async def _run(args: argparse.Namespace) -> None:
             bars=bars,
             source_label="由 research CLI 导出的真实回测结果",
             source_mode="imported",
+            mode=args.sample_purpose,
             notes=tuple(snapshot_notes),
             sample=sample_metadata,
             segments=segment_analyses,

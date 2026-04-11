@@ -10,7 +10,7 @@ import { useMarketData } from "./hooks/use-market-data";
 import { useResearchData } from "./hooks/use-research-data";
 import { formatDateTime } from "./lib/format";
 import type { SymbolNameMap } from "./types/api";
-import type { ResearchSamplePurpose } from "./types/research";
+import type { ResearchMode } from "./types/research";
 
 const DEFAULT_SYMBOL_NAMES: SymbolNameMap = {
   "600036.SH": "招商银行",
@@ -40,8 +40,8 @@ export default function App() {
   const [selectedResearchTimeframe, setSelectedResearchTimeframe] = useState<string>(
     RESEARCH_TIMEFRAME_OPTIONS[0],
   );
-  const [selectedResearchSamplePurpose, setSelectedResearchSamplePurpose] =
-    useState<ResearchSamplePurpose>("evaluation");
+  const [selectedResearchMode, setSelectedResearchMode] =
+    useState<ResearchMode>("evaluation");
 
   useEffect(() => {
     if (!availableSymbols.includes(selectedSymbol)) {
@@ -64,7 +64,7 @@ export default function App() {
     enabled: view === "research",
     symbol: selectedSymbol,
     timeframe: selectedResearchTimeframe,
-    samplePurpose: selectedResearchSamplePurpose,
+    mode: selectedResearchMode,
   });
 
   const activeFetchedAt =
@@ -109,10 +109,10 @@ export default function App() {
             availableTimeframes={RESEARCH_TIMEFRAME_OPTIONS}
             selectedSymbol={selectedSymbol}
             selectedTimeframe={selectedResearchTimeframe}
-            selectedSamplePurpose={selectedResearchSamplePurpose}
+            selectedMode={selectedResearchMode}
             onSymbolChange={setSelectedSymbol}
             onTimeframeChange={setSelectedResearchTimeframe}
-            onSamplePurposeChange={setSelectedResearchSamplePurpose}
+            onModeChange={setSelectedResearchMode}
           />
         );
       case "operations":

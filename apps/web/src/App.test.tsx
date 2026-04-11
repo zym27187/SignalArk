@@ -163,6 +163,14 @@ describe("App", () => {
         datasetName: "cn_equity / 000001.SZ / 15m",
         sourceLabel: "由 research API 生成的真实回测结果",
         sourceMode: "live",
+        mode: "evaluation",
+        summary: {
+          mode: "evaluation",
+          modeLabel: "评估样本",
+          resultHeadline: "净收益 99.00，最大回撤 0.0000% ，交易 1 次。",
+          sampleMessage: "评估样本说明",
+          comparisonMessage: null,
+        },
         klineBars: [],
         equityCurve: [
           {
@@ -175,17 +183,26 @@ describe("App", () => {
           runId: "run-001",
           accountId: "paper_account_001",
           strategyId: "baseline_momentum_v1",
+          strategyVersion: "baseline_momentum_v1",
           handlerName: "BaselineMomentumStrategy",
           description: "research snapshot",
+          mode: "evaluation",
+          samplePurpose: "evaluation",
+          symbol: "000001.SZ",
           symbols: ["000001.SZ"],
           timeframe: "15m",
           barCount: 1,
           startTime: "2026-04-02T10:00:00+08:00",
           endTime: "2026-04-02T10:00:00+08:00",
+          generatedAt: "2026-04-02T10:00:01+08:00",
           initialCash: 100000,
+          costModel: "ashare_paper_cost_model",
           slippageBps: 5,
           feeModel: "ashare_paper_cost_model",
           slippageModel: "bar_close_bps",
+          parameterSnapshot: {
+            target_position: "400",
+          },
           dataFingerprint: "bars:000001.SZ:15m",
           manifestFingerprint: "manifest:run-001",
         },
@@ -211,6 +228,8 @@ describe("App", () => {
           winRatePct: 100,
         },
         decisions: [],
+        experiments: null,
+        comparison: null,
         notes: ["research API note"],
       },
       error: null,
@@ -305,7 +324,7 @@ describe("App", () => {
       enabled: true,
       symbol: "000001.SZ",
       timeframe: "15m",
-      samplePurpose: "evaluation",
+      mode: "evaluation",
     });
     expect(screen.getByText(/paper_account_001 \/ 平安银行 \(000001\.SZ\)/)).toBeInTheDocument();
     expect(screen.getByText("模型实验台")).toBeInTheDocument();
@@ -460,7 +479,7 @@ describe("App", () => {
       enabled: true,
       symbol: "600036.SH",
       timeframe: "15m",
-      samplePurpose: "evaluation",
+      mode: "evaluation",
     });
 
     fireEvent.click(screen.getByRole("button", { name: /快速预览/i }));
@@ -470,7 +489,7 @@ describe("App", () => {
         enabled: true,
         symbol: "600036.SH",
         timeframe: "15m",
-        samplePurpose: "preview",
+        mode: "preview",
       });
     });
   });
@@ -547,6 +566,14 @@ describe("App", () => {
         datasetName: "cn_equity / 000001.SZ / 15m",
         sourceLabel: "由 research API 生成的 AI 回测结果",
         sourceMode: "live",
+        mode: "preview",
+        summary: {
+          mode: "preview",
+          modeLabel: "快速预览",
+          resultHeadline: "净收益 120.00，最大回撤 0.0200% ，交易 2 次。",
+          sampleMessage: "预览样本说明",
+          comparisonMessage: "ai_candidate 相比 baseline 的净收益变化 21.00。",
+        },
         klineBars: [],
         equityCurve: [
           {
@@ -559,17 +586,24 @@ describe("App", () => {
           runId: "run-ai-001",
           accountId: "paper_account_001",
           strategyId: "ai_bar_judge_v1",
+          strategyVersion: "ai_bar_judge_v1",
           handlerName: "AiBarJudgeStrategy",
           description: "ai snapshot",
+          mode: "preview",
+          samplePurpose: "preview",
+          symbol: "000001.SZ",
           symbols: ["000001.SZ"],
           timeframe: "15m",
           barCount: 1,
           startTime: "2026-04-02T10:00:00+08:00",
           endTime: "2026-04-02T10:00:00+08:00",
+          generatedAt: "2026-04-02T10:00:01+08:00",
           initialCash: 100000,
+          costModel: "ashare_paper_cost_model",
           slippageBps: 5,
           feeModel: "ashare_paper_cost_model",
           slippageModel: "bar_close_bps",
+          parameterSnapshot: {},
           dataFingerprint: "bars:000001.SZ:15m:ai",
           manifestFingerprint: "manifest:run-ai-001",
         },
@@ -609,6 +643,31 @@ describe("App", () => {
             orderPlanSide: "BUY",
           },
         ],
+        experiments: null,
+        comparison: {
+          baselineLabel: "baseline_default",
+          candidateLabel: "ai_candidate",
+          candidateKind: "ai_strategy",
+          sameSample: true,
+          sameMetricSemantics: true,
+          netPnlDelta: 21,
+          totalReturnDeltaPct: 0.021,
+          maxDrawdownDeltaPct: 0.02,
+          tradeCountDelta: 1,
+          turnoverDelta: 50,
+          decisionDiffCount: 1,
+          decisionDiffs: [
+            {
+              barKey: "000001.SZ:15m:2026-04-02T10:00:00+08:00",
+              eventTime: "2026-04-02T10:00:00+08:00",
+              baselineAction: "SKIP",
+              candidateAction: "REBALANCE",
+              baselineReason: "baseline skipped",
+              candidateReason: "ai entered",
+            },
+          ],
+          summaryMessage: "ai_candidate 相比 baseline 有更高净收益。",
+        },
         notes: ["ai note"],
       },
       error: null,
@@ -625,6 +684,14 @@ describe("App", () => {
         datasetName: "cn_equity / 000001.SZ / 15m",
         sourceLabel: "由 research API 生成的真实回测结果",
         sourceMode: "live",
+        mode: "evaluation",
+        summary: {
+          mode: "evaluation",
+          modeLabel: "评估样本",
+          resultHeadline: "净收益 99.00，最大回撤 0.0000% ，交易 1 次。",
+          sampleMessage: "评估样本说明",
+          comparisonMessage: null,
+        },
         klineBars: [],
         equityCurve: [
           {
@@ -637,17 +704,26 @@ describe("App", () => {
           runId: "run-001",
           accountId: "paper_account_001",
           strategyId: "baseline_momentum_v1",
+          strategyVersion: "baseline_momentum_v1",
           handlerName: "BaselineMomentumStrategy",
           description: "research snapshot",
+          mode: "evaluation",
+          samplePurpose: "evaluation",
+          symbol: "000001.SZ",
           symbols: ["000001.SZ"],
           timeframe: "15m",
           barCount: 1,
           startTime: "2026-04-02T10:00:00+08:00",
           endTime: "2026-04-02T10:00:00+08:00",
+          generatedAt: "2026-04-02T10:00:01+08:00",
           initialCash: 100000,
+          costModel: "ashare_paper_cost_model",
           slippageBps: 5,
           feeModel: "ashare_paper_cost_model",
           slippageModel: "bar_close_bps",
+          parameterSnapshot: {
+            target_position: "400",
+          },
           dataFingerprint: "bars:000001.SZ:15m",
           manifestFingerprint: "manifest:run-001",
         },
@@ -687,6 +763,8 @@ describe("App", () => {
             orderPlanSide: null,
           },
         ],
+        experiments: null,
+        comparison: null,
         notes: ["research API note"],
       },
       error: null,
@@ -704,9 +782,9 @@ describe("App", () => {
       expect(window.location.hash).toBe("#research");
     });
 
-    expect(screen.getByText("Baseline vs AI")).toBeInTheDocument();
+    expect(screen.getByText("baseline_default vs ai_candidate")).toBeInTheDocument();
     expect(screen.getByText("关键决策差异")).toBeInTheDocument();
-    expect(screen.getByText("AI: ai entered")).toBeInTheDocument();
+    expect(screen.getByText("Candidate: ai entered")).toBeInTheDocument();
     expect(screen.getByText("Baseline: baseline skipped")).toBeInTheDocument();
   });
 });

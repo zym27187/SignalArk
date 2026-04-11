@@ -36,6 +36,13 @@ function buildFallbackInspection(rawInput: string): SymbolInspectionPayload {
       supported: false,
       runtime_enabled: false,
     },
+    research_status: {
+      eligible: false,
+      reason_code: formatValid ? "SYMBOL_RESEARCH_UNAVAILABLE" : "INVALID_SYMBOL_FORMAT",
+      message: formatValid
+        ? "当前 research 仍只支持 supported_symbols 内的股票代码。"
+        : "代码格式不合法，暂时不能用于 research。",
+    },
     reason_code: formatValid ? "SYMBOL_OBSERVED_ONLY" : "INVALID_SYMBOL_FORMAT",
     message: formatValid
       ? "系统层状态暂时未确认，当前先按观察层处理。"
@@ -221,6 +228,11 @@ export function SymbolInspectorPanel({
                 label: "当前层级",
                 value: describeLayerStatus(inspection),
                 hint: "观察层不代表已支持，更不代表已经进入 trader 运行范围。",
+              },
+              {
+                label: "research 可用性",
+                value: inspection.research_status.eligible ? "可用于 research" : "暂不可用",
+                hint: inspection.research_status.message,
               },
             ]}
           />

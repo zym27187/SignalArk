@@ -27,6 +27,14 @@ describe("useResearchData", () => {
       datasetName: "cn_equity / 600036.SH / 15m",
       sourceLabel: "由 research API 生成的真实回测结果",
       sourceMode: "live" as const,
+      mode: "evaluation" as const,
+      summary: {
+        mode: "evaluation" as const,
+        modeLabel: "评估样本",
+        resultHeadline: "净收益 99.00，最大回撤 0.0000% ，交易 1 次。",
+        sampleMessage: "评估样本说明",
+        comparisonMessage: null,
+      },
       klineBars: [
         {
           time: "2026-04-02T10:00:00+08:00",
@@ -44,17 +52,26 @@ describe("useResearchData", () => {
         runId: "run-001",
         accountId: "paper_account_001",
         strategyId: "baseline_momentum_v1",
+        strategyVersion: "baseline_momentum_v1",
         handlerName: "BaselineMomentumStrategy",
         description: "research snapshot",
+        mode: "evaluation" as const,
+        samplePurpose: "evaluation" as const,
+        symbol: "600036.SH",
         symbols: ["600036.SH"],
         timeframe: "15m",
         barCount: 1,
         startTime: "2026-04-02T10:00:00+08:00",
         endTime: "2026-04-02T10:00:00+08:00",
+        generatedAt: "2026-04-02T10:00:01+08:00",
         initialCash: 100000,
+        costModel: "ashare_paper_cost_model",
         slippageBps: 5,
         feeModel: "ashare_paper_cost_model",
         slippageModel: "bar_close_bps",
+        parameterSnapshot: {
+          target_position: "400",
+        },
         dataFingerprint: "bars:600036.SH:15m",
         manifestFingerprint: "manifest:run-001",
       },
@@ -80,6 +97,8 @@ describe("useResearchData", () => {
         winRatePct: 100,
       },
       decisions: [],
+      experiments: null,
+      comparison: null,
       notes: ["research API note"],
     };
 
@@ -92,7 +111,7 @@ describe("useResearchData", () => {
         enabled: true,
         symbol: "600036.SH",
         timeframe: "15m",
-        samplePurpose: "evaluation",
+        mode: "evaluation",
       }),
     );
 
@@ -127,7 +146,7 @@ describe("useResearchData", () => {
         enabled: false,
         symbol: "600036.SH",
         timeframe: "15m",
-        samplePurpose: "evaluation",
+        mode: "evaluation",
       }),
     );
 

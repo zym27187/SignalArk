@@ -18,20 +18,27 @@ export interface BacktestManifestSnapshot {
   runId: string;
   accountId: string;
   strategyId: string;
+  strategyVersion: string;
   handlerName: string;
   description: string;
+  mode: ResearchMode;
+  samplePurpose: ResearchSamplePurpose;
+  symbol: string;
   symbols: string[];
   timeframe: string;
   barCount: number;
   startTime: string;
   endTime: string;
+  generatedAt: string;
   initialCash: number;
+  costModel: string;
   slippageBps: number;
   feeModel: string;
   slippageModel: string;
   partialFillModel?: string;
   unfilledQtyHandling?: string;
   executionConstraints?: string[];
+  parameterSnapshot: Record<string, string>;
   dataFingerprint: string;
   manifestFingerprint: string;
 }
@@ -80,6 +87,11 @@ export interface BacktestDecisionSnapshot {
 }
 
 export type ResearchAiProvider = "heuristic_stub" | "openai_compatible";
+export type ResearchMode =
+  | "preview"
+  | "evaluation"
+  | "parameter_scan"
+  | "walk_forward";
 
 export interface ResearchAiSettings {
   accountId: string;
@@ -112,6 +124,14 @@ export interface ResearchAiSettingsUpdateRequest {
 export type ResearchSnapshotSourceMode = "fixture" | "imported" | "live";
 export type ResearchSamplePurpose = "preview" | "evaluation";
 
+export interface ResearchSummarySnapshot {
+  mode: ResearchMode;
+  modeLabel: string;
+  resultHeadline: string;
+  sampleMessage: string;
+  comparisonMessage: string | null;
+}
+
 export interface ResearchSampleSnapshot {
   purpose: ResearchSamplePurpose;
   label: string;
@@ -134,10 +154,90 @@ export interface ResearchSegmentSnapshot {
   performance: BacktestPerformanceSnapshot;
 }
 
+export interface ResearchPerformanceDeltaSnapshot {
+  netPnlDelta: number;
+  totalReturnDeltaPct: number;
+  maxDrawdownDeltaPct: number;
+  tradeCountDelta: number;
+  turnoverDelta: number;
+}
+
+export interface ResearchComparisonDecisionDiff {
+  barKey: string;
+  eventTime: string;
+  baselineAction: string;
+  candidateAction: string;
+  baselineReason: string;
+  candidateReason: string;
+}
+
+export interface ResearchComparisonSnapshot {
+  baselineLabel: string;
+  candidateLabel: string;
+  candidateKind: "parameter_scan_best_variant" | "ai_strategy";
+  sameSample: boolean;
+  sameMetricSemantics: boolean;
+  netPnlDelta: number;
+  totalReturnDeltaPct: number;
+  maxDrawdownDeltaPct: number;
+  tradeCountDelta: number;
+  turnoverDelta: number;
+  decisionDiffCount: number;
+  decisionDiffs: ResearchComparisonDecisionDiff[];
+  summaryMessage: string;
+}
+
+export interface ResearchParameterScanVariantSnapshot {
+  label: string;
+  strategyId: string;
+  handlerName: string;
+  parameters: Record<string, string>;
+  performance: BacktestPerformanceSnapshot;
+  manifestFingerprint: string;
+  versusBaseline: ResearchPerformanceDeltaSnapshot;
+}
+
+export interface ResearchParameterScanSnapshot {
+  strategyId: string;
+  combinationCount: number;
+  rankingMetric: string;
+  bestVariantLabel: string | null;
+  bestVariant: ResearchParameterScanVariantSnapshot | null;
+  variants: ResearchParameterScanVariantSnapshot[];
+}
+
+export interface ResearchWalkForwardWindowSnapshot {
+  label: string;
+  startTime: string;
+  endTime: string;
+  barCount: number;
+  performance: BacktestPerformanceSnapshot;
+  manifestFingerprint: string;
+}
+
+export interface ResearchWalkForwardSnapshot {
+  method: string;
+  strategyId: string;
+  windowBars: number;
+  stepBars: number;
+  windowCount: number;
+  bestWindowLabel: string | null;
+  bestWindow: ResearchWalkForwardWindowSnapshot | null;
+  positiveWindowCount: number;
+  windows: ResearchWalkForwardWindowSnapshot[];
+}
+
+export interface ResearchExperimentsSnapshot {
+  parameterScan?: ResearchParameterScanSnapshot;
+  walkForward?: ResearchWalkForwardSnapshot;
+}
+
 export interface ResearchSnapshot {
   datasetName: string;
   sourceLabel: string;
   sourceMode: ResearchSnapshotSourceMode;
+  mode: ResearchMode;
+  summary: ResearchSummarySnapshot;
   klineBars: CandleBar[];
   equityCurve: CurvePoint[];
   manifest: BacktestManifestSnapshot;
@@ -145,6 +245,8 @@ export interface ResearchSnapshot {
   decisions: BacktestDecisionSnapshot[];
   sample?: ResearchSampleSnapshot | null;
   segments?: ResearchSegmentSnapshot[];
+  experiments?: ResearchExperimentsSnapshot | null;
+  comparison?: ResearchComparisonSnapshot | null;
   notes: string[];
 }
 

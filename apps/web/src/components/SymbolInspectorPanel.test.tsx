@@ -38,6 +38,11 @@ describe("SymbolInspectorPanel", () => {
           supported: true,
           runtime_enabled: false,
         },
+        research_status: {
+          eligible: true,
+          reason_code: "SYMBOL_RESEARCH_READY",
+          message: "该股票代码已进入 supported_symbols，可直接用于 research。",
+        },
         reason_code: "SYMBOL_SUPPORTED_NOT_RUNTIME",
         message: "该股票代码已被系统支持，但当前还没有进入 trader 运行范围。",
         runtime_activation: {
@@ -66,6 +71,11 @@ describe("SymbolInspectorPanel", () => {
           observed: true,
           supported: true,
           runtime_enabled: false,
+        },
+        research_status: {
+          eligible: true,
+          reason_code: "SYMBOL_RESEARCH_READY",
+          message: "该股票代码已进入 supported_symbols，可直接用于 research。",
         },
         reason_code: "SYMBOL_SUPPORTED_NOT_RUNTIME",
         message: "该股票代码已被系统支持，但当前还没有进入 trader 运行范围。",
@@ -119,6 +129,8 @@ describe("SymbolInspectorPanel", () => {
     expect(
       screen.getAllByText("确认后可以记录运行范围变更请求，但需要重载 trader 才会真正生效。"),
     ).toHaveLength(2);
+    expect(screen.getByText("可用于 research")).toBeInTheDocument();
+    expect(screen.getByText("该股票代码已进入 supported_symbols，可直接用于 research。")).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("我确认这会影响下一次 runtime 运行范围"));
     fireEvent.click(screen.getByRole("button", { name: "记录运行范围变更请求" }));
@@ -155,6 +167,11 @@ describe("SymbolInspectorPanel", () => {
         supported: false,
         runtime_enabled: false,
       },
+      research_status: {
+        eligible: false,
+        reason_code: "SYMBOL_RESEARCH_UNAVAILABLE",
+        message: "当前 research 仍只支持 supported_symbols 内的股票代码。",
+      },
       reason_code: "SYMBOL_OBSERVED_ONLY",
       message: "该股票代码当前只处于观察层，可继续校验或纳入后续支持评估。",
       runtime_activation: {
@@ -189,6 +206,8 @@ describe("SymbolInspectorPanel", () => {
     expect(await screen.findByText("300750.SZ")).toBeInTheDocument();
     expect(screen.getByText("该股票代码当前只处于观察层，可继续校验或纳入后续支持评估。")).toBeInTheDocument();
     expect(screen.getByText("名称暂缺，后续需要补充显示名称。")).toBeInTheDocument();
+    expect(screen.getByText("暂不可用")).toBeInTheDocument();
+    expect(screen.getByText("当前 research 仍只支持 supported_symbols 内的股票代码。")).toBeInTheDocument();
     expect(
       screen.getByText("该股票代码尚未进入 supported_symbols，暂时不能申请加入 runtime。"),
     ).toBeInTheDocument();

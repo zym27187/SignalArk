@@ -146,9 +146,16 @@ def test_research_cli_runs_backtest_and_exports_result_files(tmp_path: Path) -> 
 
     assert snapshot_payload["sourceLabel"] == "由 research CLI 导出的真实回测结果"
     assert snapshot_payload["sourceMode"] == "imported"
+    assert snapshot_payload["mode"] == "evaluation"
+    assert snapshot_payload["summary"]["modeLabel"] == "评估样本"
     assert snapshot_payload["manifest"]["strategyId"] == "baseline_momentum_v1"
+    assert snapshot_payload["manifest"]["strategyVersion"] == "baseline_momentum_v1"
+    assert snapshot_payload["manifest"]["mode"] == "evaluation"
+    assert snapshot_payload["manifest"]["samplePurpose"] == "evaluation"
+    assert snapshot_payload["manifest"]["symbol"] == "600036.SH"
     assert snapshot_payload["manifest"]["slippageModel"] == "directional_close_tiered_bps"
     assert snapshot_payload["manifest"]["partialFillModel"] == "full_fill_only"
+    assert snapshot_payload["manifest"]["parameterSnapshot"]["target_position"] == "400"
     assert "partial fills" in " ".join(snapshot_payload["manifest"]["executionConstraints"])
     assert snapshot_payload["performance"]["tradeCount"] == 3
     assert snapshot_payload["performance"]["sharpeRatio"] is not None
@@ -156,6 +163,8 @@ def test_research_cli_runs_backtest_and_exports_result_files(tmp_path: Path) -> 
     assert snapshot_payload["sample"]["purpose"] == "evaluation"
     assert snapshot_payload["sample"]["actualBarCount"] == 5
     assert snapshot_payload["segments"] == []
+    assert snapshot_payload["experiments"] is None
+    assert snapshot_payload["comparison"] is None
     assert len(snapshot_payload["klineBars"]) == 5
     assert len(snapshot_payload["equityCurve"]) == 5
     assert "runtimePnlCurve" not in snapshot_payload

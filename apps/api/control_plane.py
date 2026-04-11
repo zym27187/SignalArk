@@ -39,12 +39,25 @@ from src.shared.types import SHANGHAI_TIMEZONE, shanghai_now
 
 from apps.research import build_default_backtest_runner
 from apps.research.analysis import (
-    ResearchSamplePurpose,
+    ResearchMode,
     build_sample_metadata,
     build_segment_analyses,
     resolve_sample_bar_limit,
+    resolve_sample_purpose,
 )
-from apps.research.snapshot import build_web_snapshot_payload
+from apps.research.experiments import (
+    build_baseline_strategy,
+    build_default_baseline_parameter_grid,
+    resolve_baseline_config_from_parameters,
+    resolve_walk_forward_window_config,
+    run_baseline_parameter_sweep,
+    run_walk_forward_evaluation,
+)
+from apps.research.snapshot import (
+    build_experiments_payload,
+    build_research_comparison_payload,
+    build_web_snapshot_payload,
+)
 from apps.trader.control_plane import (
     MissingControlPlaneSchemaError,
     ResearchAiSettingsSnapshot,
@@ -267,6 +280,25 @@ class ApiControlPlaneService:
             market_label = "A 股"
             venue_label = _venue_label(venue)
 
+        if not format_valid:
+            research_status = {
+                "eligible": False,
+                "reason_code": "INVALID_SYMBOL_FORMAT",
+                "message": "代码格式不合法，暂时不能用于 research。",
+            }
+        elif layers["supported"]:
+            research_status = {
+                "eligible": True,
+                "reason_code": "SYMBOL_RESEARCH_READY",
+                "message": "该股票代码已进入 supported_symbols，可直接用于 research。",
+            }
+        else:
+            research_status = {
+                "eligible": False,
+                "reason_code": "SYMBOL_RESEARCH_UNAVAILABLE",
+                "message": "当前 research 仍只支持 supported_symbols 内的股票代码。",
+            }
+
         return {
             "raw_input": raw_input,
             "normalized_symbol": normalized_symbol,
@@ -278,6 +310,7 @@ class ApiControlPlaneService:
             "display_name": display_name,
             "name_status": "available" if display_name else "missing",
             "layers": layers,
+            "research_status": research_status,
             "reason_code": reason_code,
             "message": message,
             "runtime_activation": _build_runtime_activation_payload(
@@ -838,13 +871,14 @@ class ApiControlPlaneService:
         symbol: str | None = None,
         timeframe: str | None = None,
         limit: int | None = None,
-        mode: ResearchSamplePurpose = "evaluation",
+        mode: ResearchMode = "evaluation",
         slippage_model: str = "bar_close_bps",
     ) -> dict[str, object]:
         resolved_symbol = self._resolve_symbol(symbol)
         resolved_timeframe = self._resolve_timeframe(timeframe)
+        sample_purpose = resolve_sample_purpose(mode)
         resolved_limit = resolve_sample_bar_limit(
-            sample_purpose=mode,
+            sample_purpose=sample_purpose,
             requested_limit=limit,
         )
         bars = await self._fetch_historical_bars(
@@ -864,7 +898,7 @@ class ApiControlPlaneService:
         )
         result = await runner.run(backtest_bars)
         sample_metadata = build_sample_metadata(
-            sample_purpose=mode,
+            sample_purpose=sample_purpose,
             requested_bar_count=resolved_limit,
             actual_bar_count=len(backtest_bars),
         )
@@ -880,7 +914,7 @@ class ApiControlPlaneService:
         segment_analyses = await build_segment_analyses(
             bars=backtest_bars,
             run_backtest=run_segment_backtest,
-            sample_purpose=mode,
+            sample_purpose=sample_purpose,
         )
         notes = [
             "该快照由 `/v1/research/snapshot` 基于真实历史 K 线即时生成。",
@@ -898,14 +932,82 @@ class ApiControlPlaneService:
                 f"时间分段评估会把样本按时间切成 {len(segment_analyses)} 段，"
                 "并在同一起始资金下分别比较阶段表现。"
             )
+        experiments = None
+        comparison = None
+        if mode == "parameter_scan":
+            parameter_sweep = await run_baseline_parameter_sweep(
+                settings=self._settings,
+                bars=backtest_bars,
+                parameter_grid=build_default_baseline_parameter_grid(),
+                initial_cash=DEFAULT_RESEARCH_INITIAL_CASH,
+                slippage_bps=DEFAULT_RESEARCH_SLIPPAGE_BPS,
+                slippage_model=slippage_model,
+            )
+            experiments = build_experiments_payload(
+                parameter_sweep=parameter_sweep,
+                baseline_performance=result.performance,
+            )
+            best_variant = next(
+                (
+                    variant
+                    for variant in parameter_sweep.variants
+                    if variant.label == parameter_sweep.best_variant_label
+                ),
+                None,
+            )
+            if best_variant is not None:
+                candidate_config = resolve_baseline_config_from_parameters(best_variant.parameters)
+                candidate_strategy = build_baseline_strategy(
+                    account_id=self._settings.account_id,
+                    config=candidate_config,
+                )
+                candidate_result = await build_default_backtest_runner(
+                    self._settings,
+                    strategy=candidate_strategy,
+                    initial_cash=DEFAULT_RESEARCH_INITIAL_CASH,
+                    slippage_bps=DEFAULT_RESEARCH_SLIPPAGE_BPS,
+                    slippage_model=slippage_model,
+                ).run(backtest_bars)
+                comparison = build_research_comparison_payload(
+                    baseline_result=result,
+                    candidate_result=candidate_result,
+                    baseline_label="baseline_default",
+                    candidate_label=best_variant.label,
+                    candidate_kind="parameter_scan_best_variant",
+                )
+            notes.append(
+                "参数扫描会基于仓库默认的 baseline 小网格运行，"
+                "帮助先看默认参数附近是否有更稳的组合。"
+            )
+        elif mode == "walk_forward":
+            window_bars, step_bars = resolve_walk_forward_window_config(
+                bar_count=len(backtest_bars),
+            )
+            walk_forward = await run_walk_forward_evaluation(
+                settings=self._settings,
+                bars=backtest_bars,
+                window_bars=window_bars,
+                step_bars=step_bars,
+                initial_cash=DEFAULT_RESEARCH_INITIAL_CASH,
+                slippage_bps=DEFAULT_RESEARCH_SLIPPAGE_BPS,
+                slippage_model=slippage_model,
+            )
+            experiments = build_experiments_payload(walk_forward=walk_forward)
+            notes.append(
+                f"滚动评估默认把当前样本切成窗口 {window_bars} 根、步长 {step_bars} 根，"
+                "用于检查策略是否只在单一时间片里看起来有效。"
+            )
         return build_web_snapshot_payload(
             result=result,
             bars=backtest_bars,
             source_label="由 research API 生成的真实回测结果",
             source_mode="live",
+            mode=mode,
             notes=tuple(notes),
             sample=sample_metadata,
             segments=segment_analyses,
+            experiments=experiments,
+            comparison=comparison,
         )
 
     def research_ai_settings_payload(self) -> dict[str, object]:
@@ -972,6 +1074,11 @@ class ApiControlPlaneService:
             initial_cash=DEFAULT_RESEARCH_INITIAL_CASH,
             slippage_bps=DEFAULT_RESEARCH_SLIPPAGE_BPS,
         ).run(backtest_bars)
+        baseline_result = await build_default_backtest_runner(
+            self._settings,
+            initial_cash=DEFAULT_RESEARCH_INITIAL_CASH,
+            slippage_bps=DEFAULT_RESEARCH_SLIPPAGE_BPS,
+        ).run(backtest_bars)
         sample_metadata = build_sample_metadata(
             sample_purpose="preview",
             requested_bar_count=limit,
@@ -994,13 +1101,22 @@ class ApiControlPlaneService:
         ]
         if sample_metadata["warning"] is not None:
             notes.append(str(sample_metadata["warning"]))
+        comparison = build_research_comparison_payload(
+            baseline_result=baseline_result,
+            candidate_result=result,
+            baseline_label="baseline_default",
+            candidate_label="ai_candidate",
+            candidate_kind="ai_strategy",
+        )
         return build_web_snapshot_payload(
             result=result,
             bars=backtest_bars,
             source_label="由 research API 生成的 AI 回测结果",
             source_mode="live",
+            mode="preview",
             notes=notes,
             sample=sample_metadata,
+            comparison=comparison,
         )
 
     def _build_research_ai_strategy(

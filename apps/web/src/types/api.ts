@@ -155,6 +155,11 @@ export interface SymbolInspectionPayload {
     supported: boolean;
     runtime_enabled: boolean;
   };
+  research_status: {
+    eligible: boolean;
+    reason_code: string;
+    message: string;
+  };
   reason_code: string;
   message: string;
   runtime_activation: {

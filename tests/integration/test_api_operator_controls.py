@@ -336,6 +336,11 @@ def test_api_inspects_symbol_layers_and_validation_state(tmp_path: Path) -> None
             "supported": True,
             "runtime_enabled": True,
         },
+        "research_status": {
+            "eligible": True,
+            "reason_code": "SYMBOL_RESEARCH_READY",
+            "message": "该股票代码已进入 supported_symbols，可直接用于 research。",
+        },
         "reason_code": "SYMBOL_RUNTIME_ENABLED",
         "message": "该股票代码已进入当前 trader 运行范围，可能影响自动交易判断。",
         "runtime_activation": {
@@ -357,6 +362,11 @@ def test_api_inspects_symbol_layers_and_validation_state(tmp_path: Path) -> None
         "supported": True,
         "runtime_enabled": False,
     }
+    assert supported_symbol.json()["research_status"] == {
+        "eligible": True,
+        "reason_code": "SYMBOL_RESEARCH_READY",
+        "message": "该股票代码已进入 supported_symbols，可直接用于 research。",
+    }
     assert supported_symbol.json()["reason_code"] == "SYMBOL_SUPPORTED_NOT_RUNTIME"
     assert supported_symbol.json()["runtime_activation"] == {
         "requires_confirmation": True,
@@ -377,6 +387,11 @@ def test_api_inspects_symbol_layers_and_validation_state(tmp_path: Path) -> None
         "observed": True,
         "supported": False,
         "runtime_enabled": False,
+    }
+    assert observed_only_symbol.json()["research_status"] == {
+        "eligible": False,
+        "reason_code": "SYMBOL_RESEARCH_UNAVAILABLE",
+        "message": "当前 research 仍只支持 supported_symbols 内的股票代码。",
     }
     assert observed_only_symbol.json()["reason_code"] == "SYMBOL_OBSERVED_ONLY"
     assert observed_only_symbol.json()["runtime_activation"] == {
@@ -406,6 +421,11 @@ def test_api_inspects_symbol_layers_and_validation_state(tmp_path: Path) -> None
             "observed": True,
             "supported": False,
             "runtime_enabled": False,
+        },
+        "research_status": {
+            "eligible": False,
+            "reason_code": "INVALID_SYMBOL_FORMAT",
+            "message": "代码格式不合法，暂时不能用于 research。",
         },
         "reason_code": "INVALID_SYMBOL_FORMAT",
         "message": "代码格式不符合 A 股约定，请使用 6 位数字加 .SH 或 .SZ 后缀。",

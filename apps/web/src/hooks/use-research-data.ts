@@ -6,13 +6,13 @@ import {
   fetchResearchSnapshot,
 } from "../lib/api";
 import { localizeMessage } from "../lib/format";
-import type { ResearchSamplePurpose, ResearchSnapshot } from "../types/research";
+import type { ResearchMode, ResearchSnapshot } from "../types/research";
 
 interface UseResearchDataOptions {
   enabled: boolean;
   symbol?: string | null;
   timeframe?: string | null;
-  samplePurpose: ResearchSamplePurpose;
+  mode: ResearchMode;
 }
 
 function toErrorMessage(error: unknown): string {
@@ -27,7 +27,7 @@ export function useResearchData({
   enabled,
   symbol,
   timeframe,
-  samplePurpose,
+  mode,
 }: UseResearchDataOptions) {
   const [snapshot, setSnapshot] = useState<ResearchSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +38,7 @@ export function useResearchData({
   const hasLoadedRef = useRef(false);
   const mountedRef = useRef(false);
   const limit =
-    samplePurpose === "preview"
+    mode === "preview"
       ? DEFAULT_RESEARCH_PREVIEW_LIMIT
       : DEFAULT_RESEARCH_EVALUATION_LIMIT;
 
@@ -56,7 +56,7 @@ export function useResearchData({
         symbol: symbol ?? undefined,
         timeframe: timeframe ?? undefined,
         limit,
-        mode: samplePurpose,
+        mode,
       });
       if (!mountedRef.current) {
         return;
@@ -102,7 +102,7 @@ export function useResearchData({
     return () => {
       mountedRef.current = false;
     };
-  }, [enabled, symbol, timeframe, samplePurpose]);
+  }, [enabled, symbol, timeframe, mode]);
 
   return {
     snapshot,

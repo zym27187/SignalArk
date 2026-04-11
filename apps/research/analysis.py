@@ -12,6 +12,7 @@ from src.domain.events import BarEvent
 from src.services.backtest import BacktestPerformanceSummary, BacktestRunResult
 
 ResearchSamplePurpose = Literal["preview", "evaluation"]
+ResearchMode = Literal["preview", "evaluation", "parameter_scan", "walk_forward"]
 
 DEFAULT_RESEARCH_PREVIEW_LIMIT = 96
 DEFAULT_RESEARCH_EVALUATION_LIMIT = 240
@@ -45,6 +46,12 @@ def resolve_sample_bar_limit(
     if sample_purpose == "preview":
         return DEFAULT_RESEARCH_PREVIEW_LIMIT
     return DEFAULT_RESEARCH_EVALUATION_LIMIT
+
+
+def resolve_sample_purpose(mode: ResearchMode) -> ResearchSamplePurpose:
+    if mode == "preview":
+        return "preview"
+    return "evaluation"
 
 
 def supports_time_segmentation(

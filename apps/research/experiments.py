@@ -24,6 +24,12 @@ from src.shared.types import DomainModel, NonEmptyStr, ShanghaiDateTime, shangha
 from apps.research import build_default_backtest_runner
 
 MAX_SWEEP_COMBINATIONS = 64
+DEFAULT_BASELINE_PARAMETER_SCAN_GRID = {
+    "entry_threshold_pct": ["0.0005", "0.0010"],
+    "trend_lookback_bars": [3, 4],
+}
+DEFAULT_WALK_FORWARD_WINDOW_COUNT = 3
+MIN_RESEARCH_WALK_FORWARD_WINDOW_BARS = 6
 
 
 class ResearchVariantSummary(DomainModel):
@@ -79,6 +85,37 @@ class ResearchExperimentReport(DomainModel):
     walk_forward: ResearchWalkForwardReport | None = None
 
 
+def build_default_baseline_parameter_grid() -> dict[str, list[object]]:
+    """Return the small default parameter grid used by the Phase 4 API surface."""
+
+    return {
+        key: list(values)
+        for key, values in DEFAULT_BASELINE_PARAMETER_SCAN_GRID.items()
+    }
+
+
+def resolve_walk_forward_window_config(
+    *,
+    bar_count: int,
+) -> tuple[int, int]:
+    """Choose a stable default walk-forward window and step for one dataset size."""
+
+    if bar_count < 2:
+        raise ValueError("walk-forward evaluation requires at least 2 bars")
+
+    if bar_count >= MIN_RESEARCH_WALK_FORWARD_WINDOW_BARS:
+        window_bars = max(
+            MIN_RESEARCH_WALK_FORWARD_WINDOW_BARS,
+            bar_count // DEFAULT_WALK_FORWARD_WINDOW_COUNT,
+        )
+        window_bars = min(window_bars, bar_count)
+    else:
+        window_bars = max(2, bar_count)
+
+    step_bars = max(1, window_bars // 2)
+    return window_bars, step_bars
+
+
 def load_baseline_sweep_grid(path: Path) -> dict[str, list[object]]:
     """Load a baseline parameter grid from JSON or YAML."""
 
@@ -122,7 +159,7 @@ async def run_baseline_parameter_sweep(
     variants: list[ResearchVariantSummary] = []
 
     for index, config in enumerate(normalized_configs, start=1):
-        strategy = _build_baseline_strategy(
+        strategy = build_baseline_strategy(
             account_id=settings.account_id,
             config=config,
         )
@@ -226,7 +263,7 @@ def _expand_baseline_configs(
     return tuple(configs)
 
 
-def _build_baseline_strategy(
+def build_baseline_strategy(
     *,
     account_id: str,
     config: BaselineMomentumConfig,
@@ -243,6 +280,20 @@ def _build_baseline_strategy(
         reduced_target_ratio=config.reduced_target_ratio,
         trailing_stop_pct=config.trailing_stop_pct,
         description=config.description,
+    )
+
+
+def resolve_baseline_config_from_parameters(
+    parameters: dict[str, str],
+) -> BaselineMomentumConfig:
+    """Hydrate one baseline config from serialized parameter strings."""
+
+    base_config = load_baseline_momentum_config(BASELINE_MOMENTUM_V1)
+    return BaselineMomentumConfig.model_validate(
+        {
+            **base_config.model_dump(mode="python"),
+            **parameters,
+        }
     )
 
 

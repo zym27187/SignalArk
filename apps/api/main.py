@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 import httpx
@@ -17,6 +17,7 @@ from src.infra.observability import build_observability
 from src.shared.logging import configure_logging
 
 from apps.api.control_plane import ApiControlPlaneService
+from apps.research.analysis import ResearchMode
 from apps.trader.control_plane import MissingControlPlaneSchemaError, TraderControlPlaneStore
 
 
@@ -252,7 +253,7 @@ def create_app(
         symbol: str | None = None,
         timeframe: str | None = None,
         limit: int | None = Query(default=None, ge=1, le=500),
-        mode: Literal["preview", "evaluation"] = Query(default="evaluation"),
+        mode: Annotated[ResearchMode, Query()] = "evaluation",
         slippage_model: Literal["bar_close_bps", "directional_close_tiered_bps"] = Query(
             default="bar_close_bps"
         ),

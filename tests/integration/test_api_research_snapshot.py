@@ -148,7 +148,15 @@ def test_api_research_snapshot_returns_live_backtest_payload(
     payload = response.json()
     assert payload["sourceLabel"] == "由 research API 生成的真实回测结果"
     assert payload["sourceMode"] == "live"
+    assert payload["mode"] == "evaluation"
+    assert payload["summary"]["modeLabel"] == "评估样本"
     assert payload["manifest"]["strategyId"] == "baseline_momentum_v1"
+    assert payload["manifest"]["strategyVersion"] == "baseline_momentum_v1"
+    assert payload["manifest"]["mode"] == "evaluation"
+    assert payload["manifest"]["samplePurpose"] == "evaluation"
+    assert payload["manifest"]["symbol"] == "600036.SH"
+    assert payload["manifest"]["costModel"] == "ashare_paper_cost_model"
+    assert payload["manifest"]["parameterSnapshot"]["target_position"] == "400"
     assert payload["manifest"]["symbols"] == ["600036.SH"]
     assert payload["performance"]["tradeCount"] == 3
     assert payload["performance"]["fillCount"] == 3
@@ -158,6 +166,8 @@ def test_api_research_snapshot_returns_live_backtest_payload(
     assert payload["sample"]["actualBarCount"] == 5
     assert payload["sample"]["supportsTimeSegmentation"] is False
     assert payload["segments"] == []
+    assert payload["experiments"] is None
+    assert payload["comparison"] is None
     assert len(payload["klineBars"]) == 5
     assert len(payload["equityCurve"]) == 5
     assert "runtimePnlCurve" not in payload
@@ -250,11 +260,14 @@ def test_api_research_snapshot_supports_preview_and_segmented_evaluation(
 
     assert preview_response.status_code == 200
     preview_payload = preview_response.json()
+    assert preview_payload["mode"] == "preview"
+    assert preview_payload["summary"]["modeLabel"] == "快速预览"
     assert preview_payload["sample"]["purpose"] == "preview"
     assert preview_payload["segments"] == []
 
     assert evaluation_response.status_code == 200
     evaluation_payload = evaluation_response.json()
+    assert evaluation_payload["mode"] == "evaluation"
     assert evaluation_payload["sample"]["purpose"] == "evaluation"
     assert evaluation_payload["sample"]["actualBarCount"] == 18
     assert evaluation_payload["sample"]["supportsTimeSegmentation"] is True
@@ -268,6 +281,108 @@ def test_api_research_snapshot_supports_preview_and_segmented_evaluation(
         evaluation_payload["segments"][0]["performance"]["netPnl"]
         != evaluation_payload["segments"][2]["performance"]["netPnl"]
     )
+
+
+def test_api_research_snapshot_supports_parameter_scan_and_walk_forward_modes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("SIGNALARK_POSTGRES_DSN", database_url)
+    from src.config import get_settings
+
+    get_settings.cache_clear()
+    from apps.api.main import create_app
+
+    closes = [
+        Decimal("39.48"),
+        Decimal("39.49"),
+        Decimal("39.52"),
+        Decimal("39.56"),
+        Decimal("39.61"),
+        Decimal("39.67"),
+        Decimal("39.63"),
+        Decimal("39.58"),
+        Decimal("39.55"),
+        Decimal("39.60"),
+        Decimal("39.66"),
+        Decimal("39.72"),
+        Decimal("39.68"),
+        Decimal("39.61"),
+        Decimal("39.57"),
+        Decimal("39.54"),
+        Decimal("39.58"),
+        Decimal("39.63"),
+    ]
+    bars: list[NormalizedBar] = []
+    previous_close = Decimal("39.47")
+    for index, close in enumerate(closes):
+        bars.append(
+            _bar(
+                index=index,
+                close=str(close),
+                previous_close=str(previous_close),
+            )
+        )
+        previous_close = close
+
+    settings = _settings(database_url)
+    upgrade_database(database_url)
+    engine = create_database_engine(database_url)
+    session_factory = create_session_factory(engine)
+    control_store = TraderControlPlaneStore(session_factory)
+    service = ApiControlPlaneService(
+        settings=settings,
+        session_factory=session_factory,
+        control_store=control_store,
+        market_gateway_factory=lambda: FakeHistoricalBarGateway(bars),
+    )
+    app = create_app(settings=settings, control_plane_service=service)
+
+    try:
+        with TestClient(app) as client:
+            parameter_scan_response = client.get(
+                "/v1/research/snapshot",
+                params={
+                    "symbol": "600036.SH",
+                    "timeframe": "15m",
+                    "limit": 18,
+                    "mode": "parameter_scan",
+                },
+            )
+            walk_forward_response = client.get(
+                "/v1/research/snapshot",
+                params={
+                    "symbol": "600036.SH",
+                    "timeframe": "15m",
+                    "limit": 18,
+                    "mode": "walk_forward",
+                },
+            )
+    finally:
+        engine.dispose()
+
+    assert parameter_scan_response.status_code == 200
+    parameter_scan_payload = parameter_scan_response.json()
+    assert parameter_scan_payload["mode"] == "parameter_scan"
+    assert parameter_scan_payload["summary"]["modeLabel"] == "参数扫描"
+    assert parameter_scan_payload["manifest"]["mode"] == "parameter_scan"
+    assert parameter_scan_payload["manifest"]["samplePurpose"] == "evaluation"
+    assert parameter_scan_payload["experiments"]["parameterScan"]["combinationCount"] == 4
+    assert parameter_scan_payload["experiments"]["parameterScan"]["bestVariantLabel"] is not None
+    assert parameter_scan_payload["comparison"]["candidateKind"] == "parameter_scan_best_variant"
+    assert parameter_scan_payload["comparison"]["sameSample"] is True
+    assert parameter_scan_payload["comparison"]["sameMetricSemantics"] is True
+
+    assert walk_forward_response.status_code == 200
+    walk_forward_payload = walk_forward_response.json()
+    assert walk_forward_payload["mode"] == "walk_forward"
+    assert walk_forward_payload["summary"]["modeLabel"] == "滚动评估"
+    assert walk_forward_payload["manifest"]["mode"] == "walk_forward"
+    assert walk_forward_payload["experiments"]["walkForward"]["windowBars"] == 6
+    assert walk_forward_payload["experiments"]["walkForward"]["stepBars"] == 3
+    assert walk_forward_payload["experiments"]["walkForward"]["windowCount"] == 5
+    assert walk_forward_payload["comparison"] is None
 
 
 def test_api_research_snapshot_exposes_execution_assumption_manifest_fields(
@@ -389,10 +504,13 @@ def test_api_ai_research_snapshot_returns_live_ai_backtest_payload(
     payload = response.json()
     assert payload["sourceMode"] == "live"
     assert payload["sourceLabel"] == "由 research API 生成的 AI 回测结果"
+    assert payload["mode"] == "preview"
     assert payload["manifest"]["strategyId"] == "ai_bar_judge_v1"
     assert payload["manifest"]["handlerName"] == "AiBarJudgeStrategy"
     assert payload["performance"]["tradeCount"] == 1
     assert payload["performance"]["fillCount"] == 1
+    assert payload["comparison"]["candidateKind"] == "ai_strategy"
+    assert payload["comparison"]["sameSample"] is True
     assert payload["decisions"][-1]["action"] == "REBALANCE"
     assert payload["decisions"][-1]["executionAction"] == "BUY"
     assert payload["decisions"][-1]["reasonSummary"] == "model confirmed the bullish stack"
@@ -526,6 +644,7 @@ def test_api_ai_research_settings_roundtrip_and_snapshot_can_reuse_saved_api_key
     assert snapshot.status_code == 200
     payload = snapshot.json()
     assert payload["manifest"]["strategyId"] == "ai_bar_judge_v1"
+    assert payload["comparison"]["candidateKind"] == "ai_strategy"
     assert payload["decisions"][-1]["action"] == "REBALANCE"
     assert payload["decisions"][-1]["executionAction"] == "BUY"
     assert payload["decisions"][-1]["reasonSummary"] == "saved config triggered the entry"

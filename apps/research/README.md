@@ -77,10 +77,63 @@ CLI 支持这些常用参数：
 - `--config-profile` / `--config-file`：可选，允许显式切换配置层
 - `--postgres-dsn`：可选，仅用于满足共享 settings 校验；不传时 CLI 会回退到内存 SQLite
 
+## Phase 4 统一模式
+
+当前 research 结果已经统一成四种模式语义：
+
+- `preview`
+- `evaluation`
+- `parameter_scan`
+- `walk_forward`
+
+其中：
+
+- CLI 导出的 web snapshot 默认用 `--sample-purpose` 标记 `preview` 或 `evaluation`
+- `--baseline-sweep-grid` + `--experiment-output` 对应 `parameter_scan`
+- `--walk-forward-window-bars` + `--experiment-output` 对应 `walk_forward`
+- HTTP API `/v1/research/snapshot` 直接支持 `mode=preview|evaluation|parameter_scan|walk_forward`
+
+Phase 4 之后，research snapshot 的顶层会固定返回：
+
+- `mode`
+- `summary`
+- `manifest`
+- `sample`
+- `segments`
+- `experiments`
+- `comparison`
+
+其中 `manifest` 现在至少固定：
+
+- `strategyId`
+- `strategyVersion`
+- `mode`
+- `symbol`
+- `timeframe`
+- `barCount`
+- `samplePurpose`
+- `costModel`
+- `parameterSnapshot`
+- `generatedAt`
+
+当存在 candidate 结果时，还会直接给出标准化 `comparison`，用于比较：
+
+- 是否基于同一份样本
+- 是否使用同一套成本和指标语义
+- 收益 / 回撤 / 交易次数 / 换手变化
+- 关键决策差异摘要
+
 如果你想直接从控制面读取一份前端可消费的真实 research 快照，而不是先手工导出文件，也可以通过 API：
 
 ```text
 GET /v1/research/snapshot?symbol=600036.SH&timeframe=15m&limit=96
+```
+
+如果你想直接触发 Phase 4 的标准化实验模式，可以额外传：
+
+```text
+GET /v1/research/snapshot?symbol=600036.SH&timeframe=15m&mode=parameter_scan
+GET /v1/research/snapshot?symbol=600036.SH&timeframe=15m&mode=walk_forward
 ```
 
 输入文件需要是以下两种形式之一：

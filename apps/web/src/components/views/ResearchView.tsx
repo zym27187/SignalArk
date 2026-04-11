@@ -24,7 +24,7 @@ import {
 import type { SymbolNameMap } from "../../types/api";
 import type {
   ResearchAiProvider,
-  ResearchSamplePurpose,
+  ResearchMode,
   ResearchSnapshot,
 } from "../../types/research";
 
@@ -35,10 +35,10 @@ interface ResearchViewProps {
   availableTimeframes: string[];
   selectedSymbol: string;
   selectedTimeframe: string;
-  selectedSamplePurpose: ResearchSamplePurpose;
+  selectedMode: ResearchMode;
   onSymbolChange: (symbol: string) => void;
   onTimeframeChange: (timeframe: string) => void;
-  onSamplePurposeChange: (purpose: ResearchSamplePurpose) => void;
+  onModeChange: (mode: ResearchMode) => void;
 }
 
 interface SnapshotSectionOptions {
@@ -60,22 +60,6 @@ interface SnapshotSectionOptions {
   emptyCopy: string;
 }
 
-interface ResearchDecisionDiff {
-  barKey: string;
-  eventTime: string;
-  baselineAction: string;
-  aiAction: string;
-  baselineReason: string;
-  aiReason: string;
-}
-
-interface ResearchComparisonSummary {
-  netPnlDelta: number;
-  maxDrawdownDeltaPct: number;
-  tradeCountDelta: number;
-  decisionDiffs: ResearchDecisionDiff[];
-}
-
 function buildMetadataItems(
   snapshot: ResearchSnapshot | null,
   {
@@ -92,6 +76,7 @@ function buildMetadataItems(
 ) {
   const manifest = snapshot?.manifest;
   const sample = snapshot?.sample;
+  const summary = snapshot?.summary;
   if (manifest === undefined) {
     return [
       {
@@ -104,15 +89,15 @@ function buildMetadataItems(
 
   return [
     {
-      label: "样本用途",
+      label: "研究模式",
       value:
-        sample === undefined || sample === null
-          ? "等待回测样本"
-          : `${sample.label} / ${sample.actualBarCount} 根 K 线`,
+        summary === undefined
+          ? "等待研究结果"
+          : `${summary.modeLabel}${sample ? ` / ${sample.actualBarCount} 根 K 线` : ""}`,
       hint:
         sample === undefined || sample === null
-          ? "返回结果后，这里会说明当前样本用于快速预览还是正式评估。"
-          : sample.warning ?? sample.description,
+          ? "返回结果后，这里会说明当前是预览、评估还是实验模式。"
+          : summary?.sampleMessage ?? sample.warning ?? sample.description,
     },
     {
       label: "本次回测编号",
@@ -126,7 +111,7 @@ function buildMetadataItems(
     {
       label: "账户与标的",
       value: `${manifest.accountId} / ${formatSymbolList(manifest.symbols, symbolNames)}`,
-      hint: `${manifest.handlerName} · ${manifest.timeframe}`,
+      hint: `${manifest.handlerName} · ${manifest.timeframe} · ${manifest.strategyVersion}`,
     },
     {
       label: "交易成本假设",
@@ -138,6 +123,15 @@ function buildMetadataItems(
       ]
         .filter(Boolean)
         .join(" + "),
+    },
+    {
+      label: "参数快照",
+      value: `${Object.keys(manifest.parameterSnapshot).length} 个字段`,
+      hint:
+        Object.entries(manifest.parameterSnapshot)
+          .slice(0, 4)
+          .map(([key, value]) => `${key}=${value}`)
+          .join(" / ") || "当前策略没有额外参数快照。",
     },
     {
       label: "执行约束",
@@ -165,9 +159,15 @@ function formatAverageHoldingBars(value: number | null | undefined): string {
   return value === null || value === undefined ? "--" : `${formatDecimal(value, 2)} 根`;
 }
 
-function buildSamplePurposeCopy(samplePurpose: ResearchSamplePurpose): string {
-  if (samplePurpose === "preview") {
+function buildResearchModeCopy(mode: ResearchMode): string {
+  if (mode === "preview") {
     return `快速预览最近 ${DEFAULT_RESEARCH_PREVIEW_LIMIT} 根 K 线，更适合先看信号和审计。`;
+  }
+  if (mode === "parameter_scan") {
+    return `默认使用 ${DEFAULT_RESEARCH_EVALUATION_LIMIT} 根 K 线的评估样本，外加 baseline 默认参数小网格扫描。`;
+  }
+  if (mode === "walk_forward") {
+    return `默认使用 ${DEFAULT_RESEARCH_EVALUATION_LIMIT} 根 K 线的评估样本，并做滚动窗口稳定性检查。`;
   }
   return `默认使用 ${DEFAULT_RESEARCH_EVALUATION_LIMIT} 根 K 线的评估样本，并尽量补充分段验证。`;
 }
@@ -179,49 +179,6 @@ function formatSignedCount(value: number): string {
   return String(value);
 }
 
-function buildResearchComparison(
-  baselineSnapshot: ResearchSnapshot | null,
-  aiSnapshot: ResearchSnapshot | null,
-): ResearchComparisonSummary | null {
-  if (baselineSnapshot === null || aiSnapshot === null) {
-    return null;
-  }
-
-  const baselinePerformance = baselineSnapshot.performance;
-  const aiPerformance = aiSnapshot.performance;
-  const aiDecisionByBarKey = new Map(
-    aiSnapshot.decisions.map((decision) => [decision.barKey, decision]),
-  );
-  const decisionDiffs: ResearchDecisionDiff[] = [];
-
-  for (const baselineDecision of baselineSnapshot.decisions) {
-    const aiDecision = aiDecisionByBarKey.get(baselineDecision.barKey);
-    if (
-      aiDecision === undefined ||
-      (aiDecision.action === baselineDecision.action &&
-        aiDecision.executionAction === baselineDecision.executionAction &&
-        aiDecision.orderPlanSide === baselineDecision.orderPlanSide)
-    ) {
-      continue;
-    }
-    decisionDiffs.push({
-      barKey: baselineDecision.barKey,
-      eventTime: baselineDecision.eventTime,
-      baselineAction: baselineDecision.action,
-      aiAction: aiDecision.action,
-      baselineReason: baselineDecision.reasonSummary,
-      aiReason: aiDecision.reasonSummary,
-    });
-  }
-
-  return {
-    netPnlDelta: aiPerformance.netPnl - baselinePerformance.netPnl,
-    maxDrawdownDeltaPct: aiPerformance.maxDrawdownPct - baselinePerformance.maxDrawdownPct,
-    tradeCountDelta: aiPerformance.tradeCount - baselinePerformance.tradeCount,
-    decisionDiffs,
-  };
-}
-
 export function ResearchView({
   researchData,
   availableSymbols,
@@ -229,10 +186,10 @@ export function ResearchView({
   availableTimeframes,
   selectedSymbol,
   selectedTimeframe,
-  selectedSamplePurpose,
+  selectedMode,
   onSymbolChange,
   onTimeframeChange,
-  onSamplePurposeChange,
+  onModeChange,
 }: ResearchViewProps) {
   const aiResearchData = useAiResearchData();
   const aiSettings = useAiResearchSettings({ enabled: true });
@@ -245,7 +202,7 @@ export function ResearchView({
 
   useEffect(() => {
     aiResearchData.reset();
-  }, [selectedSymbol, selectedTimeframe]);
+  }, [selectedSymbol, selectedTimeframe, selectedMode]);
 
   useEffect(() => {
     if (aiSettings.settings === null) {
@@ -261,7 +218,9 @@ export function ResearchView({
   const snapshot = researchData.snapshot;
   const manifest = snapshot?.manifest;
   const sample = snapshot?.sample;
-  const comparison = buildResearchComparison(snapshot, aiResearchData.snapshot);
+  const summary = snapshot?.summary;
+  const experiments = snapshot?.experiments;
+  const comparison = aiResearchData.snapshot?.comparison ?? snapshot?.comparison ?? null;
   const sourceLabel = snapshot
     ? snapshot.sourceMode === "fixture"
       ? snapshot.sourceLabel
@@ -565,7 +524,7 @@ export function ResearchView({
           <p className="page-hero__eyebrow">策略回看</p>
           <h2 className="page-hero__title">回测结果一眼看懂</h2>
           <p className="page-hero__summary">
-            这里会按你选中的标的和周期，直接生成一份基线回测结果，再额外接出一块 AI 回测实验区，帮助快速横向比较不同决策方式的收益、回撤和买卖原因。
+            这里会按你选中的标的和周期，统一生成基线研究结果，并根据模式补上参数扫描、滚动评估或 AI 对照，让你先看结论，再看原因。
           </p>
           <DatasetSwitcher
             symbolOptions={availableSymbols.map((value) => ({
@@ -580,32 +539,51 @@ export function ResearchView({
           />
 
           <div className="dataset-switcher__group">
-            <p className="dataset-switcher__label">样本模式</p>
+            <p className="dataset-switcher__label">研究模式</p>
             <div className="dataset-switcher__options">
               <button
                 type="button"
                 className={`dataset-switcher__button${
-                  selectedSamplePurpose === "evaluation" ? " dataset-switcher__button--active" : ""
+                  selectedMode === "evaluation" ? " dataset-switcher__button--active" : ""
                 }`}
-                onClick={() => onSamplePurposeChange("evaluation")}
+                onClick={() => onModeChange("evaluation")}
               >
                 评估样本 {DEFAULT_RESEARCH_EVALUATION_LIMIT} 根
               </button>
               <button
                 type="button"
                 className={`dataset-switcher__button${
-                  selectedSamplePurpose === "preview" ? " dataset-switcher__button--active" : ""
+                  selectedMode === "preview" ? " dataset-switcher__button--active" : ""
                 }`}
-                onClick={() => onSamplePurposeChange("preview")}
+                onClick={() => onModeChange("preview")}
               >
                 快速预览 {DEFAULT_RESEARCH_PREVIEW_LIMIT} 根
               </button>
+              <button
+                type="button"
+                className={`dataset-switcher__button${
+                  selectedMode === "parameter_scan" ? " dataset-switcher__button--active" : ""
+                }`}
+                onClick={() => onModeChange("parameter_scan")}
+              >
+                参数扫描
+              </button>
+              <button
+                type="button"
+                className={`dataset-switcher__button${
+                  selectedMode === "walk_forward" ? " dataset-switcher__button--active" : ""
+                }`}
+                onClick={() => onModeChange("walk_forward")}
+              >
+                滚动评估
+              </button>
             </div>
-            <p className="field__hint">{buildSamplePurposeCopy(selectedSamplePurpose)}</p>
+            <p className="field__hint">{buildResearchModeCopy(selectedMode)}</p>
           </div>
         </div>
         <div className="page-hero__chips">
           <span className={`tag${sourceIsFixture ? " tag--fixture" : ""}`}>{sourceLabel}</span>
+          {summary ? <span className="tag">{summary.modeLabel}</span> : null}
           {sample !== undefined && sample !== null ? (
             <span className="tag">{`${sample.label} · ${sample.actualBarCount} 根`}</span>
           ) : null}
@@ -639,34 +617,88 @@ export function ResearchView({
         },
       })}
 
-      {comparison !== null ? (
+      {summary !== undefined ? (
         <SectionCard
-          eyebrow="标准化对照"
-          title="Baseline vs AI"
-          description="把 baseline 与 AI 放在同一套样本和指标下比较，减少来回切换和人工抄数。"
+          eyebrow="研究结论"
+          title="这次结果先看什么"
+          description="把当前模式、样本可信度和关键比较结论收口成最先可读的一层。"
         >
           <section className="metric-grid">
             <MetricCard
-              label="AI 相对基线收益"
+              label="当前模式"
+              value={summary.modeLabel}
+              hint={summary.sampleMessage}
+              tone="default"
+            />
+            <MetricCard
+              label="结果摘要"
+              value={summary.resultHeadline}
+              hint={summary.comparisonMessage ?? "当前模式还没有额外的标准化对照摘要。"}
+              tone="default"
+            />
+          </section>
+        </SectionCard>
+      ) : null}
+
+      {experiments?.parameterScan || experiments?.walkForward ? (
+        <SectionCard
+          eyebrow="实验摘要"
+          title="Phase 4 标准化实验结果"
+          description="参数扫描和滚动评估都会在同一套样本与指标语义下输出，减少人工再加工。"
+        >
+          <div className="definition-grid">
+            {experiments.parameterScan ? (
+              <div className="definition-grid__item">
+                <strong>参数扫描</strong>
+                <p>{`共 ${experiments.parameterScan.combinationCount} 组组合`}</p>
+                <p>{`当前最佳：${experiments.parameterScan.bestVariantLabel ?? "暂无"}`}</p>
+                <p>
+                  {experiments.parameterScan.bestVariant
+                    ? `相对 baseline 净收益变化 ${formatSignedMoney(experiments.parameterScan.bestVariant.versusBaseline.netPnlDelta)}`
+                    : "当前还没有最佳参数组合。"}
+                </p>
+              </div>
+            ) : null}
+            {experiments.walkForward ? (
+              <div className="definition-grid__item">
+                <strong>滚动评估</strong>
+                <p>{`窗口 ${experiments.walkForward.windowBars} 根 / 步长 ${experiments.walkForward.stepBars} 根`}</p>
+                <p>{`窗口数 ${experiments.walkForward.windowCount} / 正收益窗口 ${experiments.walkForward.positiveWindowCount}`}</p>
+                <p>{`当前最佳窗口：${experiments.walkForward.bestWindowLabel ?? "暂无"}`}</p>
+              </div>
+            ) : null}
+          </div>
+        </SectionCard>
+      ) : null}
+
+      {comparison !== null ? (
+        <SectionCard
+          eyebrow="标准化对照"
+          title={`${comparison.baselineLabel} vs ${comparison.candidateLabel}`}
+          description="把 baseline 与 candidate 放在同一套样本和指标下比较，减少来回切换和人工抄数。"
+        >
+          <section className="metric-grid">
+            <MetricCard
+              label="Candidate 相对基线收益"
               value={formatSignedMoney(comparison.netPnlDelta)}
-              hint="正值表示 AI 这次比 baseline 更赚钱。"
+              hint="正值表示 candidate 这次比 baseline 更赚钱。"
               tone={comparison.netPnlDelta >= 0 ? "positive" : "warning"}
             />
             <MetricCard
-              label="AI 相对基线回撤"
+              label="Candidate 相对基线回撤"
               value={`${formatDecimal(comparison.maxDrawdownDeltaPct, 4)}%`}
-              hint="负值表示 AI 的最大回撤更小。"
+              hint="负值表示 candidate 的最大回撤更小。"
               tone={comparison.maxDrawdownDeltaPct <= 0 ? "positive" : "warning"}
             />
             <MetricCard
-              label="AI 相对基线交易数"
+              label="Candidate 相对基线交易数"
               value={formatSignedCount(comparison.tradeCountDelta)}
               hint="帮助判断收益变化是否只是更频繁交易带来的。"
               tone="default"
             />
             <MetricCard
               label="关键决策差异"
-              value={comparison.decisionDiffs.length}
+              value={comparison.decisionDiffCount}
               hint="按同一 barKey 比较动作和执行方向是否不同。"
               tone="default"
             />
@@ -677,9 +709,9 @@ export function ResearchView({
               {comparison.decisionDiffs.slice(0, 6).map((diff) => (
                 <div key={diff.barKey} className="definition-grid__item">
                   <strong>{formatDateTime(diff.eventTime)}</strong>
-                  <p>{`Baseline ${diff.baselineAction} / AI ${diff.aiAction}`}</p>
+                  <p>{`Baseline ${diff.baselineAction} / Candidate ${diff.candidateAction}`}</p>
                   <p>{`Baseline: ${diff.baselineReason || "无"}`}</p>
-                  <p>{`AI: ${diff.aiReason || "无"}`}</p>
+                  <p>{`Candidate: ${diff.candidateReason || "无"}`}</p>
                 </div>
               ))}
             </div>
@@ -687,7 +719,7 @@ export function ResearchView({
             <div className="empty-state">
               <p className="empty-state__title">当前还没有明显决策分歧</p>
               <p className="empty-state__copy">
-                当 baseline 和 AI 在同一根 K 线上的动作不同，这里会列出关键差异。
+                当 baseline 和 candidate 在同一根 K 线上的动作不同，这里会列出关键差异。
               </p>
             </div>
           )}

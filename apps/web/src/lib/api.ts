@@ -19,7 +19,7 @@ import type {
   ResearchAiSettings,
   ResearchAiSettingsUpdateRequest,
   ResearchAiSnapshotRequest,
-  ResearchSamplePurpose,
+  ResearchMode,
   ResearchSnapshot,
 } from "../types/research";
 import { localizeMessage } from "./format";
@@ -281,7 +281,7 @@ export async function fetchResearchSnapshot(params?: {
   symbol?: string;
   timeframe?: string;
   limit?: number;
-  mode?: ResearchSamplePurpose;
+  mode?: ResearchMode;
   slippageModel?: "bar_close_bps" | "directional_close_tiered_bps";
 }): Promise<ResearchSnapshot> {
   const query = new URLSearchParams();
