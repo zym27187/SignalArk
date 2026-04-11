@@ -2,6 +2,92 @@ import type { CandleBar, CurvePoint } from "./research";
 
 export type SymbolNameMap = Record<string, string>;
 
+export interface SharedContractPlane {
+  key: string;
+  label: string;
+  responsibility: string;
+  owns: string[];
+  does_not_own: string[];
+}
+
+export interface SharedContractLayerDefinition {
+  key: string;
+  label: string;
+  definition: string;
+  activates_trading: boolean;
+}
+
+export interface SharedContractSymbolLayerEntry {
+  symbol: string;
+  display_name: string | null;
+  layers: {
+    observed: boolean;
+    supported: boolean;
+    runtime_enabled: boolean;
+  };
+  reason_code: string;
+  message: string;
+}
+
+export interface SharedContractSymbolLayerContract {
+  layer_order: string[];
+  layers: SharedContractLayerDefinition[];
+  transition_rules: string[];
+  current_boundaries: {
+    supported_symbols: string[];
+    runtime_symbols: string[];
+    runtime_subset_of_supported: boolean;
+  };
+  current_supported_entries: SharedContractSymbolLayerEntry[];
+  examples: SharedContractSymbolLayerEntry[];
+}
+
+export interface SharedContractFactDefinition {
+  status: string;
+  delivery_phase: string;
+  owner_plane: string;
+  machine_fields: string[];
+  human_fields?: string[];
+  optional_machine_fields?: string[];
+  detail_collections?: string[];
+  current_surface_paths?: string[];
+  surface_aliases?: Record<string, string>;
+  notes: string[];
+}
+
+export interface SharedContractReasonCode {
+  reason_code: string;
+  meaning: string;
+}
+
+export interface NamingDifferenceAuditEntry {
+  surface: string;
+  current_meaning: string;
+  decision: string;
+  follow_up_phase: string;
+}
+
+export interface SharedContractsPayload {
+  contract_version: string;
+  phase: string;
+  generated_from: {
+    endpoint: string;
+    config_entrypoint: string;
+  };
+  planes: SharedContractPlane[];
+  naming_conventions: {
+    operational_api_payloads: string;
+    research_snapshot_payload: string;
+    mcp_tool_names: string;
+    canonical_fact_ids: string[];
+    compatibility_rule: string;
+  };
+  symbol_layer_contract: SharedContractSymbolLayerContract;
+  fact_contracts: Record<string, SharedContractFactDefinition>;
+  reason_code_catalog: Record<string, SharedContractReasonCode[]>;
+  naming_differences_audit: NamingDifferenceAuditEntry[];
+}
+
 export interface StatusPayload {
   trader_run_id: string | null;
   instance_id: string | null;

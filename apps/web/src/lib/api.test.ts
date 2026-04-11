@@ -12,6 +12,7 @@ import {
   fetchReplayEvents,
   fetchResearchSnapshot,
   fetchRuntimeBars,
+  fetchSharedContracts,
   resolveAiResearchRequestTimeoutMs,
   fetchStatus,
   postControlAction,
@@ -96,6 +97,59 @@ describe("api helpers", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:8000/v1/market/runtime-bars?symbol=600036.SH&timeframe=15m",
+      expect.objectContaining({
+        headers: {
+          Accept: "application/json",
+        },
+      }),
+    );
+  });
+
+  it("loads the shared contract catalog from the dedicated endpoint", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          contract_version: "v2.phase0.2026-04-11",
+          phase: "phase_0",
+          generated_from: {
+            endpoint: "/v1/contracts/shared",
+            config_entrypoint: "src.config.get_settings",
+          },
+          planes: [],
+          naming_conventions: {
+            operational_api_payloads: "snake_case",
+            research_snapshot_payload: "camelCase",
+            mcp_tool_names: "verb_phrases_with_snake_case",
+            canonical_fact_ids: [],
+            compatibility_rule: "compat",
+          },
+          symbol_layer_contract: {
+            layer_order: ["observed", "supported", "runtime_enabled"],
+            layers: [],
+            transition_rules: [],
+            current_boundaries: {
+              supported_symbols: ["600036.SH"],
+              runtime_symbols: ["600036.SH"],
+              runtime_subset_of_supported: true,
+            },
+            current_supported_entries: [],
+            examples: [],
+          },
+          fact_contracts: {},
+          reason_code_catalog: {},
+          naming_differences_audit: [],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await fetchSharedContracts();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/contracts/shared",
       expect.objectContaining({
         headers: {
           Accept: "application/json",

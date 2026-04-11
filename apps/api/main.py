@@ -111,6 +111,10 @@ def create_app(
     async def status() -> dict[str, object]:
         return service.status_payload()
 
+    @app.get("/v1/contracts/shared")
+    async def shared_contracts() -> dict[str, object]:
+        return service.shared_contracts_payload()
+
     @app.get("/v1/positions")
     async def positions() -> dict[str, object]:
         return service.positions_payload()

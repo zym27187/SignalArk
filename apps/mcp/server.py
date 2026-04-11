@@ -134,6 +134,15 @@ class SignalArkMcpBackend:
                     handler=self._get_status,
                 ),
                 ToolDefinition(
+                    name="get_shared_contracts",
+                    description=(
+                        "Return the V2 Phase 0 shared contract catalog for planes, symbol "
+                        "layers, fact summaries, and reason codes."
+                    ),
+                    arguments_model=NoArguments,
+                    handler=self._get_shared_contracts,
+                ),
+                ToolDefinition(
                     name="list_positions",
                     description=(
                         "Return the current persisted positions for the configured account."
@@ -247,6 +256,9 @@ class SignalArkMcpBackend:
 
     def _get_status(self, _: NoArguments) -> dict[str, object]:
         return self._control_plane_service.status_payload()
+
+    def _get_shared_contracts(self, _: NoArguments) -> dict[str, object]:
+        return self._control_plane_service.shared_contracts_payload()
 
     def _list_positions(self, _: NoArguments) -> dict[str, object]:
         return self._control_plane_service.positions_payload()

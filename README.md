@@ -209,6 +209,7 @@ make mcp
 | `GET` | `/health/live` | 进程存活和数据库连通性 |
 | `GET` | `/health/ready` | readiness、lease、市场数据新鲜度 |
 | `GET` | `/v1/status` | trader 状态、控制态、运行实例信息 |
+| `GET` | `/v1/contracts/shared` | V2 Phase 0 共享契约目录，固定三平面边界、股票代码层级和关键事实语义 |
 | `GET` | `/v1/positions` | 当前持仓 |
 | `GET` | `/v1/orders/active` | 当前活动订单 |
 | `GET` | `/v1/orders/history` | 按 symbol / trader_run_id / 时间窗筛选历史订单 |
@@ -228,6 +229,7 @@ make mcp
 
 ```bash
 curl http://127.0.0.1:8000/v1/status
+curl http://127.0.0.1:8000/v1/contracts/shared
 curl http://127.0.0.1:8000/v1/orders/active
 curl "http://127.0.0.1:8000/v1/orders/history?symbol=600036.SH&limit=20"
 curl "http://127.0.0.1:8000/v1/fills/history?trader_run_id=<run-id>&limit=20"
@@ -257,6 +259,7 @@ make mcp ARGS="--config-profile dev --postgres-dsn postgresql+psycopg://signalar
 当前暴露的工具：
 
 - `get_status`
+- `get_shared_contracts`
 - `list_positions`
 - `list_active_orders`
 - `list_order_history`

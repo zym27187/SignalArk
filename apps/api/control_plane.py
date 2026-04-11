@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import sessionmaker
 from src.config import Settings
+from src.config.shared_contracts import build_shared_contracts_payload
 from src.domain.events import BarEvent
 from src.domain.execution import OrderSide, OrderStatus
 from src.domain.market import NormalizedBar
@@ -169,6 +170,10 @@ class ApiControlPlaneService:
             }
         )
         return payload
+
+    def shared_contracts_payload(self) -> dict[str, object]:
+        """Return the Phase 0 shared contract catalog for cross-surface alignment."""
+        return build_shared_contracts_payload(self._settings)
 
     def positions_payload(self) -> dict[str, object]:
         try:

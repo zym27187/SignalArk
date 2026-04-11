@@ -20,6 +20,19 @@ class StubControlPlaneService:
     def status_payload(self) -> dict[str, object]:
         return {"status": "ready", "account_id": "paper_account_001", "ready": True}
 
+    def shared_contracts_payload(self) -> dict[str, object]:
+        return {
+            "contract_version": "v2.phase0.2026-04-11",
+            "phase": "phase_0",
+            "symbol_layer_contract": {
+                "current_boundaries": {
+                    "supported_symbols": ["600036.SH"],
+                    "runtime_symbols": ["600036.SH"],
+                    "runtime_subset_of_supported": True,
+                }
+            },
+        }
+
     def positions_payload(self) -> dict[str, object]:
         return {"account_id": "paper_account_001", "positions": []}
 
@@ -93,6 +106,7 @@ def test_signalark_mcp_server_initializes_and_lists_tools(tmp_path: Path) -> Non
 
     assert tools_response is not None
     names = [tool["name"] for tool in tools_response["result"]["tools"]]
+    assert "get_shared_contracts" in names
     assert "list_order_history" in names
     assert "run_research_snapshot" in names
 
@@ -149,6 +163,7 @@ def test_history_tools_return_persisted_orders_and_fills(tmp_path: Path) -> None
 def test_market_and_research_tools_delegate_to_control_plane_service(tmp_path: Path) -> None:
     backend = _make_backend(tmp_path, create_tables=False, service=StubControlPlaneService())
 
+    shared_contracts_result = asyncio.run(backend.call_tool("get_shared_contracts", {}))
     market_result = asyncio.run(
         backend.call_tool("get_market_bars", {"symbol": "600036.SH", "limit": 1})
     )
@@ -156,8 +171,10 @@ def test_market_and_research_tools_delegate_to_control_plane_service(tmp_path: P
         backend.call_tool("run_research_snapshot", {"symbol": "600036.SH", "limit": 10})
     )
 
+    assert shared_contracts_result["isError"] is False
     assert market_result["isError"] is False
     assert research_result["isError"] is False
+    assert _decode_tool_payload(shared_contracts_result)["phase"] == "phase_0"
     assert _decode_tool_payload(market_result)["count"] == 1
     assert _decode_tool_payload(research_result)["sourceMode"] == "live"
 

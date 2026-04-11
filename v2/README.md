@@ -26,3 +26,5 @@
 1. 先阅读 [00-scope-draft.md](./00-scope-draft.md)
 2. 再阅读 [00-master-plan.md](./00-master-plan.md)
 3. 再按 `Phase 0 -> Phase 5` 顺序推进
+
+当前 `Phase 0` 已补充共享契约目录入口，可通过 API `GET /v1/contracts/shared` 或 MCP `get_shared_contracts` 查看。

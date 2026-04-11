@@ -98,6 +98,32 @@ V2 建议至少固定下面 3 层状态：
 - 如本阶段引入类型或 schema 代码，至少运行相关 `unit` 测试
 - 如未运行测试，必须明确说明原因和残余风险
 
+## 当前 Phase 0 落地约定
+
+本阶段已经约定并集中暴露以下共享契约入口：
+
+- API：`GET /v1/contracts/shared`
+- MCP：`get_shared_contracts`
+- Python 共享源：`src/config/shared_contracts.py`
+
+当前入口固定了下面几类内容：
+
+- `Research Plane / Trading Plane / Control Plane` 的职责边界
+- 股票代码 `observed / supported / runtime_enabled` 三层语义，以及 `supported_symbols` 与 `SIGNALARK_SYMBOLS` 的边界关系
+- 关键事实的最小字段语义目录：
+  - `balance_summary`
+  - `control_action_result`
+  - `runtime_bar_audit_summary`
+  - `degraded_mode_status`
+  - `research_manifest_summary`
+- 当前已观察到的命名差异与后续 phase 的收口方向
+- 关键 `reason_code` 家族，避免后续 API / MCP / 前端再次各自起名
+
+本阶段默认保持两条兼容原则：
+
+- 不打破现有 V1 主接口 shape
+- 允许 research 继续保留现有 camelCase surface，但必须在共享契约里给出 canonical alias
+
 ## 本次交付时必须汇报
 
 - 固定了哪些共享契约

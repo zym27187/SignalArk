@@ -8,6 +8,7 @@ import type {
   PositionsPayload,
   ReplayEventsPayload,
   RuntimeBarsPayload,
+  SharedContractsPayload,
   StatusPayload,
 } from "../types/api";
 import type {
@@ -125,6 +126,10 @@ function resolveErrorMessage(payload: unknown, status: number): string {
 
 export async function fetchStatus(): Promise<StatusPayload> {
   return requestJson<StatusPayload>("/v1/status");
+}
+
+export async function fetchSharedContracts(): Promise<SharedContractsPayload> {
+  return requestJson<SharedContractsPayload>("/v1/contracts/shared");
 }
 
 export async function fetchPositions(): Promise<PositionsPayload> {
