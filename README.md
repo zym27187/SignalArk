@@ -87,12 +87,13 @@ make docker-up
 
 - 前端控制台：`http://127.0.0.1:5173`
 - API：`http://127.0.0.1:8000`
-- PostgreSQL：`127.0.0.1:5432`
 
 说明：
 
 - Docker 默认读取仓库根目录的 `.env.docker`
 - `.env.docker` 默认把 `SIGNALARK_MARKET_DATA_SOURCE` 设为 `fixture`，方便本地直接演示
+- Docker 默认不再把 PostgreSQL 暴露到宿主机端口，避免和本机已有 `5432` 冲突；容器内服务会直接通过 `postgres:5432` 通信
+- 如果你需要从宿主机手动连库，推荐用 `docker compose exec postgres psql -U signalark -d signalark`
 - 如果你需要切到 Eastmoney、调整 symbols 或修改前端访问的 API 地址，可以直接编辑 `.env.docker`
 - 停止整套容器可执行 `make docker-down`
 
