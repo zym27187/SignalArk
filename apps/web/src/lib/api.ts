@@ -32,9 +32,27 @@ export const DEFAULT_AI_RESEARCH_LOOKBACK_BARS = 12;
 export const AI_RESEARCH_REQUEST_TIMEOUT_MS = 30_000;
 export const AI_RESEARCH_REQUEST_TIMEOUT_PER_DECISION_MS = 15_000;
 
-export const API_BASE_URL = (
-  import.meta.env.VITE_SIGNALARK_API_BASE_URL ?? DEFAULT_API_BASE_URL
-).replace(/\/+$/, "");
+type RuntimeConfig = {
+  apiBaseUrl?: string;
+};
+
+function readRuntimeConfig(): RuntimeConfig | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+  return window.__SIGNALARK_RUNTIME_CONFIG__;
+}
+
+export function resolveApiBaseUrl(runtimeConfig?: RuntimeConfig): string {
+  return (
+    runtimeConfig?.apiBaseUrl ??
+    readRuntimeConfig()?.apiBaseUrl ??
+    import.meta.env.VITE_SIGNALARK_API_BASE_URL ??
+    DEFAULT_API_BASE_URL
+  ).replace(/\/+$/, "");
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export const controlActionPaths = {
   pauseStrategy: "/v1/controls/strategy/pause",

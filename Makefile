@@ -1,4 +1,4 @@
-.PHONY: install format lint test test-unit test-migrations test-integration test-e2e api trader collector research mcp web-install web web-test web-build web-preview dev up
+.PHONY: install format lint test test-unit test-migrations test-integration test-e2e api trader collector research mcp web-install web web-test web-build web-preview dev up docker-build docker-up docker-down docker-logs
 
 VENV ?= .venv
 WEB_DIR := apps/web
@@ -8,6 +8,7 @@ PYTEST := $(PYTHON) -m pytest
 RUFF := $(VENV)/bin/ruff
 UVICORN := $(VENV)/bin/uvicorn
 NPM := npm --prefix $(WEB_DIR)
+DOCKER_COMPOSE := docker compose
 
 install:
 	python3 -m venv $(VENV)
@@ -70,3 +71,15 @@ dev:
 
 up:
 	SIGNALARK_INCLUDE_TRADER=1 SIGNALARK_MARKET_DATA_SOURCE=$${SIGNALARK_MARKET_DATA_SOURCE:-fixture} bash ./scripts/run_dev_stack.sh
+
+docker-build:
+	$(DOCKER_COMPOSE) build
+
+docker-up:
+	$(DOCKER_COMPOSE) up --build
+
+docker-down:
+	$(DOCKER_COMPOSE) down
+
+docker-logs:
+	$(DOCKER_COMPOSE) logs -f

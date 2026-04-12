@@ -1,0 +1,1 @@
+window.__SIGNALARK_RUNTIME_CONFIG__ = window.__SIGNALARK_RUNTIME_CONFIG__ || {};

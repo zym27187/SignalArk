@@ -16,6 +16,7 @@ import {
   fetchRuntimeBars,
   fetchSharedContracts,
   inspectSymbol,
+  resolveApiBaseUrl,
   submitRuntimeSymbolRequest,
   resolveAiResearchRequestTimeoutMs,
   fetchStatus,
@@ -35,6 +36,12 @@ describe("api helpers", () => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
     vi.useRealTimers();
+  });
+
+  it("prefers runtime config when resolving the api base url", () => {
+    expect(resolveApiBaseUrl({ apiBaseUrl: "http://localhost:8000/" })).toBe(
+      "http://localhost:8000",
+    );
   });
 
   it("builds market-bar queries from symbol, timeframe, and limit", async () => {

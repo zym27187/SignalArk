@@ -75,6 +75,29 @@ Eastmoney bars
 
 ## 快速开始
 
+### Docker 启动整套栈
+
+如果你希望不依赖本地 `.venv` 和 Node 环境，仓库现在支持直接用 Docker Compose 拉起 PostgreSQL、API、前端控制台和 trader：
+
+```bash
+make docker-up
+```
+
+默认端口：
+
+- 前端控制台：`http://127.0.0.1:5173`
+- API：`http://127.0.0.1:8000`
+- PostgreSQL：`127.0.0.1:5432`
+
+说明：
+
+- Docker 默认读取仓库根目录的 `.env.docker`
+- `.env.docker` 默认把 `SIGNALARK_MARKET_DATA_SOURCE` 设为 `fixture`，方便本地直接演示
+- 如果你需要切到 Eastmoney、调整 symbols 或修改前端访问的 API 地址，可以直接编辑 `.env.docker`
+- 停止整套容器可执行 `make docker-down`
+
+### 本地虚拟环境启动
+
 ### 1. 安装依赖
 
 仓库默认使用项目本地虚拟环境：
@@ -189,6 +212,10 @@ make web-preview
 make web-install
 make dev
 make up
+make docker-build
+make docker-up
+make docker-down
+make docker-logs
 make trader
 make collector
 .venv/bin/python -m apps.research --input ./bars.json --output ./artifacts/backtest-result.json
