@@ -45,7 +45,7 @@ VITE_SIGNALARK_API_BASE_URL=http://127.0.0.1:8000
 如果通过仓库根目录的 Docker Compose 启动，前端容器会优先读取运行时环境变量：
 
 ```bash
-SIGNALARK_WEB_API_BASE_URL=http://localhost:8000
+SIGNALARK_WEB_API_BASE_URL=/api
 ```
 
 如果你想从仓库根目录同时启动 API 和前端：
