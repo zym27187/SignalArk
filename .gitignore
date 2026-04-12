@@ -16,6 +16,8 @@ dist/
 .DS_Store
 AGENTS.md
 archive/project-zero-to-one-methodology.md
+v1-ai-execution-phases/
+v2/
 .vscode/
 .idea/
 *.log
