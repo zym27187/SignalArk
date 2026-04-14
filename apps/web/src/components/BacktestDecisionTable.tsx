@@ -4,6 +4,7 @@ import { formatDateTime, formatDecimal, titleCase } from "../lib/format";
 import type { BacktestDecisionSnapshot } from "../types/research";
 
 const DEFAULT_PAGE_SIZE = 8;
+type DecisionSortOrder = "desc" | "asc";
 
 function formatAuditProvider(providerId: string | null | undefined): string {
   switch (providerId) {
@@ -18,6 +19,25 @@ function formatAuditProvider(providerId: string | null | undefined): string {
   }
 }
 
+function parseDecisionTime(eventTime: string): number {
+  const parsedTime = Date.parse(eventTime);
+  return Number.isNaN(parsedTime) ? 0 : parsedTime;
+}
+
+function compareDecisions(
+  left: BacktestDecisionSnapshot,
+  right: BacktestDecisionSnapshot,
+  sortOrder: DecisionSortOrder,
+): number {
+  const timestampDelta = parseDecisionTime(left.eventTime) - parseDecisionTime(right.eventTime);
+  if (timestampDelta !== 0) {
+    return sortOrder === "asc" ? timestampDelta : -timestampDelta;
+  }
+
+  const barKeyDelta = left.barKey.localeCompare(right.barKey);
+  return sortOrder === "asc" ? barKeyDelta : -barKeyDelta;
+}
+
 interface BacktestDecisionTableProps {
   decisions: BacktestDecisionSnapshot[];
   pageSize?: number;
@@ -28,20 +48,24 @@ export function BacktestDecisionTable({
   pageSize = DEFAULT_PAGE_SIZE,
 }: BacktestDecisionTableProps) {
   const normalizedPageSize = Math.max(1, Math.floor(pageSize));
-  const pageCount = Math.max(1, Math.ceil(decisions.length / normalizedPageSize));
+  const [sortOrder, setSortOrder] = useState<DecisionSortOrder>("desc");
+  const sortedDecisions = [...decisions].sort((left, right) =>
+    compareDecisions(left, right, sortOrder),
+  );
+  const pageCount = Math.max(1, Math.ceil(sortedDecisions.length / normalizedPageSize));
   const [page, setPage] = useState(0);
   const [pageInput, setPageInput] = useState("1");
   const decisionSignature =
-    decisions.length === 0
+    sortedDecisions.length === 0
       ? "empty"
-      : `${decisions.length}:${decisions[0]?.barKey ?? ""}:${decisions[decisions.length - 1]?.barKey ?? ""}`;
+      : `${sortedDecisions.length}:${sortedDecisions[0]?.barKey ?? ""}:${sortedDecisions[sortedDecisions.length - 1]?.barKey ?? ""}`;
   const startIndex = page * normalizedPageSize;
-  const endIndex = Math.min(startIndex + normalizedPageSize, decisions.length);
-  const visibleDecisions = decisions.slice(startIndex, endIndex);
+  const endIndex = Math.min(startIndex + normalizedPageSize, sortedDecisions.length);
+  const visibleDecisions = sortedDecisions.slice(startIndex, endIndex);
 
   useEffect(() => {
     setPage(0);
-  }, [decisionSignature]);
+  }, [decisionSignature, sortOrder]);
 
   useEffect(() => {
     setPageInput(String(page + 1));
@@ -62,6 +86,22 @@ export function BacktestDecisionTable({
 
   return (
     <div className="table-shell">
+      <div className="decision-table__toolbar">
+        <p className="decision-table__summary">{`当前按时间${sortOrder === "desc" ? "倒序" : "正序"}展示`}</p>
+        <label className="decision-table__sort">
+          排序
+          <select
+            aria-label="买卖原因排序"
+            className="decision-table__sort-select"
+            value={sortOrder}
+            onChange={(event) => setSortOrder(event.target.value as DecisionSortOrder)}
+          >
+            <option value="desc">倒序（最新在前）</option>
+            <option value="asc">正序（最早在前）</option>
+          </select>
+        </label>
+      </div>
+
       <table className="data-table">
         <thead>
           <tr>
@@ -92,7 +132,9 @@ export function BacktestDecisionTable({
                     <>
                       <span>{`来源：${formatAuditProvider(decision.audit.providerId)}`}</span>
                       <span>{`审计决策：${titleCase(decision.audit.decision || "--")}`}</span>
-                      <span>{`置信度：${decision.audit.confidence ?? "--"}`}</span>
+                      {decision.audit.confidence ? (
+                        <span>{`置信度：${decision.audit.confidence}`}</span>
+                      ) : null}
                       {decision.audit.fallbackUsed ? (
                         <span>{`回退原因：${decision.audit.fallbackReason || "外部 provider 暂不可用"}`}</span>
                       ) : null}
@@ -110,7 +152,7 @@ export function BacktestDecisionTable({
       {pageCount > 1 ? (
         <div className="decision-pagination">
           <p className="decision-pagination__summary" aria-live="polite">
-            {`第 ${page + 1} / ${pageCount} 页 · 显示第 ${startIndex + 1}-${endIndex} 条，共 ${decisions.length} 条`}
+            {`第 ${page + 1} / ${pageCount} 页 · 显示第 ${startIndex + 1}-${endIndex} 条，共 ${sortedDecisions.length} 条`}
           </p>
           <div className="decision-pagination__actions">
             <button

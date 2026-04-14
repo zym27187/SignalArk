@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { BacktestDecisionTable } from "./BacktestDecisionTable";
 
 describe("BacktestDecisionTable", () => {
-  it("renders strategy actions separately from execution plans and paginates long lists", () => {
+  it("defaults to descending order, supports toggling sort order, and hides empty confidence", () => {
     render(
       <BacktestDecisionTable
         pageSize={1}
@@ -80,6 +80,22 @@ describe("BacktestDecisionTable", () => {
     );
 
     expect(screen.getByRole("columnheader", { name: "策略动作" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "买卖原因排序" })).toHaveValue("desc");
+    expect(screen.getByText("第 1 / 3 页 · 显示第 1-1 条，共 3 条")).toBeInTheDocument();
+    expect(screen.queryByText("盘整区间太窄，先观望。")).not.toBeInTheDocument();
+    expect(screen.queryByText("突破阈值后调到目标仓位。")).not.toBeInTheDocument();
+
+    const exitRow = screen.getByText("跌破阈值后执行止盈离场。").closest("tr");
+    expect(exitRow).not.toBeNull();
+    expect(within(exitRow as HTMLElement).getAllByText("平仓")).toHaveLength(2);
+    expect(within(exitRow as HTMLElement).getByText("下单计划：卖出")).toBeInTheDocument();
+    expect(within(exitRow as HTMLElement).queryByText("置信度：--")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "买卖原因排序" }), {
+      target: { value: "asc" },
+    });
+
+    expect(screen.getByRole("combobox", { name: "买卖原因排序" })).toHaveValue("asc");
     expect(screen.getByText("第 1 / 3 页 · 显示第 1-1 条，共 3 条")).toBeInTheDocument();
     expect(screen.queryByText("突破阈值后调到目标仓位。")).not.toBeInTheDocument();
     expect(screen.queryByText("跌破阈值后执行止盈离场。")).not.toBeInTheDocument();
@@ -118,9 +134,8 @@ describe("BacktestDecisionTable", () => {
     expect(screen.getByText("第 3 / 3 页 · 显示第 3-3 条，共 3 条")).toBeInTheDocument();
     expect(screen.queryByText("突破阈值后调到目标仓位。")).not.toBeInTheDocument();
 
-    const exitRow = screen.getByText("跌破阈值后执行止盈离场。").closest("tr");
-    expect(exitRow).not.toBeNull();
-    expect(within(exitRow as HTMLElement).getAllByText("平仓")).toHaveLength(2);
-    expect(within(exitRow as HTMLElement).getByText("下单计划：卖出")).toBeInTheDocument();
+    const ascendingExitRow = screen.getByText("跌破阈值后执行止盈离场。").closest("tr");
+    expect(ascendingExitRow).not.toBeNull();
+    expect(within(ascendingExitRow as HTMLElement).queryByText("置信度：--")).not.toBeInTheDocument();
   });
 });
