@@ -21,6 +21,14 @@ import {
   formatSymbolLabel,
   formatSymbolList,
 } from "../../lib/format";
+import {
+  describeResearchStrategyLogic,
+  describeResearchStrategySafety,
+  formatResearchStrategyName,
+  localizeResearchReason,
+  localizeStrategyDescription,
+  summarizeResearchStrategyParameters,
+} from "../../lib/research-copy";
 import type { SymbolNameMap } from "../../types/api";
 import type {
   ResearchAiProvider,
@@ -47,6 +55,9 @@ interface SnapshotSectionOptions {
   chartTitle: string;
   chartDescription: string;
   chartAccent: "teal" | "amber" | "red";
+  strategyEyebrow: string;
+  strategyTitle: string;
+  strategyDescription: string;
   decisionEyebrow: string;
   decisionTitle: string;
   decisionDescription: string;
@@ -102,7 +113,7 @@ function buildMetadataItems(
     {
       label: "本次回测编号",
       value: manifest.runId,
-      hint: manifest.description,
+      hint: localizeStrategyDescription(manifest.description, manifest.strategyId),
     },
     {
       label: "回测时间范围",
@@ -147,6 +158,58 @@ function buildMetadataItems(
     {
       label: "配置版本标识",
       value: manifest.manifestFingerprint,
+    },
+  ];
+}
+
+function buildStrategyItems(
+  snapshot: ResearchSnapshot | null,
+  {
+    isLoading,
+    error,
+    waitingHint,
+  }: {
+    isLoading: boolean;
+    error: string | null;
+    waitingHint: string;
+  },
+) {
+  const manifest = snapshot?.manifest;
+  if (manifest === undefined) {
+    return [
+      {
+        label: "当前策略",
+        value: isLoading ? "生成中" : "等待回测结果",
+        hint: error ?? waitingHint,
+      },
+    ];
+  }
+
+  const parameterCount = Object.keys(manifest.parameterSnapshot).length;
+
+  return [
+    {
+      label: "策略类型",
+      value: formatResearchStrategyName(manifest.strategyId),
+      hint: `${manifest.handlerName} · 版本 ${manifest.strategyVersion}`,
+    },
+    {
+      label: "策略说明",
+      value: localizeStrategyDescription(manifest.description, manifest.strategyId),
+      hint: `策略 ID：${manifest.strategyId}`,
+    },
+    {
+      label: "怎么判断买卖",
+      value: describeResearchStrategyLogic(manifest),
+      hint: describeResearchStrategySafety(manifest),
+    },
+    {
+      label: "关键参数",
+      value: summarizeResearchStrategyParameters(manifest),
+      hint:
+        parameterCount > 0
+          ? `本次回测固化了 ${parameterCount} 个参数字段，方便你对照同样条件再次复现。`
+          : "当前策略没有额外参数快照。",
     },
   ];
 }
@@ -305,6 +368,11 @@ export function ResearchView({
     const notes = nextSnapshot?.notes ?? [];
     const nextManifest = nextSnapshot?.manifest;
     const sampleInfo = nextSnapshot?.sample;
+    const strategyItems = buildStrategyItems(nextSnapshot, {
+      isLoading,
+      error,
+      waitingHint: "回测结果返回后，这里会把当前策略的说明、逻辑和参数展开。",
+    });
 
     return (
       <>
@@ -484,6 +552,14 @@ export function ResearchView({
 
           <aside className="page-grid__rail">
             <SectionCard
+              eyebrow={options.strategyEyebrow}
+              title={options.strategyTitle}
+              description={options.strategyDescription}
+            >
+              <DefinitionGrid items={strategyItems} />
+            </SectionCard>
+
+            <SectionCard
               eyebrow={options.metadataEyebrow}
               title={options.metadataTitle}
               description={options.metadataDescription}
@@ -603,6 +679,9 @@ export function ResearchView({
           chartTitle: "账户资金变化",
           chartDescription: "看选中标的在这次回测里的账户资金变化。",
           chartAccent: "red",
+          strategyEyebrow: "当前策略",
+          strategyTitle: "这次回测怎么判断买卖",
+          strategyDescription: "把当前策略的中文说明、核心逻辑和关键参数放到同一个卡片里看。",
           decisionEyebrow: "买卖原因",
           decisionTitle: "每一步为什么买卖",
           decisionDescription: "按时间列出信号、策略动作和下单计划。",
@@ -710,8 +789,8 @@ export function ResearchView({
                 <div key={diff.barKey} className="definition-grid__item">
                   <strong>{formatDateTime(diff.eventTime)}</strong>
                   <p>{`Baseline ${diff.baselineAction} / Candidate ${diff.candidateAction}`}</p>
-                  <p>{`Baseline: ${diff.baselineReason || "无"}`}</p>
-                  <p>{`Candidate: ${diff.candidateReason || "无"}`}</p>
+                  <p>{`Baseline: ${localizeResearchReason(diff.baselineReason) || "无"}`}</p>
+                  <p>{`Candidate: ${localizeResearchReason(diff.candidateReason) || "无"}`}</p>
                 </div>
               ))}
             </div>
@@ -890,6 +969,9 @@ export function ResearchView({
           chartTitle: "AI 账户资金变化",
           chartDescription: "看选中标的在这次 AI 回测里的账户资金变化。",
           chartAccent: "teal",
+          strategyEyebrow: "AI 策略",
+          strategyTitle: "这次 AI 回测怎么判断买卖",
+          strategyDescription: "把当前 AI 策略的中文说明、决策逻辑和关键参数直接展开。",
           decisionEyebrow: "AI 买卖原因",
           decisionTitle: "AI 每一步为什么买卖",
           decisionDescription: "按时间列出 AI 信号、策略动作和下单计划。",

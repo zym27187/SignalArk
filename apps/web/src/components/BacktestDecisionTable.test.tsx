@@ -17,13 +17,13 @@ describe("BacktestDecisionTable", () => {
             action: "HOLD",
             executionAction: "SKIP",
             targetPosition: null,
-            reasonSummary: "盘整区间太窄，先观望。",
+            reasonSummary: "market regime is mixed",
             audit: {
               providerId: "heuristic_stub",
               modelOrPolicyVersion: "heuristic_stub_v1",
               decision: "hold",
               confidence: "0.7300",
-              reasonSummary: "盘整区间太窄，先观望。",
+              reasonSummary: "market regime is mixed",
               fallbackUsed: true,
               fallbackReason: "provider timed out",
             },
@@ -39,13 +39,13 @@ describe("BacktestDecisionTable", () => {
             action: "REBALANCE",
             executionAction: "BUY",
             targetPosition: 400,
-            reasonSummary: "突破阈值后调到目标仓位。",
+            reasonSummary: "model confirmed the bullish stack",
             audit: {
               providerId: "openai_chat_completions",
               modelOrPolicyVersion: "gpt-5.4-mini",
               decision: "rebalance",
               confidence: "0.8300",
-              reasonSummary: "突破阈值后调到目标仓位。",
+              reasonSummary: "model confirmed the bullish stack",
               fallbackUsed: false,
               fallbackReason: null,
             },
@@ -82,8 +82,8 @@ describe("BacktestDecisionTable", () => {
     expect(screen.getByRole("columnheader", { name: "策略动作" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "买卖原因排序" })).toHaveValue("desc");
     expect(screen.getByText("第 1 / 3 页 · 显示第 1-1 条，共 3 条")).toBeInTheDocument();
-    expect(screen.queryByText("盘整区间太窄，先观望。")).not.toBeInTheDocument();
-    expect(screen.queryByText("突破阈值后调到目标仓位。")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前市场方向信号分化，先保持观望。")).not.toBeInTheDocument();
+    expect(screen.queryByText("模型确认最近一组 K 线偏多，因此执行买入。")).not.toBeInTheDocument();
 
     const exitRow = screen.getByText("跌破阈值后执行止盈离场。").closest("tr");
     expect(exitRow).not.toBeNull();
@@ -97,28 +97,36 @@ describe("BacktestDecisionTable", () => {
 
     expect(screen.getByRole("combobox", { name: "买卖原因排序" })).toHaveValue("asc");
     expect(screen.getByText("第 1 / 3 页 · 显示第 1-1 条，共 3 条")).toBeInTheDocument();
-    expect(screen.queryByText("突破阈值后调到目标仓位。")).not.toBeInTheDocument();
+    expect(screen.queryByText("模型确认最近一组 K 线偏多，因此执行买入。")).not.toBeInTheDocument();
     expect(screen.queryByText("跌破阈值后执行止盈离场。")).not.toBeInTheDocument();
 
-    const holdRow = screen.getByText("盘整区间太窄，先观望。").closest("tr");
+    const holdRow = screen.getByText("当前市场方向信号分化，先保持观望。").closest("tr");
     expect(holdRow).not.toBeNull();
     expect(within(holdRow as HTMLElement).getByText("观望")).toBeInTheDocument();
     expect(within(holdRow as HTMLElement).getByText("来源：Heuristic Stub")).toBeInTheDocument();
     expect(within(holdRow as HTMLElement).getByText("置信度：0.7300")).toBeInTheDocument();
     expect(
-      within(holdRow as HTMLElement).getByText("回退原因：provider timed out"),
+      within(holdRow as HTMLElement).getByText("回退原因：模型服务响应超时"),
     ).toBeInTheDocument();
-    expect(within(holdRow as HTMLElement).getByText("下单计划：跳过")).toBeInTheDocument();
+    expect(
+      within(holdRow as HTMLElement).getByText("下单计划：跳过（未生成可执行订单）"),
+    ).toBeInTheDocument();
     expect(
       within(holdRow as HTMLElement).getByText("跳过原因：模型选择观望"),
     ).toBeInTheDocument();
+    expect(
+      within(holdRow as HTMLElement).getByText(
+        "跳过说明：模型明确给出了观望动作，所以这一步只记录判断，不生成交易信号。",
+      ),
+    ).toBeInTheDocument();
+    expect(within(holdRow as HTMLElement).getByText("原因代码：ai_decision_hold")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
 
     expect(screen.getByText("第 2 / 3 页 · 显示第 2-2 条，共 3 条")).toBeInTheDocument();
-    expect(screen.queryByText("盘整区间太窄，先观望。")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前市场方向信号分化，先保持观望。")).not.toBeInTheDocument();
 
-    const rebalanceRow = screen.getByText("突破阈值后调到目标仓位。").closest("tr");
+    const rebalanceRow = screen.getByText("模型确认最近一组 K 线偏多，因此执行买入。").closest("tr");
     expect(rebalanceRow).not.toBeNull();
     expect(within(rebalanceRow as HTMLElement).getAllByText("再平衡")).toHaveLength(2);
     expect(
@@ -132,7 +140,7 @@ describe("BacktestDecisionTable", () => {
     fireEvent.click(screen.getByRole("button", { name: "跳转" }));
 
     expect(screen.getByText("第 3 / 3 页 · 显示第 3-3 条，共 3 条")).toBeInTheDocument();
-    expect(screen.queryByText("突破阈值后调到目标仓位。")).not.toBeInTheDocument();
+    expect(screen.queryByText("模型确认最近一组 K 线偏多，因此执行买入。")).not.toBeInTheDocument();
 
     const ascendingExitRow = screen.getByText("跌破阈值后执行止盈离场。").closest("tr");
     expect(ascendingExitRow).not.toBeNull();

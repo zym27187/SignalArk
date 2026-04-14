@@ -185,7 +185,7 @@ describe("App", () => {
           strategyId: "baseline_momentum_v1",
           strategyVersion: "baseline_momentum_v1",
           handlerName: "BaselineMomentumStrategy",
-          description: "research snapshot",
+          description: "Long-only threshold momentum against previous close.",
           mode: "evaluation",
           samplePurpose: "evaluation",
           symbol: "000001.SZ",
@@ -202,6 +202,13 @@ describe("App", () => {
           slippageModel: "bar_close_bps",
           parameterSnapshot: {
             target_position: "400",
+            entry_threshold_pct: "0.0005",
+            exit_threshold_pct: "0",
+            trend_lookback_bars: "3",
+            min_trend_up_bars: "2",
+            strong_entry_threshold_pct: "0.0012",
+            reduced_target_ratio: "0.5",
+            trailing_stop_pct: "0.01",
           },
           dataFingerprint: "bars:000001.SZ:15m",
           manifestFingerprint: "manifest:run-001",
@@ -328,6 +335,11 @@ describe("App", () => {
     });
     expect(screen.getByText(/paper_account_001 \/ 平安银行 \(000001\.SZ\)/)).toBeInTheDocument();
     expect(screen.getByText("模型实验台")).toBeInTheDocument();
+    expect(screen.getByText("这次回测怎么判断买卖")).toBeInTheDocument();
+    expect(screen.getByText("只做多阈值动量")).toBeInTheDocument();
+    expect(
+      screen.getByText(/先观察最近 3 根 K 线，确认其中至少 2 次收盘上涨后/),
+    ).toBeInTheDocument();
   });
 
   it("shows explicit degraded-mode guidance in the market view", async () => {
@@ -588,7 +600,7 @@ describe("App", () => {
           strategyId: "ai_bar_judge_v1",
           strategyVersion: "ai_bar_judge_v1",
           handlerName: "AiBarJudgeStrategy",
-          description: "ai snapshot",
+          description: "LLM-ready bar judgment strategy with a safe heuristic fallback.",
           mode: "preview",
           samplePurpose: "preview",
           symbol: "000001.SZ",
@@ -603,7 +615,14 @@ describe("App", () => {
           slippageBps: 5,
           feeModel: "ashare_paper_cost_model",
           slippageModel: "bar_close_bps",
-          parameterSnapshot: {},
+          parameterSnapshot: {
+            lookback_bars: "12",
+            target_position: "400",
+            min_confidence: "0.60",
+            provider_mode: "heuristic_stub",
+            entry_threshold_pct: "0.0008",
+            exit_threshold_pct: "-0.0005",
+          },
           dataFingerprint: "bars:000001.SZ:15m:ai",
           manifestFingerprint: "manifest:run-ai-001",
         },
@@ -706,7 +725,7 @@ describe("App", () => {
           strategyId: "baseline_momentum_v1",
           strategyVersion: "baseline_momentum_v1",
           handlerName: "BaselineMomentumStrategy",
-          description: "research snapshot",
+          description: "Long-only threshold momentum against previous close.",
           mode: "evaluation",
           samplePurpose: "evaluation",
           symbol: "000001.SZ",
@@ -723,6 +742,13 @@ describe("App", () => {
           slippageModel: "bar_close_bps",
           parameterSnapshot: {
             target_position: "400",
+            entry_threshold_pct: "0.0005",
+            exit_threshold_pct: "0",
+            trend_lookback_bars: "3",
+            min_trend_up_bars: "2",
+            strong_entry_threshold_pct: "0.0012",
+            reduced_target_ratio: "0.5",
+            trailing_stop_pct: "0.01",
           },
           dataFingerprint: "bars:000001.SZ:15m",
           manifestFingerprint: "manifest:run-001",

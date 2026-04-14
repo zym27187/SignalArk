@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 
 import { formatDateTime, formatDecimal, titleCase } from "../lib/format";
+import {
+  describeResearchSkipReason,
+  localizeResearchReason,
+} from "../lib/research-copy";
 import type { BacktestDecisionSnapshot } from "../types/research";
 
 const DEFAULT_PAGE_SIZE = 8;
@@ -114,38 +118,61 @@ export function BacktestDecisionTable({
           </tr>
         </thead>
         <tbody>
-          {visibleDecisions.map((decision) => (
-            <tr key={decision.barKey}>
-              <td>{formatDateTime(decision.eventTime)}</td>
-              <td>{titleCase(decision.action)}</td>
-              <td>{decision.signalType ? titleCase(decision.signalType) : "无"}</td>
-              <td>
-                {decision.targetPosition === null
-                  ? "--"
-                  : formatDecimal(decision.targetPosition, 0)}
-              </td>
-              <td>{decision.fillCount}</td>
-              <td>
-                <div className="decision-reason">
-                  <strong>{decision.reasonSummary}</strong>
-                  {decision.audit ? (
-                    <>
-                      <span>{`来源：${formatAuditProvider(decision.audit.providerId)}`}</span>
-                      <span>{`审计决策：${titleCase(decision.audit.decision || "--")}`}</span>
-                      {decision.audit.confidence ? (
-                        <span>{`置信度：${decision.audit.confidence}`}</span>
-                      ) : null}
-                      {decision.audit.fallbackUsed ? (
-                        <span>{`回退原因：${decision.audit.fallbackReason || "外部 provider 暂不可用"}`}</span>
-                      ) : null}
-                    </>
-                  ) : null}
-                  {decision.skipReason ? <span>跳过原因：{titleCase(decision.skipReason)}</span> : null}
-                  <span>下单计划：{titleCase(decision.executionAction)}</span>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {visibleDecisions.map((decision) => {
+            const localizedReasonSummary =
+              localizeResearchReason(decision.reasonSummary) || "当前没有额外原因摘要。";
+            const localizedAuditReason =
+              localizeResearchReason(decision.audit?.reasonSummary) || null;
+            const localizedFallbackReason =
+              localizeResearchReason(decision.audit?.fallbackReason) || null;
+            const skipReasonDetail = describeResearchSkipReason(decision);
+            const executionPlanLabel =
+              decision.executionAction === "SKIP" && decision.orderPlanSide === null
+                ? "跳过（未生成可执行订单）"
+                : titleCase(decision.executionAction);
+
+            return (
+              <tr key={decision.barKey}>
+                <td>{formatDateTime(decision.eventTime)}</td>
+                <td>{titleCase(decision.action)}</td>
+                <td>{decision.signalType ? titleCase(decision.signalType) : "无"}</td>
+                <td>
+                  {decision.targetPosition === null
+                    ? "--"
+                    : formatDecimal(decision.targetPosition, 0)}
+                </td>
+                <td>{decision.fillCount}</td>
+                <td>
+                  <div className="decision-reason">
+                    <strong>{localizedReasonSummary}</strong>
+                    {decision.audit ? (
+                      <>
+                        <span>{`来源：${formatAuditProvider(decision.audit.providerId)}`}</span>
+                        <span>{`审计决策：${titleCase(decision.audit.decision || "--")}`}</span>
+                        {decision.audit.confidence ? (
+                          <span>{`置信度：${decision.audit.confidence}`}</span>
+                        ) : null}
+                        {localizedAuditReason && localizedAuditReason !== localizedReasonSummary ? (
+                          <span>{`审计摘要：${localizedAuditReason}`}</span>
+                        ) : null}
+                        {decision.audit.fallbackUsed ? (
+                          <span>{`回退原因：${localizedFallbackReason || "外部 provider 暂不可用"}`}</span>
+                        ) : null}
+                      </>
+                    ) : null}
+                    {decision.skipReason ? (
+                      <>
+                        <span>跳过原因：{titleCase(decision.skipReason)}</span>
+                        {skipReasonDetail ? <span>{`跳过说明：${skipReasonDetail}`}</span> : null}
+                        <span>{`原因代码：${decision.skipReason}`}</span>
+                      </>
+                    ) : null}
+                    <span>{`下单计划：${executionPlanLabel}`}</span>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 

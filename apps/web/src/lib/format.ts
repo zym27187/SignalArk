@@ -38,6 +38,9 @@ const DISPLAY_VALUE_MAP: Record<string, string> = {
   ai_decision_hold: "模型选择观望",
   ai_lookback_warmup: "等待策略预热",
   ai_provider_error_suppressed: "模型请求失败已忽略",
+  baseline_entry_threshold_not_met: "入场阈值未满足",
+  baseline_trend_unconfirmed: "趋势尚未确认",
+  baseline_trend_warmup: "等待基线策略预热",
   kill_switch: "已紧急暂停",
   limit: "限价",
   live: "实盘交易",
@@ -104,6 +107,11 @@ const DISPLAY_VALUE_MAP: Record<string, string> = {
   lease_not_held: "未持有租约",
   control_plane_schema_missing: "控制面表缺失",
   fixture_data_in_use: "示例数据接管",
+  missing_market_context: "缺少市场上下文",
+  missing_symbol_rule: "缺少标的规则",
+  normalized_buy_qty_below_min_qty: "买入数量不足最小手数",
+  normalized_sell_qty_below_min_qty: "卖出数量不足最小手数",
+  target_position_already_satisfied: "目标仓位已满足",
 };
 
 const DISPLAY_MESSAGE_MAP: Record<string, string> = {
@@ -113,6 +121,7 @@ const DISPLAY_MESSAGE_MAP: Record<string, string> = {
     "熔断开关已关闭；若保护模式当前生效，其状态保持不变。",
   "Kill switch enabled; only reducing or flattening actions remain allowed.":
     "熔断开关已开启；当前仅允许减仓或清仓动作。",
+  "provider timed out": "模型服务响应超时。",
   "Request failed.": "请求失败。",
   "Strategy paused.": "策略已暂停。",
   "Strategy resumed.": "策略已恢复。",
