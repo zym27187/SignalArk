@@ -48,16 +48,17 @@ def _bar_event(
     close: Decimal,
     offset: int,
     previous_close: Decimal,
+    event_time: datetime | None = None,
 ) -> BarEvent:
-    event_time = BASE_TIME + timedelta(days=offset)
+    resolved_event_time = event_time or (BASE_TIME + timedelta(days=offset))
     return BarEvent(
         exchange="cn_equity",
         symbol="600036.SH",
         timeframe="1d",
-        bar_start_time=event_time - timedelta(days=1),
-        bar_end_time=event_time,
-        event_time=event_time,
-        ingest_time=event_time + timedelta(seconds=1),
+        bar_start_time=resolved_event_time - timedelta(days=1),
+        bar_end_time=resolved_event_time,
+        event_time=resolved_event_time,
+        ingest_time=resolved_event_time + timedelta(seconds=1),
         open=previous_close,
         high=max(close, previous_close),
         low=min(close, previous_close),
@@ -66,7 +67,7 @@ def _bar_event(
         closed=True,
         final=True,
         source_kind="historical",
-        market_state=_market_state(event_time, previous_close),
+        market_state=_market_state(resolved_event_time, previous_close),
     )
 
 
@@ -181,3 +182,80 @@ async def test_moving_average_band_strategy_emits_exit_after_rebound_crosses_sel
     assert metadata["strategy_id"] == MOVING_AVERAGE_BAND_V1
     assert metadata["parameters"]["rule_template"] == MOVING_AVERAGE_BAND_V1
     assert metadata["parameters"]["timeframe"] == "1d"
+
+
+@pytest.mark.asyncio
+async def test_moving_average_band_strategy_keeps_waiting_when_buy_threshold_is_not_met() -> None:
+    strategy = MovingAverageBandStrategy(
+        account_id="paper_account_001",
+        ma_window=3,
+        buy_below_ma_pct=Decimal("0.05"),
+        sell_above_ma_pct=Decimal("0.10"),
+        target_position=Decimal("400"),
+    )
+
+    await strategy.on_bar(
+        _bar_event(close=Decimal("100"), previous_close=Decimal("100"), offset=0),
+        _context(0),
+    )
+    await strategy.on_bar(
+        _bar_event(close=Decimal("100"), previous_close=Decimal("100"), offset=1),
+        _context(1),
+    )
+    hold_event = _bar_event(
+        close=Decimal("100"),
+        previous_close=Decimal("100"),
+        offset=2,
+    )
+    hold_signal = await strategy.on_bar(hold_event, _context(2))
+
+    assert hold_signal is None
+
+    hold_decision = strategy.build_non_signal_decision(hold_event)
+    assert hold_decision is not None
+    assert hold_decision.skip_reason == "moving_average_band_buy_threshold_not_met"
+    assert "keep waiting" in hold_decision.audit.reason_summary
+
+
+@pytest.mark.asyncio
+async def test_moving_average_band_strategy_respects_t_plus_one_before_exit() -> None:
+    strategy = MovingAverageBandStrategy(
+        account_id="paper_account_001",
+        ma_window=3,
+        buy_below_ma_pct=Decimal("0.05"),
+        sell_above_ma_pct=Decimal("0.10"),
+        target_position=Decimal("400"),
+    )
+
+    await strategy.on_bar(
+        _bar_event(close=Decimal("100"), previous_close=Decimal("100"), offset=0),
+        _context(0),
+    )
+    await strategy.on_bar(
+        _bar_event(close=Decimal("100"), previous_close=Decimal("100"), offset=1),
+        _context(1),
+    )
+    entry_event_time = BASE_TIME + timedelta(days=2)
+    await strategy.on_bar(
+        _bar_event(
+          close=Decimal("80"),
+          previous_close=Decimal("100"),
+          offset=2,
+          event_time=entry_event_time,
+        ),
+        _context(2),
+    )
+    locked_exit_event = _bar_event(
+        close=Decimal("120"),
+        previous_close=Decimal("80"),
+        offset=2,
+        event_time=entry_event_time + timedelta(hours=1),
+    )
+    locked_exit_signal = await strategy.on_bar(locked_exit_event, _context(2))
+
+    assert locked_exit_signal is None
+
+    locked_decision = strategy.build_non_signal_decision(locked_exit_event)
+    assert locked_decision is not None
+    assert locked_decision.skip_reason == "moving_average_band_t_plus_one_locked"
+    assert "same-day inventory unsellable" in locked_decision.audit.reason_summary

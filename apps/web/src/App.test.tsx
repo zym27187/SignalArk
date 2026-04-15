@@ -8,6 +8,7 @@ import { useDashboardData } from "./hooks/use-dashboard-data";
 import { useAiResearchSettings } from "./hooks/use-ai-research-settings";
 import { useMarketData } from "./hooks/use-market-data";
 import { useResearchData } from "./hooks/use-research-data";
+import { useRuleResearchData } from "./hooks/use-rule-research-data";
 
 vi.mock("./hooks/use-dashboard-data", () => ({
   useDashboardData: vi.fn(),
@@ -29,11 +30,16 @@ vi.mock("./hooks/use-research-data", () => ({
   useResearchData: vi.fn(),
 }));
 
+vi.mock("./hooks/use-rule-research-data", () => ({
+  useRuleResearchData: vi.fn(),
+}));
+
 const mockedUseDashboardData = vi.mocked(useDashboardData);
 const mockedUseAiResearchData = vi.mocked(useAiResearchData);
 const mockedUseAiResearchSettings = vi.mocked(useAiResearchSettings);
 const mockedUseMarketData = vi.mocked(useMarketData);
 const mockedUseResearchData = vi.mocked(useResearchData);
+const mockedUseRuleResearchData = vi.mocked(useRuleResearchData);
 
 describe("App", () => {
   beforeEach(() => {
@@ -262,6 +268,17 @@ describe("App", () => {
       save: vi.fn(),
     });
     mockedUseAiResearchData.mockReturnValue({
+      snapshot: null,
+      error: null,
+      fetchedAt: null,
+      isLoading: false,
+      isRefreshing: false,
+      lastRequest: null,
+      run: vi.fn(),
+      refresh: vi.fn(),
+      reset: vi.fn(),
+    });
+    mockedUseRuleResearchData.mockReturnValue({
       snapshot: null,
       error: null,
       fetchedAt: null,
@@ -598,6 +615,115 @@ describe("App", () => {
         provider: "openai_compatible",
         model: "gpt-5.4",
         baseUrl: "https://api.openai.com/v1",
+      });
+    });
+  });
+
+  it("runs rule research from the quick-fill button with the current symbol and years", async () => {
+    const runMock = vi.fn().mockResolvedValue({
+      datasetName: "cn_equity / 600036.SH / 1d",
+      sourceLabel: "由 research API 生成的规则回测结果",
+      sourceMode: "live",
+      mode: "evaluation",
+      summary: {
+        mode: "evaluation",
+        modeLabel: "评估样本",
+        resultHeadline: "净收益 320.00，最大回撤 4.1000% ，交易 2 次。",
+        sampleMessage: "规则评估样本说明",
+        comparisonMessage: null,
+      },
+      klineBars: [],
+      equityCurve: [],
+      manifest: {
+        runId: "rule-run-001",
+        accountId: "paper_account_001",
+        strategyId: "moving_average_band_v1",
+        strategyVersion: "moving_average_band_v1",
+        handlerName: "MovingAverageBandStrategy",
+        description: "rule snapshot",
+        mode: "evaluation",
+        samplePurpose: "evaluation",
+        symbol: "600036.SH",
+        symbols: ["600036.SH"],
+        timeframe: "1d",
+        barCount: 1250,
+        startTime: "2021-04-02T10:00:00+08:00",
+        endTime: "2026-04-02T10:00:00+08:00",
+        generatedAt: "2026-04-02T10:00:01+08:00",
+        initialCash: 100000,
+        costModel: "ashare_paper_cost_model",
+        slippageBps: 5,
+        feeModel: "ashare_paper_cost_model",
+        slippageModel: "bar_close_bps",
+        parameterSnapshot: {
+          rule_template: "moving_average_band_v1",
+        },
+        dataFingerprint: "bars:600036.SH:1d",
+        manifestFingerprint: "manifest:rule-run-001",
+      },
+      performance: {
+        barCount: 1250,
+        signalCount: 2,
+        orderCount: 2,
+        tradeCount: 2,
+        fillCount: 2,
+        winningTradeCount: 1,
+        losingTradeCount: 0,
+        startingCash: 100000,
+        endingCash: 99800,
+        endingMarketValue: 520,
+        startingEquity: 100000,
+        endingEquity: 100320,
+        netPnl: 320,
+        totalReturnPct: 0.32,
+        maxDrawdownPct: 4.1,
+        realizedPnl: 120,
+        unrealizedPnl: 200,
+        turnover: 78000,
+        winRatePct: 100,
+      },
+      decisions: [],
+      experiments: null,
+      comparison: null,
+      notes: [],
+    });
+    mockedUseRuleResearchData.mockReturnValue({
+      snapshot: null,
+      error: null,
+      fetchedAt: null,
+      isLoading: false,
+      isRefreshing: false,
+      lastRequest: null,
+      run: runMock,
+      refresh: vi.fn(),
+      reset: vi.fn(),
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /研究/ }));
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#research");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "5 年" }));
+    fireEvent.click(screen.getByRole("button", { name: "快速填充示例并运行" }));
+
+    await waitFor(() => {
+      expect(runMock).toHaveBeenCalledWith({
+        symbol: "600036.SH",
+        timeframe: "1d",
+        limit: 1250,
+        initialCash: 100000,
+        slippageBps: 5,
+        ruleTemplate: "moving_average_band_v1",
+        ruleConfig: {
+          maWindow: 60,
+          buyBelowMaPct: 0.05,
+          sellAboveMaPct: 0.1,
+          targetPosition: 400,
+        },
       });
     });
   });
