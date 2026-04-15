@@ -20,6 +20,7 @@ import type {
   ResearchAiSettingsUpdateRequest,
   ResearchAiSnapshotRequest,
   ResearchMode,
+  ResearchRuleSnapshotRequest,
   ResearchSnapshot,
 } from "../types/research";
 export {
@@ -380,6 +381,31 @@ export async function postResearchAiSnapshot(
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+export async function postResearchRuleSnapshot(
+  params: ResearchRuleSnapshotRequest,
+): Promise<ResearchSnapshot> {
+  return requestJson<ResearchSnapshot>("/v1/research/rule-snapshot", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      symbol: params.symbol,
+      timeframe: params.timeframe,
+      limit: params.limit,
+      initialCash: params.initialCash,
+      slippageBps: params.slippageBps,
+      ruleTemplate: params.ruleTemplate,
+      ruleConfig: {
+        maWindow: params.ruleConfig.maWindow,
+        buyBelowMaPct: params.ruleConfig.buyBelowMaPct,
+        sellAboveMaPct: params.ruleConfig.sellAboveMaPct,
+        targetPosition: params.ruleConfig.targetPosition,
+      },
+    }),
+  });
 }
 
 export async function fetchResearchAiSettings(): Promise<ResearchAiSettings> {

@@ -22,6 +22,7 @@ import {
   fetchStatus,
   postControlAction,
   postResearchAiSnapshot,
+  postResearchRuleSnapshot,
   putResearchAiSettings,
 } from "./api";
 
@@ -567,6 +568,68 @@ describe("api helpers", () => {
           model: "gpt-5.4",
           baseUrl: "https://api.openai.com/v1",
           apiKey: "sk-test",
+        }),
+      }),
+    );
+  });
+
+  it("posts rule research snapshot requests as JSON", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          datasetName: "cn_equity / 600036.SH / 1d",
+          sourceLabel: "由 research API 生成的规则回测结果",
+          sourceMode: "live",
+          klineBars: [],
+          equityCurve: [],
+          manifest: {},
+          performance: {},
+          decisions: [],
+          notes: [],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await postResearchRuleSnapshot({
+      symbol: "600036.SH",
+      timeframe: "1d",
+      limit: 750,
+      initialCash: 100000,
+      slippageBps: 5,
+      ruleTemplate: "moving_average_band_v1",
+      ruleConfig: {
+        maWindow: 60,
+        buyBelowMaPct: 0.05,
+        sellAboveMaPct: 0.1,
+        targetPosition: 400,
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/v1/research/rule-snapshot",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          symbol: "600036.SH",
+          timeframe: "1d",
+          limit: 750,
+          initialCash: 100000,
+          slippageBps: 5,
+          ruleTemplate: "moving_average_band_v1",
+          ruleConfig: {
+            maWindow: 60,
+            buyBelowMaPct: 0.05,
+            sellAboveMaPct: 0.1,
+            targetPosition: 400,
+          },
         }),
       }),
     );
