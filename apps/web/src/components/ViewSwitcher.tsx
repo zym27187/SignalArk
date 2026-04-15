@@ -13,17 +13,17 @@ const viewOptions: Array<{
   {
     key: "operations",
     label: "交易",
-    description: "看状态、持仓、订单和人工操作。",
+    description: "运行、账户、订单与事件。",
   },
   {
     key: "market",
     label: "市场",
-    description: "看价格走势和账户盈亏变化。",
+    description: "行情、曲线与数据核验。",
   },
   {
     key: "research",
     label: "研究",
-    description: "看回测结果和每一步交易原因。",
+    description: "回测、对比与策略参数。",
   },
 ];
 

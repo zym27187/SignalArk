@@ -32,19 +32,19 @@ const VIEW_META: Record<
   }
 > = {
   operations: {
-    eyebrow: "运行控制",
-    title: "运行状态与控制操作",
-    summary: "集中查看系统状态、账户信息、订单记录与人工控制入口。",
+    eyebrow: "控制总览",
+    title: "运行监控与控制",
+    summary: "集中查看系统状态、账户、订单与控制指令。",
   },
   market: {
-    eyebrow: "市场监控",
-    title: "行情走势与运行诊断",
-    summary: "在统一上下文中查看价格走势、权益曲线与运行诊断数据。",
+    eyebrow: "市场总览",
+    title: "行情监控与数据核验",
+    summary: "在统一上下文中查看行情、权益曲线与运行数据。",
   },
   research: {
-    eyebrow: "研究分析",
-    title: "回测结果与策略评估",
-    summary: "基于选定标的与周期查看回测表现、参数配置与决策明细。",
+    eyebrow: "研究总览",
+    title: "回测分析与策略对比",
+    summary: "基于选定标的与周期查看回测结果、参数配置与决策明细。",
   },
 };
 
@@ -141,7 +141,7 @@ function describeFocus(
   return {
     tone: "default",
     label: accountId ?? "paper_account_001",
-    hint: "控制动作、筛选条件与股票代码检查入口已集中展示。",
+    hint: "控制指令、筛选参数与标的检查入口已集中展示。",
   };
 }
 

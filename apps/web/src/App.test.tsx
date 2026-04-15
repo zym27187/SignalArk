@@ -298,9 +298,9 @@ describe("App", () => {
   it("shares the selected symbol across market and research views", async () => {
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: "股票代码管理" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "资金与权益" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "常见术语" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "标的检查" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "账户总览" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "术语说明" })).toBeInTheDocument();
 
     expect(mockedUseMarketData).toHaveBeenLastCalledWith({
       enabled: false,
@@ -351,8 +351,8 @@ describe("App", () => {
       mode: "evaluation",
     });
     expect(screen.getByText(/paper_account_001 \/ 平安银行 \(000001\.SZ\)/)).toBeInTheDocument();
-    expect(screen.getByText("模型实验台")).toBeInTheDocument();
-    expect(screen.getByText("这次回测怎么判断买卖")).toBeInTheDocument();
+    expect(screen.getByText("AI 参数")).toBeInTheDocument();
+    expect(screen.getByText("策略摘要")).toBeInTheDocument();
     expect(screen.getByText("只做多阈值动量")).toBeInTheDocument();
     expect(
       screen.getByText(/先观察最近 3 根 K 线，确认其中至少 2 次收盘上涨后/),
@@ -1010,7 +1010,7 @@ describe("App", () => {
       expect(window.location.hash).toBe("#research");
     });
 
-    expect(screen.getByText("baseline_default vs ai_candidate")).toBeInTheDocument();
+    expect(screen.getByText("baseline_default 对比 ai_candidate")).toBeInTheDocument();
     expect(screen.getByText("关键决策差异")).toBeInTheDocument();
     expect(screen.getByText("Candidate: ai entered")).toBeInTheDocument();
     expect(screen.getByText("Baseline: baseline skipped")).toBeInTheDocument();

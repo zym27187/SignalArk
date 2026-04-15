@@ -55,7 +55,7 @@ describe("StatusHero", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "交易运行总览" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "运行总览" })).toBeInTheDocument();
     expect(
       screen.getByText("系统当前存在明确的诊断降级，下面会直接说明原因、影响和建议动作。"),
     ).toBeInTheDocument();

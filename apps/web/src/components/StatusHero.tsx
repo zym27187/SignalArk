@@ -100,9 +100,9 @@ export function StatusHero({ status, isLoading, error }: StatusHeroProps) {
   return (
     <section className={`status-hero status-hero--${tone}`}>
       <div className="status-hero__copy">
-        <p className="status-hero__eyebrow">交易总览</p>
+        <p className="status-hero__eyebrow">控制总览</p>
         <h1 className="status-hero__title">
-          {isLoading ? "正在整理最新状态..." : "交易运行总览"}
+          {isLoading ? "正在整理最新状态..." : "运行总览"}
         </h1>
         <p className="status-hero__summary">{summary}</p>
         <p className="status-hero__impact">{impact}</p>

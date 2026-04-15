@@ -106,8 +106,8 @@ export function MarketView({
     <main className="page-stack">
       <section className="page-hero">
         <div className="page-hero__copy">
-          <p className="page-hero__eyebrow">市场走势</p>
-          <h2 className="page-hero__title">价格走势与账户盈亏</h2>
+          <p className="page-hero__eyebrow">市场总览</p>
+          <h2 className="page-hero__title">行情与权益曲线</h2>
           <p className="page-hero__summary">
             这里优先展示真实价格和账户曲线；如果本地还没积累足够数据，页面会自动用示例数据补位，保证图表始终可看。
           </p>
@@ -159,13 +159,13 @@ export function MarketView({
 
       <DegradedModeCallout
         diagnostics={degradedMode}
-        title="市场与诊断状态"
+        title="运行诊断"
         alwaysShow
       />
 
       <SectionCard
-        eyebrow="价格走势"
-        title="价格变化"
+        eyebrow="市场"
+        title="价格主图"
         description="优先展示当前上下文下的价格主图，先看趋势和波动，再往下核对数据来源。"
       >
         <CandlestickChart
@@ -176,8 +176,8 @@ export function MarketView({
       </SectionCard>
 
       <SectionCard
-        eyebrow="账户变化"
-        title="账户盈亏变化"
+        eyebrow="市场"
+        title="权益曲线"
         description="在同一上下文里查看账户资金曲线，便于把价格波动和权益变化一起读。"
       >
         <AreaChart
@@ -191,8 +191,8 @@ export function MarketView({
 
       <section className="support-grid">
         <SectionCard
-          eyebrow="核对"
-          title="系统实际看到的数据"
+          eyebrow="核验"
+          title="运行行情"
           description="确认交易系统当时看到的最新行情，而不是事后重新拉取的数据。"
         >
           <DefinitionGrid
@@ -238,8 +238,8 @@ export function MarketView({
         </SectionCard>
 
         <SectionCard
-          eyebrow="数据说明"
-          title="当前数据接入情况"
+          eyebrow="来源"
+          title="数据来源"
           description="说明页面现在用的是真实数据还是示例数据。"
         >
           <DefinitionGrid

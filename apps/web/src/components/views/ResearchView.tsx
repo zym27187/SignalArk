@@ -208,7 +208,7 @@ function buildStrategyItems(
       hint: `策略 ID：${manifest.strategyId}`,
     },
     {
-      label: "怎么判断买卖",
+      label: "交易逻辑",
       value: describeResearchStrategyLogic(manifest),
       hint: describeResearchStrategySafety(manifest),
     },
@@ -710,8 +710,8 @@ export function ResearchView({
     <main className="page-stack">
       <section className="page-hero">
         <div className="page-hero__copy">
-          <p className="page-hero__eyebrow">策略回看</p>
-          <h2 className="page-hero__title">回测结果一眼看懂</h2>
+          <p className="page-hero__eyebrow">研究总览</p>
+          <h2 className="page-hero__title">回测与策略分析</h2>
           <p className="page-hero__summary">
             这里会按你选中的标的和周期，统一生成基线研究结果，并根据模式补上参数扫描、滚动评估或 AI 对照，让你先看结论，再看原因。
           </p>
@@ -771,7 +771,7 @@ export function ResearchView({
           </div>
 
           <div className="dataset-switcher__group">
-            <p className="dataset-switcher__label">规则回测样本</p>
+            <p className="dataset-switcher__label">规则样本区间</p>
             <div className="dataset-switcher__options">
               {RULE_RESEARCH_HISTORY_YEAR_OPTIONS.map((years) => (
                 <button
@@ -805,8 +805,8 @@ export function ResearchView({
       </section>
 
       <SectionCard
-        eyebrow="规则回测"
-        title="均线规则回测配置"
+        eyebrow="规则"
+        title="规则参数"
         description="先配置均线周期、买卖阈值和目标仓位，再直接发起规则回测。"
       >
         <form
@@ -937,8 +937,8 @@ export function ResearchView({
 
       {summary !== undefined ? (
         <SectionCard
-          eyebrow="回测摘要"
-          title="当前结果摘要"
+          eyebrow="总览"
+          title="回测总览"
           description="先看本次样本模式和核心结论，再决定是否继续下钻到对照、曲线和交易明细。"
         >
           <section className="research-conclusion">
@@ -958,8 +958,8 @@ export function ResearchView({
 
       {comparison !== null ? (
         <SectionCard
-          eyebrow="标准化对照"
-          title={`${comparison.baselineLabel} vs ${comparison.candidateLabel}`}
+          eyebrow="对比"
+          title={`${comparison.baselineLabel} 对比 ${comparison.candidateLabel}`}
           description="把 baseline 与 candidate 放在同一套样本和指标下比较，减少来回切换和人工抄数。"
         >
           <section className="metric-grid">
@@ -1013,8 +1013,8 @@ export function ResearchView({
 
       {experiments?.parameterScan || experiments?.walkForward ? (
         <SectionCard
-          eyebrow="实验摘要"
-          title="Phase 4 标准化实验结果"
+          eyebrow="实验"
+          title="参数实验"
           description="参数扫描和滚动评估都会在同一套样本与指标语义下输出，减少人工再加工。"
         >
           <div className="definition-grid">
@@ -1049,21 +1049,21 @@ export function ResearchView({
         metadataItems: primaryMetadataItems,
         options: {
           labelPrefix: "",
-          eyebrow: "资金变化",
-          chartTitle: "账户资金变化",
+          eyebrow: "曲线",
+          chartTitle: "收益曲线",
           chartDescription: "看选中标的在这次回测里的账户资金变化。",
           chartAccent: "red",
-          strategyEyebrow: "当前策略",
-          strategyTitle: "这次回测怎么判断买卖",
+          strategyEyebrow: "摘要",
+          strategyTitle: "策略摘要",
           strategyDescription: "把当前策略的中文说明、核心逻辑和关键参数放到同一个卡片里看。",
-          decisionEyebrow: "买卖原因",
-          decisionTitle: "每一步为什么买卖",
+          decisionEyebrow: "明细",
+          decisionTitle: "决策明细",
           decisionDescription: "按时间列出信号、策略动作和下单计划。",
-          metadataEyebrow: "回测信息",
-          metadataTitle: "本次回放信息",
+          metadataEyebrow: "设置",
+          metadataTitle: "回测设置",
           metadataDescription: "这次回测用的时间范围、标的和成本假设。",
-          notesEyebrow: "数据说明",
-          notesTitle: "这页数据从哪来",
+          notesEyebrow: "说明",
+          notesTitle: "结果说明",
           notesDescription: "说明当前展示的数据来源和接入方式。",
           emptyTitle: "暂无回测结果",
           emptyCopy: "切换到这里后，页面会基于真实历史价格即时生成一份回测结果。",
@@ -1071,8 +1071,8 @@ export function ResearchView({
       })}
 
       <SectionCard
-        eyebrow="AI 回测"
-        title="模型实验台"
+        eyebrow="AI"
+        title="AI 参数"
         description={`数据库里会持久化保存 AI 回测配置，进入研究页时自动回填；运行回测时会优先复用后端已保存的 API Key。为保证交互速度，页面默认只预览最近 ${DEFAULT_AI_RESEARCH_PREVIEW_LIMIT} 根 K 线。`}
       >
         <form
@@ -1230,21 +1230,21 @@ export function ResearchView({
         metadataItems: aiMetadataItems,
         options: {
           labelPrefix: "AI ",
-          eyebrow: "AI 资金变化",
-          chartTitle: "AI 账户资金变化",
+          eyebrow: "AI 曲线",
+          chartTitle: "AI 收益曲线",
           chartDescription: "看选中标的在这次 AI 回测里的账户资金变化。",
           chartAccent: "teal",
-          strategyEyebrow: "AI 策略",
-          strategyTitle: "这次 AI 回测怎么判断买卖",
+          strategyEyebrow: "AI 摘要",
+          strategyTitle: "AI 策略摘要",
           strategyDescription: "把当前 AI 策略的中文说明、决策逻辑和关键参数直接展开。",
-          decisionEyebrow: "AI 买卖原因",
-          decisionTitle: "AI 每一步为什么买卖",
+          decisionEyebrow: "AI 明细",
+          decisionTitle: "AI 决策明细",
           decisionDescription: "按时间列出 AI 信号、策略动作和下单计划。",
-          metadataEyebrow: "AI 回测信息",
-          metadataTitle: "本次 AI 回放信息",
+          metadataEyebrow: "AI 设置",
+          metadataTitle: "AI 回测设置",
           metadataDescription: "这次 AI 回测使用的模型、时间范围、标的和成本假设。",
-          notesEyebrow: "AI 数据说明",
-          notesTitle: "AI 结果从哪来",
+          notesEyebrow: "AI 说明",
+          notesTitle: "AI 结果说明",
           notesDescription: "说明当前 AI 回放的数据来源和模型接入方式。",
           emptyTitle: "还没有 AI 回测结果",
           emptyCopy: "填好并保存模型配置后，点击运行 AI 回测即可生成对照结果。",

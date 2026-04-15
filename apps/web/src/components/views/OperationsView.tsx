@@ -79,8 +79,8 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
       <section className="interaction-hub">
         <SectionCard
           className="interaction-hub__card"
-          eyebrow="控制台入口"
-          title="手动操作"
+          eyebrow="控制"
+          title="控制指令"
           description="先决定系统要不要继续自动动作，高风险操作会在这里集中确认。"
         >
           <ControlPanel
@@ -93,8 +93,8 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
 
         <SectionCard
           className="interaction-hub__card"
-          eyebrow="控制台入口"
-          title="筛选条件"
+          eyebrow="控制"
+          title="筛选参数"
           description="先把查看范围收口，下面订单、成交和事件时间线会一起跟着变化。"
         >
           <ActivityFiltersPanel
@@ -109,8 +109,8 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
 
         <SectionCard
           className="interaction-hub__card"
-          eyebrow="控制台入口"
-          title="股票代码管理"
+          eyebrow="控制"
+          title="标的检查"
           description="在同一块交互区里完成代码检查、层级确认和运行范围申请判断。"
         >
           <SymbolInspectorPanel runtimeSymbols={availableSymbols} symbolNames={symbolNames} />
@@ -119,7 +119,7 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
 
       <SectionCard
         eyebrow="账户"
-        title="资金与权益"
+        title="账户总览"
         description="先看账户概览中的核心数字，再往下查看全量持仓明细。"
       >
         <BalanceSummaryPanel
@@ -130,7 +130,7 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
 
       <SectionCard
         eyebrow="账户"
-        title="当前持仓"
+        title="持仓明细"
         description="全宽展示当前持仓明细；没有持仓时只保留紧凑空状态，不再单独占一列。"
       >
         <PositionsTable
@@ -142,8 +142,8 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
 
       <section className="operations-flow">
         <SectionCard
-          eyebrow="进行中"
-          title="未完成订单"
+          eyebrow="订单"
+          title="活动订单"
           description="这里看还在排队、已接收或部分成交的订单。"
         >
           <OrdersTable
@@ -154,8 +154,8 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
         </SectionCard>
 
         <SectionCard
-          eyebrow="回看"
-          title="历史订单"
+          eyebrow="订单"
+          title="订单流水"
           description="这里按筛选回看订单从提交到结束的全过程。"
         >
           <OrderHistoryTable
@@ -166,8 +166,8 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
         </SectionCard>
 
         <SectionCard
-          eyebrow="回看"
-          title="历史成交"
+          eyebrow="订单"
+          title="成交流水"
           description="这里看已经真正成交的记录，不用再手动查库。"
         >
           <FillHistoryTable
@@ -179,8 +179,8 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
 
         <SectionCard
           className="operations-flow__events"
-          eyebrow="最近动态"
-          title="最近发生了什么"
+          eyebrow="事件"
+          title="事件流"
           description="按当前筛选展示最近的关键事件时间线。"
         >
           <EventTimeline
@@ -192,12 +192,12 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
 
         <SectionCard
           className="operations-flow__glossary"
-          eyebrow="名词解释"
-          title="常见术语"
+          eyebrow="说明"
+          title="术语说明"
           description="把常见交易术语收进可折叠区域，需要时再展开查看。"
         >
           <details className="operations-fold">
-            <summary className="operations-fold__summary">查看术语解释</summary>
+            <summary className="operations-fold__summary">展开术语说明</summary>
             <div className="operations-fold__body">
               <TradingGlossaryPanel />
             </div>
