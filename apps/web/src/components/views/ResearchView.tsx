@@ -804,6 +804,137 @@ export function ResearchView({
         </div>
       </section>
 
+      <SectionCard
+        eyebrow="规则回测"
+        title="均线规则回测配置"
+        description="先配置均线周期、买卖阈值和目标仓位，再直接发起规则回测。"
+      >
+        <form
+          className="rule-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void runRuleResearch();
+          }}
+        >
+          {ruleResearchData.error ? <p className="section-error">{ruleResearchData.error}</p> : null}
+          {ruleStatusMessage ? <p className="section-success">{ruleStatusMessage}</p> : null}
+
+          <div className="rule-form__summary">
+            <div className="page-hero__chips page-hero__chips--left">
+              <span className="tag">{formatSymbolLabel(selectedSymbol, symbolNames)}</span>
+              <span className="tag">固定周期 {DEFAULT_RULE_RESEARCH_TIMEFRAME}</span>
+              <span className="tag">{selectedRuleHistoryYears} 年 / 约 {ruleLookbackLimit} 根</span>
+              <span className="tag">模板 {DEFAULT_RULE_RESEARCH_TEMPLATE}</span>
+            </div>
+            <p className="field__hint">
+              股票代码直接跟随研究页顶部 selector；当前规则回测固定使用 `1d` 日线，并把上面选择的样本区间换算成请求里的 `limit`。
+            </p>
+          </div>
+
+          <div className="rule-form__grid">
+            <label className="field">
+              <span className="field__label">均线周期</span>
+              <input
+                type="number"
+                min="2"
+                step="1"
+                value={ruleMaWindow}
+                onChange={(event) => setRuleMaWindow(event.target.value)}
+                className="field__control"
+              />
+              <span className="field__hint">例如 60，表示 MA60，也就是最近 60 根日线的均值。</span>
+            </label>
+
+            <label className="field">
+              <span className="field__label">低于均线买入比例</span>
+              <input
+                type="number"
+                min="0"
+                max="0.99"
+                step="0.01"
+                value={ruleBuyBelowMaPct}
+                onChange={(event) => setRuleBuyBelowMaPct(event.target.value)}
+                className="field__control"
+              />
+              <span className="field__hint">
+                填 0.05 表示收盘价低于 MA 5% 才买入。
+              </span>
+            </label>
+
+            <label className="field">
+              <span className="field__label">高于均线卖出比例</span>
+              <input
+                type="number"
+                min="0"
+                max="0.99"
+                step="0.01"
+                value={ruleSellAboveMaPct}
+                onChange={(event) => setRuleSellAboveMaPct(event.target.value)}
+                className="field__control"
+              />
+              <span className="field__hint">
+                填 0.10 表示收盘价高于 MA 10% 才卖出。
+              </span>
+            </label>
+
+            <label className="field">
+              <span className="field__label">目标仓位</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={ruleTargetPosition}
+                onChange={(event) => setRuleTargetPosition(event.target.value)}
+                className="field__control"
+              />
+              <span className="field__hint">
+                继续沿用系统当前语义，这里填的是目标持仓股数，不是资金占比。
+              </span>
+            </label>
+
+            <label className="field field--wide">
+              <span className="field__label">初始资金</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={ruleInitialCash}
+                onChange={(event) => setRuleInitialCash(event.target.value)}
+                className="field__control"
+              />
+              <span className="field__hint">
+                用来定义本次回测的起始账户资金，默认 100000。
+              </span>
+            </label>
+          </div>
+
+          <div className="rule-form__footer">
+            <div className="rule-form__actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  void applyExampleAndRun();
+                }}
+                disabled={ruleResearchData.isLoading}
+              >
+                快速填充示例并运行
+              </button>
+              <button
+                type="submit"
+                className="filter-form__button filter-form__button--primary"
+                disabled={ruleResearchData.isLoading}
+              >
+                {ruleResearchData.isLoading ? "规则回测运行中..." : "运行规则回测"}
+              </button>
+            </div>
+            <p className="field__hint">
+              示例会直接填入 MA60 / 买入 -5% / 卖出 +10% / 目标仓位 400，并立刻发起回测。
+            </p>
+          </div>
+        </form>
+      </SectionCard>
+
       {summary !== undefined ? (
         <SectionCard
           eyebrow="研究结论"
@@ -940,137 +1071,6 @@ export function ResearchView({
           emptyCopy: "切换到这里后，页面会基于真实历史价格即时生成一份回测结果。",
         },
       })}
-
-      <SectionCard
-        eyebrow="规则回测"
-        title="前端直接配置均线规则"
-        description="不需要改 YAML 或后端参数，直接在这里配置 MA、买卖阈值、目标仓位和样本区间。"
-      >
-        <form
-          className="rule-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void runRuleResearch();
-          }}
-        >
-          {ruleResearchData.error ? <p className="section-error">{ruleResearchData.error}</p> : null}
-          {ruleStatusMessage ? <p className="section-success">{ruleStatusMessage}</p> : null}
-
-          <div className="rule-form__summary">
-            <div className="page-hero__chips page-hero__chips--left">
-              <span className="tag">{formatSymbolLabel(selectedSymbol, symbolNames)}</span>
-              <span className="tag">固定周期 {DEFAULT_RULE_RESEARCH_TIMEFRAME}</span>
-              <span className="tag">{selectedRuleHistoryYears} 年 / 约 {ruleLookbackLimit} 根</span>
-              <span className="tag">模板 {DEFAULT_RULE_RESEARCH_TEMPLATE}</span>
-            </div>
-            <p className="field__hint">
-              股票代码直接跟随研究页顶部 selector；第一版规则回测固定使用 `1d` 日线，并把上面选择的样本区间换算成请求里的 `limit`。
-            </p>
-          </div>
-
-          <div className="rule-form__grid">
-            <label className="field">
-              <span className="field__label">均线周期</span>
-              <input
-                type="number"
-                min="2"
-                step="1"
-                value={ruleMaWindow}
-                onChange={(event) => setRuleMaWindow(event.target.value)}
-                className="field__control"
-              />
-              <span className="field__hint">例如 60，表示 MA60，也就是最近 60 根日线的均值。</span>
-            </label>
-
-            <label className="field">
-              <span className="field__label">低于均线买入比例</span>
-              <input
-                type="number"
-                min="0"
-                max="0.99"
-                step="0.01"
-                value={ruleBuyBelowMaPct}
-                onChange={(event) => setRuleBuyBelowMaPct(event.target.value)}
-                className="field__control"
-              />
-              <span className="field__hint">
-                填 0.05 表示收盘价低于 MA 5% 才买入。
-              </span>
-            </label>
-
-            <label className="field">
-              <span className="field__label">高于均线卖出比例</span>
-              <input
-                type="number"
-                min="0"
-                max="0.99"
-                step="0.01"
-                value={ruleSellAboveMaPct}
-                onChange={(event) => setRuleSellAboveMaPct(event.target.value)}
-                className="field__control"
-              />
-              <span className="field__hint">
-                填 0.10 表示收盘价高于 MA 10% 才卖出。
-              </span>
-            </label>
-
-            <label className="field">
-              <span className="field__label">目标仓位</span>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={ruleTargetPosition}
-                onChange={(event) => setRuleTargetPosition(event.target.value)}
-                className="field__control"
-              />
-              <span className="field__hint">
-                继续沿用系统当前语义，这里填的是目标持仓股数，不是资金占比。
-              </span>
-            </label>
-
-            <label className="field field--wide">
-              <span className="field__label">初始资金</span>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={ruleInitialCash}
-                onChange={(event) => setRuleInitialCash(event.target.value)}
-                className="field__control"
-              />
-              <span className="field__hint">
-                用来定义本次回测的起始账户资金，默认 100000。
-              </span>
-            </label>
-          </div>
-
-          <div className="rule-form__footer">
-            <div className="rule-form__actions">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => {
-                  void applyExampleAndRun();
-                }}
-                disabled={ruleResearchData.isLoading}
-              >
-                快速填充示例并运行
-              </button>
-              <button
-                type="submit"
-                className="filter-form__button filter-form__button--primary"
-                disabled={ruleResearchData.isLoading}
-              >
-                {ruleResearchData.isLoading ? "规则回测运行中..." : "运行规则回测"}
-              </button>
-            </div>
-            <p className="field__hint">
-              示例会直接填入 MA60 / 买入 -5% / 卖出 +10% / 目标仓位 400，并立刻发起回测。
-            </p>
-          </div>
-        </form>
-      </SectionCard>
 
       <SectionCard
         eyebrow="AI 回测"
