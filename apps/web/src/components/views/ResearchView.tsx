@@ -937,23 +937,21 @@ export function ResearchView({
 
       {summary !== undefined ? (
         <SectionCard
-          eyebrow="研究结论"
-          title="这次结果先看什么"
-          description="把当前模式、样本可信度和关键比较结论收口成最先可读的一层。"
+          eyebrow="回测摘要"
+          title="当前结果摘要"
+          description="先看本次样本模式和核心结论，再决定是否继续下钻到对照、曲线和交易明细。"
         >
-          <section className="metric-grid">
-            <MetricCard
-              label="当前模式"
-              value={summary.modeLabel}
-              hint={summary.sampleMessage}
-              tone="default"
-            />
-            <MetricCard
-              label="结果摘要"
-              value={summary.resultHeadline}
-              hint={summary.comparisonMessage ?? "当前模式还没有额外的标准化对照摘要。"}
-              tone="default"
-            />
+          <section className="research-conclusion">
+            <article className="research-conclusion__meta">
+              <p className="mini-label">当前模式</p>
+              <strong>{summary.modeLabel}</strong>
+              <p>{summary.sampleMessage}</p>
+            </article>
+            <article className="research-conclusion__headline">
+              <p className="mini-label">核心结论</p>
+              <strong>{summary.resultHeadline}</strong>
+              <p>{summary.comparisonMessage ?? "当前模式还没有额外的标准化对照摘要。"}</p>
+            </article>
           </section>
         </SectionCard>
       ) : null}
