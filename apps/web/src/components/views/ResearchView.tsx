@@ -302,25 +302,34 @@ export function ResearchView({
   }, [aiSettings.settings]);
 
   const snapshot = researchData.snapshot;
-  const manifest = snapshot?.manifest;
-  const sample = snapshot?.sample;
-  const summary = snapshot?.summary;
-  const experiments = snapshot?.experiments;
-  const comparison = aiResearchData.snapshot?.comparison ?? snapshot?.comparison ?? null;
   const ruleLookbackLimit = resolveRuleResearchLookbackLimit(selectedRuleHistoryYears);
-  const sourceLabel = snapshot
-    ? snapshot.sourceMode === "fixture"
-      ? snapshot.sourceLabel
-      : "真实回测结果"
+  const primarySnapshot = ruleResearchData.snapshot ?? snapshot;
+  const manifest = primarySnapshot?.manifest;
+  const sample = primarySnapshot?.sample;
+  const summary = primarySnapshot?.summary;
+  const experiments = primarySnapshot?.experiments;
+  const comparison = ruleResearchData.snapshot
+    ? ruleResearchData.snapshot.comparison ?? null
+    : aiResearchData.snapshot?.comparison ?? snapshot?.comparison ?? null;
+  const sourceLabel = primarySnapshot
+    ? primarySnapshot.sourceMode === "fixture"
+      ? primarySnapshot.sourceLabel
+      : primarySnapshot.manifest.strategyId === DEFAULT_RULE_RESEARCH_TEMPLATE
+        ? "规则回测结果"
+        : "真实回测结果"
     : researchData.isLoading
       ? "正在生成回测结果"
       : "等待回测数据";
-  const sourceIsFixture = snapshot?.sourceMode === "fixture";
-  const baselineMetadataItems = buildMetadataItems(snapshot, {
-    isLoading: researchData.isLoading,
-    error: researchData.error,
+  const sourceIsFixture = primarySnapshot?.sourceMode === "fixture";
+  const primaryMetadataItems = buildMetadataItems(primarySnapshot, {
+    isLoading:
+      ruleResearchData.snapshot !== null ? ruleResearchData.isLoading : researchData.isLoading,
+    error: ruleResearchData.snapshot !== null ? ruleResearchData.error : researchData.error,
     symbolNames,
-    waitingHint: "选择标的和周期后，这里会生成一份回测结果。",
+    waitingHint:
+      ruleResearchData.snapshot !== null
+        ? "运行规则回测后，这里会生成一份完整的规则回测结果。"
+        : "选择标的和周期后，这里会生成一份回测结果。",
   });
   const aiMetadataItems = buildMetadataItems(aiResearchData.snapshot, {
     isLoading: aiResearchData.isLoading,
@@ -380,7 +389,7 @@ export function ResearchView({
     setRuleStatusMessage(
       nextSnapshot === null
         ? "规则回测未完成，请检查参数或下方错误提示。"
-        : `规则回测已完成，当前展示 ${selectedRuleHistoryYears} 年约 ${ruleLookbackLimit} 根日线样本。`,
+        : `规则回测已完成，当前主展示区已切换为 ${selectedRuleHistoryYears} 年约 ${ruleLookbackLimit} 根日线样本。`,
     );
   }
 
@@ -785,10 +794,11 @@ export function ResearchView({
         </div>
       </section>
 
-      {renderSnapshotSections(snapshot, {
-        isLoading: researchData.isLoading,
-        error: researchData.error,
-        metadataItems: baselineMetadataItems,
+      {renderSnapshotSections(primarySnapshot, {
+        isLoading:
+          ruleResearchData.snapshot !== null ? ruleResearchData.isLoading : researchData.isLoading,
+        error: ruleResearchData.snapshot !== null ? ruleResearchData.error : researchData.error,
+        metadataItems: primaryMetadataItems,
         options: {
           labelPrefix: "",
           eyebrow: "资金变化",

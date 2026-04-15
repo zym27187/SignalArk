@@ -146,4 +146,76 @@ describe("BacktestDecisionTable", () => {
     expect(ascendingExitRow).not.toBeNull();
     expect(within(ascendingExitRow as HTMLElement).queryByText("置信度：--")).not.toBeInTheDocument();
   });
+
+  it("localizes moving-average rule reasons and skip explanations", () => {
+    render(
+      <BacktestDecisionTable
+        decisions={[
+          {
+            barKey: "600036.SH:1d:2026-04-10T14:00:00+08:00",
+            eventTime: "2026-04-10T14:00:00+08:00",
+            symbol: "600036.SH",
+            signalType: "ENTRY",
+            action: "ENTRY",
+            executionAction: "BUY",
+            targetPosition: 400,
+            reasonSummary:
+              "close 80 fell to buy threshold 88.6667 around ma3 93.3333; deviation_pct -14.2857 <= -buyBelowMaPct 5.0000; target_position 400",
+            audit: {
+              providerId: "deterministic_policy",
+              modelOrPolicyVersion: "moving_average_band_v1",
+              decision: "entry",
+              confidence: null,
+              reasonSummary:
+                "close 80 fell to buy threshold 88.6667 around ma3 93.3333; deviation_pct -14.2857 <= -buyBelowMaPct 5.0000; target_position 400",
+              fallbackUsed: false,
+              fallbackReason: null,
+            },
+            skipReason: null,
+            fillCount: 1,
+            orderPlanSide: "BUY",
+          },
+          {
+            barKey: "600036.SH:1d:2026-04-11T14:00:00+08:00",
+            eventTime: "2026-04-11T14:00:00+08:00",
+            symbol: "600036.SH",
+            signalType: null,
+            action: "HOLD",
+            executionAction: "SKIP",
+            targetPosition: null,
+            reasonSummary:
+              "close 100 stayed above buy_trigger 95.0000 around ma3 100.0000; keep waiting",
+            audit: {
+              providerId: "deterministic_policy",
+              modelOrPolicyVersion: "moving_average_band_v1",
+              decision: "hold",
+              confidence: null,
+              reasonSummary:
+                "close 100 stayed above buy_trigger 95.0000 around ma3 100.0000; keep waiting",
+              fallbackUsed: false,
+              fallbackReason: null,
+            },
+            skipReason: "moving_average_band_buy_threshold_not_met",
+            fillCount: 0,
+            orderPlanSide: null,
+          },
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getByText(/收盘价 80 已跌到买入阈值 88\.6667/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("下单计划：买入"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "跳过说明：当前收盘价还没有跌到买入阈值，因此这一步继续空仓等待。",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("原因代码：moving_average_band_buy_threshold_not_met"),
+    ).toBeInTheDocument();
+  });
 });

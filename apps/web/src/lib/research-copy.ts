@@ -9,6 +9,8 @@ const STRATEGY_DESCRIPTION_MAP: Record<string, string> = {
     "只做多的阈值动量策略，主要根据收盘价相对前收的强弱变化来决定是否入场、加仓或离场。",
   "LLM-ready bar judgment strategy with a safe heuristic fallback.":
     "基于大模型的 K 线判断策略，会先让模型评估最近一组 K 线；如果外部模型不可用，再回退到本地启发式策略继续回测。",
+  "Long-only moving-average band strategy against the current daily close.":
+    "只做多的均线偏离规则策略，会根据收盘价相对日线均线的偏离幅度决定何时买入、卖出或继续持有。",
 };
 
 const DIRECT_REASON_MAP: Record<string, string> = {
@@ -32,6 +34,7 @@ const DIRECT_REASON_MAP: Record<string, string> = {
 const STRATEGY_LABEL_MAP: Record<string, string> = {
   baseline_momentum_v1: "只做多阈值动量",
   ai_bar_judge_v1: "AI K 线判断",
+  moving_average_band_v1: "均线偏离规则",
 };
 
 const POSITION_TIER_LABEL_MAP: Record<string, string> = {
@@ -113,6 +116,22 @@ function buildAiSafety(manifest: BacktestManifestSnapshot): string {
   return `默认提供方为 ${providerMode}；如果外部模型失败或超时，页面会把回退与压制原因写进审计信息，方便复盘。`;
 }
 
+function buildRuleLogic(manifest: BacktestManifestSnapshot): string {
+  const parameters = manifest.parameterSnapshot;
+  return `固定使用 ${parameters.timeframe ?? "1d"} 日线，先计算最近 ${
+    parameters.ma_window ?? "--"
+  } 根的移动平均线；当收盘价低于均线 ${formatPercentRatio(
+    parameters.buy_below_ma_pct,
+  )} 时买入，高于均线 ${formatPercentRatio(parameters.sell_above_ma_pct)} 时卖出。`;
+}
+
+function buildRuleSafety(manifest: BacktestManifestSnapshot): string {
+  const parameters = manifest.parameterSnapshot;
+  return `第一版只做多，并继续复用现有 backtest 的固定股数仓位、A 股 T+1、手续费和滑点语义；当前目标仓位为 ${
+    parameters.target_position ?? "--"
+  } 股。`;
+}
+
 function formatStrategyParameters(manifest: BacktestManifestSnapshot): string {
   const parameters = manifest.parameterSnapshot;
   if (manifest.strategyId === "baseline_momentum_v1") {
@@ -129,6 +148,15 @@ function formatStrategyParameters(manifest: BacktestManifestSnapshot): string {
       `目标仓位 ${parameters.target_position ?? "--"} 股`,
       `最低置信度 ${parameters.min_confidence ?? "--"}`,
       `入场阈值 ${formatPercentRatio(parameters.entry_threshold_pct)}`,
+    ].join(" / ");
+  }
+  if (manifest.strategyId === "moving_average_band_v1") {
+    return [
+      `模板 ${parameters.rule_template ?? "moving_average_band_v1"}`,
+      `MA ${parameters.ma_window ?? "--"}`,
+      `买入阈值 ${formatPercentRatio(parameters.buy_below_ma_pct)}`,
+      `卖出阈值 ${formatPercentRatio(parameters.sell_above_ma_pct)}`,
+      `目标仓位 ${parameters.target_position ?? "--"} 股`,
     ].join(" / ");
   }
 
@@ -171,6 +199,9 @@ export function describeResearchStrategyLogic(
   if (manifest.strategyId === "ai_bar_judge_v1") {
     return buildAiLogic(manifest);
   }
+  if (manifest.strategyId === "moving_average_band_v1") {
+    return buildRuleLogic(manifest);
+  }
   return localizeStrategyDescription(manifest.description, manifest.strategyId);
 }
 
@@ -185,6 +216,9 @@ export function describeResearchStrategySafety(
   }
   if (manifest.strategyId === "ai_bar_judge_v1") {
     return buildAiSafety(manifest);
+  }
+  if (manifest.strategyId === "moving_average_band_v1") {
+    return buildRuleSafety(manifest);
   }
   return "当前策略的额外风控说明暂未归纳。";
 }
@@ -222,6 +256,13 @@ export function localizeResearchReason(reason: string | null | undefined): strin
   );
   if (baselineWarmupMatch) {
     return `基线策略正在预热，首次确认趋势前需要先收集足够已收盘 K 线（已收集 ${baselineWarmupMatch[1]}/${baselineWarmupMatch[2]} 根）。`;
+  }
+
+  const ruleWarmupMatch = normalizedReason.match(
+    /^Waiting for enough finalized daily bars before the first moving-average-band decision \((\d+)\/(\d+) bars collected\)\.$/,
+  );
+  if (ruleWarmupMatch) {
+    return `均线规则正在预热，首次计算 MA 前需要先收集足够日线（已收集 ${ruleWarmupMatch[1]}/${ruleWarmupMatch[2]} 根）。`;
   }
 
   const providerErrorMatch = normalizedReason.match(/^AI provider error was suppressed: (.+)$/);
@@ -298,6 +339,57 @@ export function localizeResearchReason(reason: string | null | undefined): strin
     )}，最近 ${trendPendingMatch[3]} 根比较里只有 ${trendPendingMatch[2]} 次上涨，因此先跳过入场。`;
   }
 
+  const ruleBuyMatch = normalizedReason.match(
+    /^close ([\d.-]+) fell to buy threshold ([\d.-]+) around ma(\d+) ([\d.-]+); deviation_pct ([\d.-]+) <= -buyBelowMaPct ([\d.-]+); target_position ([\d.-]+)$/,
+  );
+  if (ruleBuyMatch) {
+    return `收盘价 ${ruleBuyMatch[1]} 已跌到买入阈值 ${ruleBuyMatch[2]}，对应 MA${
+      ruleBuyMatch[3]
+    } 为 ${ruleBuyMatch[4]}；当前偏离 ${formatPercentValue(
+      ruleBuyMatch[5],
+    )}，已经低于均线 ${formatPercentValue(ruleBuyMatch[6])}，因此把仓位调到 ${
+      ruleBuyMatch[7]
+    } 股。`;
+  }
+
+  const ruleSellMatch = normalizedReason.match(
+    /^close ([\d.-]+) reached sell threshold ([\d.-]+) around ma(\d+) ([\d.-]+); deviation_pct ([\d.-]+) >= sellAboveMaPct ([\d.-]+); flatten position$/,
+  );
+  if (ruleSellMatch) {
+    return `收盘价 ${ruleSellMatch[1]} 已达到卖出阈值 ${ruleSellMatch[2]}，对应 MA${
+      ruleSellMatch[3]
+    } 为 ${ruleSellMatch[4]}；当前偏离 ${formatPercentValue(
+      ruleSellMatch[5],
+    )}，已经高于均线 ${formatPercentValue(ruleSellMatch[6])}，因此执行清仓。`;
+  }
+
+  const ruleWaitMatch = normalizedReason.match(
+    /^close ([\d.-]+) stayed above buy_trigger ([\d.-]+) around ma(\d+) ([\d.-]+); keep waiting$/,
+  );
+  if (ruleWaitMatch) {
+    return `收盘价 ${ruleWaitMatch[1]} 仍高于买入阈值 ${ruleWaitMatch[2]}，对应 MA${
+      ruleWaitMatch[3]
+    } 为 ${ruleWaitMatch[4]}，所以这一步继续空仓等待。`;
+  }
+
+  const ruleHoldMatch = normalizedReason.match(
+    /^close ([\d.-]+) stayed below sell_trigger ([\d.-]+) around ma(\d+) ([\d.-]+); keep holding$/,
+  );
+  if (ruleHoldMatch) {
+    return `收盘价 ${ruleHoldMatch[1]} 还没到卖出阈值 ${ruleHoldMatch[2]}，对应 MA${
+      ruleHoldMatch[3]
+    } 为 ${ruleHoldMatch[4]}，所以这一步继续持有。`;
+  }
+
+  const ruleTPlusOneMatch = normalizedReason.match(
+    /^close ([\d.-]+) reached sell-ready territory near sell_trigger ([\d.-]+) around ma(\d+) ([\d.-]+), but A-share T\+1 keeps the same-day inventory unsellable\.$/,
+  );
+  if (ruleTPlusOneMatch) {
+    return `收盘价 ${ruleTPlusOneMatch[1]} 已接近卖出区间，阈值为 ${ruleTPlusOneMatch[2]}，对应 MA${
+      ruleTPlusOneMatch[3]
+    } 为 ${ruleTPlusOneMatch[4]}；但受 A 股 T+1 约束，当天买入的仓位还不能卖出。`;
+  }
+
   return normalizedReason;
 }
 
@@ -324,6 +416,14 @@ export function describeResearchSkipReason(
       return "虽然在观察行情，但趋势确认条件还不够，所以这一步继续空仓等待。";
     case "baseline_entry_threshold_not_met":
       return "趋势方向虽然基本成立，但价格动量还没超过入场阈值，因此先不加仓。";
+    case "moving_average_band_warmup":
+      return "均线规则还在等待足够多的日线样本，预热完成前不会贸然给出第一次 MA 决策。";
+    case "moving_average_band_buy_threshold_not_met":
+      return "当前收盘价还没有跌到买入阈值，因此这一步继续空仓等待。";
+    case "moving_average_band_sell_threshold_not_met":
+      return "当前收盘价还没有涨到卖出阈值，因此这一步继续持有。";
+    case "moving_average_band_t_plus_one_locked":
+      return "这一步原本已经接近卖点，但受 A 股 T+1 限制，当天买入的仓位还不能卖出。";
     case "strategy_returned_none":
       return "策略没有返回任何信号对象，所以回测只能把这一步记成跳过。";
     case "missing_symbol_rule":
