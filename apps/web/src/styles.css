@@ -1332,8 +1332,27 @@ select {
   display: none;
 }
 
-.operations-fold .trading-glossary {
+.operations-fold__body {
   padding: 0 16px 16px;
+}
+
+.operations-fold .trading-glossary {
+  padding: 0;
+}
+
+.research-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.research-summary-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.research-summary-grid--details {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .app-frame {
@@ -1930,6 +1949,11 @@ select {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .research-summary-grid,
+  .research-summary-grid--details {
+    grid-template-columns: 1fr;
+  }
+
   .balance-summary__metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1969,7 +1993,9 @@ select {
   .interaction-hub,
   .summary-strip,
   .support-grid,
-  .support-grid--three {
+  .support-grid--three,
+  .research-summary-grid,
+  .research-summary-grid--details {
     grid-template-columns: 1fr;
   }
 

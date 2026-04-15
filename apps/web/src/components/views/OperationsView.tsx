@@ -198,7 +198,9 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
         >
           <details className="operations-fold">
             <summary className="operations-fold__summary">查看术语解释</summary>
-            <TradingGlossaryPanel />
+            <div className="operations-fold__body">
+              <TradingGlossaryPanel />
+            </div>
           </details>
         </SectionCard>
       </section>

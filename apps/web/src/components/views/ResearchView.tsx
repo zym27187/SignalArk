@@ -476,6 +476,8 @@ export function ResearchView({
       error,
       waitingHint: "回测结果返回后，这里会把当前策略的说明、逻辑和参数展开。",
     });
+    const overviewMetadataItems = metadataItems.slice(0, 5);
+    const technicalMetadataItems = metadataItems.slice(5);
 
     return (
       <>
@@ -593,44 +595,56 @@ export function ResearchView({
           )}
         </SectionCard>
 
-        <section className="support-grid support-grid--three">
-          <SectionCard
-            eyebrow={options.strategyEyebrow}
-            title={options.strategyTitle}
-            description={options.strategyDescription}
-          >
-            <DefinitionGrid items={strategyItems} />
-          </SectionCard>
+        <SectionCard
+          eyebrow="研究摘要"
+          title={`${options.labelPrefix}策略与回测摘要`}
+          description="把策略逻辑、回测范围和关键成本假设收口到同一块里，避免在结果前看到一整墙说明卡。"
+        >
+          <div className="research-summary-grid">
+            <div className="research-summary-panel">
+              <p className="mini-label">{options.strategyTitle}</p>
+              <DefinitionGrid items={strategyItems} />
+            </div>
+            <div className="research-summary-panel">
+              <p className="mini-label">{options.metadataTitle}</p>
+              <DefinitionGrid items={overviewMetadataItems} />
+            </div>
+          </div>
 
-          <SectionCard
-            eyebrow={options.metadataEyebrow}
-            title={options.metadataTitle}
-            description={options.metadataDescription}
-          >
-            <DefinitionGrid items={metadataItems} />
-          </SectionCard>
+          {(technicalMetadataItems.length > 0 || notes.length > 0) ? (
+            <details className="operations-fold">
+              <summary className="operations-fold__summary">查看技术细节</summary>
+              <div className="operations-fold__body">
+                <div className="research-summary-grid research-summary-grid--details">
+                  {technicalMetadataItems.length > 0 ? (
+                    <div className="research-summary-panel">
+                      <p className="mini-label">技术元数据</p>
+                      <DefinitionGrid items={technicalMetadataItems} />
+                    </div>
+                  ) : null}
 
-          <SectionCard
-            eyebrow={options.notesEyebrow}
-            title={options.notesTitle}
-            description={options.notesDescription}
-          >
-            {notes.length > 0 ? (
-              <ul className="note-list">
-                {notes.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            ) : (
-              <div className="empty-state">
-                <p className="empty-state__title">等待说明内容</p>
-                <p className="empty-state__copy">
-                  回测结果返回后，这里会展示当前回放来源和页面说明。
-                </p>
+                  <div className="research-summary-panel">
+                    <p className="mini-label">{options.notesTitle}</p>
+                    {notes.length > 0 ? (
+                      <ul className="note-list">
+                        {notes.map((note) => (
+                          <li key={note}>{note}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="empty-state">
+                        <p className="empty-state__title">等待说明内容</p>
+                        <p className="empty-state__copy">
+                          回测结果返回后，这里会展示当前回放来源和页面说明。
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
-          </SectionCard>
-        </section>
+            </details>
+          ) : null}
+        </SectionCard>
 
         <SectionCard
           eyebrow={options.decisionEyebrow}
@@ -790,6 +804,115 @@ export function ResearchView({
         </div>
       </section>
 
+      {summary !== undefined ? (
+        <SectionCard
+          eyebrow="研究结论"
+          title="这次结果先看什么"
+          description="把当前模式、样本可信度和关键比较结论收口成最先可读的一层。"
+        >
+          <section className="metric-grid">
+            <MetricCard
+              label="当前模式"
+              value={summary.modeLabel}
+              hint={summary.sampleMessage}
+              tone="default"
+            />
+            <MetricCard
+              label="结果摘要"
+              value={summary.resultHeadline}
+              hint={summary.comparisonMessage ?? "当前模式还没有额外的标准化对照摘要。"}
+              tone="default"
+            />
+          </section>
+        </SectionCard>
+      ) : null}
+
+      {comparison !== null ? (
+        <SectionCard
+          eyebrow="标准化对照"
+          title={`${comparison.baselineLabel} vs ${comparison.candidateLabel}`}
+          description="把 baseline 与 candidate 放在同一套样本和指标下比较，减少来回切换和人工抄数。"
+        >
+          <section className="metric-grid">
+            <MetricCard
+              label="Candidate 相对基线收益"
+              value={formatSignedMoney(comparison.netPnlDelta)}
+              hint="正值表示 candidate 这次比 baseline 更赚钱。"
+              tone={comparison.netPnlDelta >= 0 ? "positive" : "warning"}
+            />
+            <MetricCard
+              label="Candidate 相对基线回撤"
+              value={`${formatDecimal(comparison.maxDrawdownDeltaPct, 4)}%`}
+              hint="负值表示 candidate 的最大回撤更小。"
+              tone={comparison.maxDrawdownDeltaPct <= 0 ? "positive" : "warning"}
+            />
+            <MetricCard
+              label="Candidate 相对基线交易数"
+              value={formatSignedCount(comparison.tradeCountDelta)}
+              hint="帮助判断收益变化是否只是更频繁交易带来的。"
+              tone="default"
+            />
+            <MetricCard
+              label="关键决策差异"
+              value={comparison.decisionDiffCount}
+              hint="按同一 barKey 比较动作和执行方向是否不同。"
+              tone="default"
+            />
+          </section>
+
+          {comparison.decisionDiffs.length > 0 ? (
+            <div className="definition-grid">
+              {comparison.decisionDiffs.slice(0, 6).map((diff) => (
+                <div key={diff.barKey} className="definition-grid__item">
+                  <strong>{formatDateTime(diff.eventTime)}</strong>
+                  <p>{`Baseline ${diff.baselineAction} / Candidate ${diff.candidateAction}`}</p>
+                  <p>{`Baseline: ${localizeResearchReason(diff.baselineReason) || "无"}`}</p>
+                  <p>{`Candidate: ${localizeResearchReason(diff.candidateReason) || "无"}`}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <p className="empty-state__title">当前还没有明显决策分歧</p>
+              <p className="empty-state__copy">
+                当 baseline 和 candidate 在同一根 K 线上的动作不同，这里会列出关键差异。
+              </p>
+            </div>
+          )}
+        </SectionCard>
+      ) : null}
+
+      {experiments?.parameterScan || experiments?.walkForward ? (
+        <SectionCard
+          eyebrow="实验摘要"
+          title="Phase 4 标准化实验结果"
+          description="参数扫描和滚动评估都会在同一套样本与指标语义下输出，减少人工再加工。"
+        >
+          <div className="definition-grid">
+            {experiments.parameterScan ? (
+              <div className="definition-grid__item">
+                <strong>参数扫描</strong>
+                <p>{`共 ${experiments.parameterScan.combinationCount} 组组合`}</p>
+                <p>{`当前最佳：${experiments.parameterScan.bestVariantLabel ?? "暂无"}`}</p>
+                <p>
+                  {experiments.parameterScan.bestVariant
+                    ? `相对 baseline 净收益变化 ${formatSignedMoney(experiments.parameterScan.bestVariant.versusBaseline.netPnlDelta)}`
+                    : "当前还没有最佳参数组合。"}
+                </p>
+              </div>
+            ) : null}
+            {experiments.walkForward ? (
+              <div className="definition-grid__item">
+                <strong>滚动评估</strong>
+                <p>{`窗口 ${experiments.walkForward.windowBars} 根 / 步长 ${experiments.walkForward.stepBars} 根`}</p>
+                <p>{`窗口数 ${experiments.walkForward.windowCount} / 正收益窗口 ${experiments.walkForward.positiveWindowCount}`}</p>
+                <p>{`当前最佳窗口：${experiments.walkForward.bestWindowLabel ?? "暂无"}`}</p>
+              </div>
+            ) : null}
+          </div>
+        </SectionCard>
+      ) : null}
+
       {renderSnapshotSections(primarySnapshot, {
         isLoading:
           ruleResearchData.snapshot !== null ? ruleResearchData.isLoading : researchData.isLoading,
@@ -948,115 +1071,6 @@ export function ResearchView({
           </div>
         </form>
       </SectionCard>
-
-      {summary !== undefined ? (
-        <SectionCard
-          eyebrow="研究结论"
-          title="这次结果先看什么"
-          description="把当前模式、样本可信度和关键比较结论收口成最先可读的一层。"
-        >
-          <section className="metric-grid">
-            <MetricCard
-              label="当前模式"
-              value={summary.modeLabel}
-              hint={summary.sampleMessage}
-              tone="default"
-            />
-            <MetricCard
-              label="结果摘要"
-              value={summary.resultHeadline}
-              hint={summary.comparisonMessage ?? "当前模式还没有额外的标准化对照摘要。"}
-              tone="default"
-            />
-          </section>
-        </SectionCard>
-      ) : null}
-
-      {experiments?.parameterScan || experiments?.walkForward ? (
-        <SectionCard
-          eyebrow="实验摘要"
-          title="Phase 4 标准化实验结果"
-          description="参数扫描和滚动评估都会在同一套样本与指标语义下输出，减少人工再加工。"
-        >
-          <div className="definition-grid">
-            {experiments.parameterScan ? (
-              <div className="definition-grid__item">
-                <strong>参数扫描</strong>
-                <p>{`共 ${experiments.parameterScan.combinationCount} 组组合`}</p>
-                <p>{`当前最佳：${experiments.parameterScan.bestVariantLabel ?? "暂无"}`}</p>
-                <p>
-                  {experiments.parameterScan.bestVariant
-                    ? `相对 baseline 净收益变化 ${formatSignedMoney(experiments.parameterScan.bestVariant.versusBaseline.netPnlDelta)}`
-                    : "当前还没有最佳参数组合。"}
-                </p>
-              </div>
-            ) : null}
-            {experiments.walkForward ? (
-              <div className="definition-grid__item">
-                <strong>滚动评估</strong>
-                <p>{`窗口 ${experiments.walkForward.windowBars} 根 / 步长 ${experiments.walkForward.stepBars} 根`}</p>
-                <p>{`窗口数 ${experiments.walkForward.windowCount} / 正收益窗口 ${experiments.walkForward.positiveWindowCount}`}</p>
-                <p>{`当前最佳窗口：${experiments.walkForward.bestWindowLabel ?? "暂无"}`}</p>
-              </div>
-            ) : null}
-          </div>
-        </SectionCard>
-      ) : null}
-
-      {comparison !== null ? (
-        <SectionCard
-          eyebrow="标准化对照"
-          title={`${comparison.baselineLabel} vs ${comparison.candidateLabel}`}
-          description="把 baseline 与 candidate 放在同一套样本和指标下比较，减少来回切换和人工抄数。"
-        >
-          <section className="metric-grid">
-            <MetricCard
-              label="Candidate 相对基线收益"
-              value={formatSignedMoney(comparison.netPnlDelta)}
-              hint="正值表示 candidate 这次比 baseline 更赚钱。"
-              tone={comparison.netPnlDelta >= 0 ? "positive" : "warning"}
-            />
-            <MetricCard
-              label="Candidate 相对基线回撤"
-              value={`${formatDecimal(comparison.maxDrawdownDeltaPct, 4)}%`}
-              hint="负值表示 candidate 的最大回撤更小。"
-              tone={comparison.maxDrawdownDeltaPct <= 0 ? "positive" : "warning"}
-            />
-            <MetricCard
-              label="Candidate 相对基线交易数"
-              value={formatSignedCount(comparison.tradeCountDelta)}
-              hint="帮助判断收益变化是否只是更频繁交易带来的。"
-              tone="default"
-            />
-            <MetricCard
-              label="关键决策差异"
-              value={comparison.decisionDiffCount}
-              hint="按同一 barKey 比较动作和执行方向是否不同。"
-              tone="default"
-            />
-          </section>
-
-          {comparison.decisionDiffs.length > 0 ? (
-            <div className="definition-grid">
-              {comparison.decisionDiffs.slice(0, 6).map((diff) => (
-                <div key={diff.barKey} className="definition-grid__item">
-                  <strong>{formatDateTime(diff.eventTime)}</strong>
-                  <p>{`Baseline ${diff.baselineAction} / Candidate ${diff.candidateAction}`}</p>
-                  <p>{`Baseline: ${localizeResearchReason(diff.baselineReason) || "无"}`}</p>
-                  <p>{`Candidate: ${localizeResearchReason(diff.candidateReason) || "无"}`}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state">
-              <p className="empty-state__title">当前还没有明显决策分歧</p>
-              <p className="empty-state__copy">
-                当 baseline 和 candidate 在同一根 K 线上的动作不同，这里会列出关键差异。
-              </p>
-            </div>
-          )}
-        </SectionCard>
-      ) : null}
 
       <SectionCard
         eyebrow="AI 回测"
