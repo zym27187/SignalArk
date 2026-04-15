@@ -1367,7 +1367,18 @@ select {
   gap: 20px;
 }
 
+.rule-form {
+  display: grid;
+  gap: 20px;
+}
+
 .ai-form__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.rule-form__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
@@ -1381,11 +1392,37 @@ select {
   flex-wrap: wrap;
 }
 
+.rule-form__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
 .ai-form__meta,
 .ai-form__actions,
 .ai-form__subactions {
   display: grid;
   gap: 12px;
+}
+
+.rule-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.rule-form__summary {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(18, 40, 61, 0.08);
+  background:
+    linear-gradient(135deg, rgba(12, 143, 120, 0.08), rgba(255, 255, 255, 0.7)),
+    rgba(255, 252, 245, 0.86);
 }
 
 .ai-form__actions {
@@ -1481,6 +1518,10 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .rule-form__grid {
+    grid-template-columns: 1fr;
+  }
+
   .field--wide {
     grid-column: span 1;
   }
@@ -1519,6 +1560,7 @@ select {
   .page-hero,
   .chart-shell__header,
   .ai-form__footer,
+  .rule-form__footer,
   .diagnostics-callout__header {
     display: grid;
   }
