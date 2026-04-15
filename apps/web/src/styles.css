@@ -136,14 +136,16 @@ select {
 .workspace-brand__title {
   margin: 0;
   font-family: "Space Grotesk", sans-serif;
-  font-size: clamp(1.8rem, 2vw, 2.5rem);
-  line-height: 0.96;
+  font-size: clamp(1.5rem, 1.8vw, 2rem);
+  line-height: 1;
   letter-spacing: -0.05em;
 }
 
 .workspace-brand__summary {
   margin: 0;
   color: rgba(232, 239, 255, 0.72);
+  font-size: 0.95rem;
+  line-height: 1.65;
 }
 
 .workspace-sidebar .mini-label {
@@ -227,8 +229,8 @@ select {
 .workspace-topbar__title {
   margin: 0;
   font-family: "Space Grotesk", sans-serif;
-  font-size: clamp(2rem, 3vw, 3.4rem);
-  line-height: 0.96;
+  font-size: clamp(1.7rem, 2vw, 2.35rem);
+  line-height: 1.04;
   letter-spacing: -0.05em;
 }
 
@@ -236,6 +238,8 @@ select {
 .workspace-refresh-card p {
   margin: 0;
   color: var(--ink-muted);
+  font-size: 0.96rem;
+  line-height: 1.6;
 }
 
 .workspace-topbar__actions {

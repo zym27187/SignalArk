@@ -32,22 +32,19 @@ const VIEW_META: Record<
   }
 > = {
   operations: {
-    eyebrow: "交易控制台",
-    title: "把操作入口和执行结果放进同一个工作台",
-    summary:
-      "先在页面上半区决定动作和筛选范围，再往下看账户、订单和事件结果，避免来回跳读。",
+    eyebrow: "运行控制",
+    title: "运行状态与控制操作",
+    summary: "集中查看系统状态、账户信息、订单记录与人工控制入口。",
   },
   market: {
-    eyebrow: "市场工作台",
-    title: "用统一入口切换标的、周期，再读价格和运行诊断",
-    summary:
-      "筛选、数据来源和诊断结论收在同一片区域里，先锁定上下文，再判断这组行情能不能信。",
+    eyebrow: "市场监控",
+    title: "行情走势与运行诊断",
+    summary: "在统一上下文中查看价格走势、权益曲线与运行诊断数据。",
   },
   research: {
-    eyebrow: "研究工作台",
-    title: "把回测配置、模式切换和结果解读连成一条路径",
-    summary:
-      "先选标的和研究模式，再配置规则或模型实验，最后顺着结论、曲线和交易原因往下看。",
+    eyebrow: "研究分析",
+    title: "回测结果与策略评估",
+    summary: "基于选定标的与周期查看回测表现、参数配置与决策明细。",
   },
 };
 
@@ -144,7 +141,7 @@ function describeFocus(
   return {
     tone: "default",
     label: accountId ?? "paper_account_001",
-    hint: "控制动作、活动筛选和股票代码入口都已收拢到页面上半区。",
+    hint: "控制动作、筛选条件与股票代码检查入口已集中展示。",
   };
 }
 
@@ -224,7 +221,7 @@ export default function App() {
     || (view === "market" && marketData.isRefreshing)
     || (view === "research" && researchData.isRefreshing)
       ? "更新中..."
-      : "刷新内容";
+      : "刷新数据";
 
   function renderView() {
     switch (view) {
@@ -280,9 +277,9 @@ export default function App() {
         <aside className="workspace-sidebar">
           <div className="workspace-brand">
             <p className="workspace-brand__eyebrow">SignalArk</p>
-            <h1 className="workspace-brand__title">Operator Desk</h1>
+            <h1 className="workspace-brand__title">交易控制台</h1>
             <p className="workspace-brand__summary">
-              参考主流交易平台的工作台结构，把导航、操作入口和结果阅读统一到一条连续路径里。
+              统一展示导航、状态与关键操作入口，便于在单一界面完成监控、筛选与处置。
             </p>
           </div>
 
@@ -295,7 +292,7 @@ export default function App() {
           </div>
 
           <div className="workspace-sidebar__section">
-            <p className="mini-label">当前焦点</p>
+            <p className="mini-label">当前上下文</p>
             <div className="workspace-focus-card">
               <strong>{focus.label}</strong>
               <p>{focus.hint}</p>
@@ -303,7 +300,7 @@ export default function App() {
           </div>
 
           <div className="workspace-sidebar__section">
-            <p className="mini-label">当前范围</p>
+            <p className="mini-label">运行概况</p>
             <div className="workspace-sidebar__stack">
               <div className="workspace-sidebar__item">
                 <span>账户</span>
