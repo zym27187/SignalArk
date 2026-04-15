@@ -117,32 +117,28 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
         </SectionCard>
       </section>
 
-      <section className="summary-strip">
-        <SectionCard
-          className="interaction-hub__card"
-          eyebrow="账户"
-          title="资金与权益"
-          description="先确认账户权益和资金构成，再往下看持仓、订单和成交明细。"
-        >
-          <BalanceSummaryPanel
-            summary={dashboard.snapshot.balanceSummary}
-            error={dashboard.snapshot.sectionErrors.balanceSummary}
-          />
-        </SectionCard>
+      <SectionCard
+        eyebrow="账户"
+        title="资金与权益"
+        description="先看账户概览中的核心数字，再往下查看全量持仓明细。"
+      >
+        <BalanceSummaryPanel
+          summary={dashboard.snapshot.balanceSummary}
+          error={dashboard.snapshot.sectionErrors.balanceSummary}
+        />
+      </SectionCard>
 
-        <SectionCard
-          className="interaction-hub__card"
-          eyebrow="账户"
-          title="当前持仓"
-          description="这里看账户里还持有哪些仓位，以及它们现在的盈亏。"
-        >
-          <PositionsTable
-            positions={dashboard.snapshot.positions}
-            symbolNames={symbolNames}
-            error={dashboard.snapshot.sectionErrors.positions}
-          />
-        </SectionCard>
-      </section>
+      <SectionCard
+        eyebrow="账户"
+        title="当前持仓"
+        description="全宽展示当前持仓明细；没有持仓时只保留紧凑空状态，不再单独占一列。"
+      >
+        <PositionsTable
+          positions={dashboard.snapshot.positions}
+          symbolNames={symbolNames}
+          error={dashboard.snapshot.sectionErrors.positions}
+        />
+      </SectionCard>
 
       <section className="dashboard-grid dashboard-grid--content">
         <div className="dashboard-grid__primary">

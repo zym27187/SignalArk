@@ -31,9 +31,9 @@ describe("BalanceSummaryPanel", () => {
     );
 
     expect(screen.getByText("账户权益由现金余额和持仓市值共同组成。")).toBeInTheDocument();
-    expect(screen.getAllByText("109,850.00")).toHaveLength(2);
-    expect(screen.getByText("现金变化")).toBeInTheDocument();
-    expect(screen.getByText("持仓变化")).toBeInTheDocument();
-    expect(screen.getByText("权益变化")).toBeInTheDocument();
+    expect(screen.getByText("109,850.00")).toBeInTheDocument();
+    expect(screen.getByText("可估值持仓")).toBeInTheDocument();
+    expect(screen.getByText("查看计算口径")).toBeInTheDocument();
+    expect(screen.queryByText("现金变化")).not.toBeInTheDocument();
   });
 });

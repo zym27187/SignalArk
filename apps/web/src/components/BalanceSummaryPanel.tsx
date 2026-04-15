@@ -1,6 +1,5 @@
 import { formatDateTime, formatDecimal, formatSignedMoney } from "../lib/format";
 import type { BalanceSummaryPayload } from "../types/api";
-import { DefinitionGrid } from "./DefinitionGrid";
 
 interface BalanceSummaryPanelProps {
   summary: BalanceSummaryPayload | null;
@@ -28,6 +27,51 @@ export function BalanceSummaryPanel({ summary, error }: BalanceSummaryPanelProps
     );
   }
 
+  const primaryMetrics = [
+    {
+      label: "现金余额",
+      value: formatDecimal(summary.cash_balance, 2),
+      hint: "账户当前现金总额",
+    },
+    {
+      label: "可用资金",
+      value: formatDecimal(summary.available_cash, 2),
+      hint: "当前可继续用于下单的资金",
+    },
+    {
+      label: "冻结资金",
+      value: formatDecimal(summary.frozen_cash, 2),
+      hint: "被未完成订单暂时占用",
+    },
+    {
+      label: "账户权益",
+      value: formatDecimal(summary.equity, 2),
+      hint: "现金与持仓市值合计",
+    },
+  ];
+  const secondaryMetrics = [
+    {
+      label: "持仓市值",
+      value: formatDecimal(summary.market_value, 2),
+      hint: "按最新标记价估值",
+    },
+    {
+      label: "可估值持仓",
+      value: `${summary.position_count} 个`,
+      hint: "当前参与估值的持仓数量",
+    },
+    {
+      label: "未实现盈亏",
+      value: formatSignedMoney(summary.unrealized_pnl),
+      hint: "来自持仓价格波动",
+    },
+    {
+      label: "已实现盈亏",
+      value: formatSignedMoney(summary.realized_pnl),
+      hint: "来自已完成卖出结果",
+    },
+  ];
+
   return (
     <div className="balance-summary">
       <div className="balance-summary__hero">
@@ -44,63 +88,49 @@ export function BalanceSummaryPanel({ summary, error }: BalanceSummaryPanelProps
 
       {error ? <p className="balance-summary__error">部分字段刷新失败：{error}</p> : null}
 
-      <DefinitionGrid
-        items={[
-          {
-            label: "现金余额",
-            value: formatDecimal(summary.cash_balance, 2),
-            hint: "账户当前的现金总额，已经包含可用资金和冻结资金。",
-          },
-          {
-            label: "可用资金",
-            value: formatDecimal(summary.available_cash, 2),
-            hint: "这部分资金还能继续用于新的买入或其他需要占用资金的动作。",
-          },
-          {
-            label: "冻结资金",
-            value: formatDecimal(summary.frozen_cash, 2),
-            hint: "通常表示仍有未完成订单占用了这部分现金，因此它暂时不能再被重复使用。",
-          },
-          {
-            label: "持仓市值",
-            value: formatDecimal(summary.market_value, 2),
-            hint: `当前共有 ${summary.position_count} 个持仓在估值中。`,
-          },
-          {
-            label: "账户权益",
-            value: formatDecimal(summary.equity, 2),
-            hint: "账户权益会把现金余额和持仓市值一起算进去。",
-          },
-          {
-            label: "未实现盈亏",
-            value: formatSignedMoney(summary.unrealized_pnl),
-            hint: "表示持仓如果按当前价格估值，相对成本价的浮动结果。",
-          },
-          {
-            label: "已实现盈亏",
-            value: formatSignedMoney(summary.realized_pnl),
-            hint: "表示已经完成卖出并真正落袋的盈亏结果。",
-          },
-        ]}
-      />
-
-      <div className="balance-summary__explanations">
-        <article className="balance-summary__explanation">
-          <p className="mini-label">现金变化</p>
-          <strong>{formatDecimal(summary.cash_balance, 2)}</strong>
-          <p>{summary.cash_explanation}</p>
-        </article>
-        <article className="balance-summary__explanation">
-          <p className="mini-label">持仓变化</p>
-          <strong>{formatDecimal(summary.market_value, 2)}</strong>
-          <p>{summary.position_explanation}</p>
-        </article>
-        <article className="balance-summary__explanation">
-          <p className="mini-label">权益变化</p>
-          <strong>{formatDecimal(summary.equity, 2)}</strong>
-          <p>{summary.equity_explanation}</p>
-        </article>
+      <div className="balance-summary__metrics">
+        {primaryMetrics.map((metric) => (
+          <article
+            key={metric.label}
+            className="balance-summary__metric"
+          >
+            <p className="mini-label">{metric.label}</p>
+            <strong>{metric.value}</strong>
+            <p>{metric.hint}</p>
+          </article>
+        ))}
       </div>
+
+      <div className="balance-summary__metrics balance-summary__metrics--secondary">
+        {secondaryMetrics.map((metric) => (
+          <article
+            key={metric.label}
+            className="balance-summary__metric balance-summary__metric--secondary"
+          >
+            <p className="mini-label">{metric.label}</p>
+            <strong>{metric.value}</strong>
+            <p>{metric.hint}</p>
+          </article>
+        ))}
+      </div>
+
+      <details className="balance-summary__details">
+        <summary className="balance-summary__details-summary">查看计算口径</summary>
+        <div className="balance-summary__details-grid">
+          <article className="balance-summary__detail">
+            <p className="mini-label">现金口径</p>
+            <p>{summary.cash_explanation}</p>
+          </article>
+          <article className="balance-summary__detail">
+            <p className="mini-label">持仓口径</p>
+            <p>{summary.position_explanation}</p>
+          </article>
+          <article className="balance-summary__detail">
+            <p className="mini-label">权益口径</p>
+            <p>{summary.equity_explanation}</p>
+          </article>
+        </div>
+      </details>
     </div>
   );
 }
