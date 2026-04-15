@@ -96,24 +96,42 @@ select {
   z-index: 1;
   display: grid;
   grid-template-columns: minmax(250px, 290px) minmax(0, 1fr);
-  gap: 24px;
+  gap: 20px;
   max-width: 1520px;
   margin: 0 auto;
 }
 
 .workspace-sidebar {
   position: sticky;
-  top: 28px;
+  top: 20px;
   align-self: start;
   display: grid;
-  gap: 20px;
-  padding: 22px;
-  border-radius: 30px;
+  gap: 16px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px;
+  border-radius: 26px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background:
     linear-gradient(180deg, rgba(11, 27, 49, 0.98), rgba(18, 40, 70, 0.92));
   box-shadow: 0 28px 90px rgba(14, 27, 47, 0.32);
   color: #e8efff;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.workspace-sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.workspace-sidebar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.workspace-sidebar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .workspace-brand,
@@ -121,7 +139,7 @@ select {
 .workspace-focus-card,
 .workspace-sidebar__stack {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .workspace-brand__eyebrow {
@@ -136,7 +154,7 @@ select {
 .workspace-brand__title {
   margin: 0;
   font-family: "Space Grotesk", sans-serif;
-  font-size: clamp(1.5rem, 1.8vw, 2rem);
+  font-size: clamp(1.35rem, 1.6vw, 1.8rem);
   line-height: 1;
   letter-spacing: -0.05em;
 }
@@ -144,8 +162,8 @@ select {
 .workspace-brand__summary {
   margin: 0;
   color: rgba(232, 239, 255, 0.72);
-  font-size: 0.95rem;
-  line-height: 1.65;
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 .workspace-sidebar .mini-label {
@@ -154,8 +172,8 @@ select {
 
 .workspace-focus-card,
 .workspace-sidebar__item {
-  padding: 14px 16px;
-  border-radius: 18px;
+  padding: 12px 14px;
+  border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.06);
 }
@@ -164,7 +182,7 @@ select {
 .workspace-sidebar__item strong {
   display: block;
   color: #f7faff;
-  font-size: 1rem;
+  font-size: 0.96rem;
 }
 
 .workspace-focus-card p {
@@ -185,7 +203,7 @@ select {
 
 .workspace-sidebar__item span {
   color: rgba(232, 239, 255, 0.64);
-  font-size: 0.9rem;
+  font-size: 0.84rem;
 }
 
 .workspace-main {
@@ -1413,8 +1431,8 @@ select {
 .view-switcher__button {
   display: grid;
   gap: 8px;
-  padding: 16px;
-  border-radius: var(--radius-lg);
+  padding: 14px;
+  border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
   color: #f7faff;
@@ -1448,9 +1466,9 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.08);
   color: rgba(247, 250, 255, 0.9);
   font-size: 0.78rem;
@@ -1460,13 +1478,13 @@ select {
 
 .view-switcher__label {
   font-family: "Space Grotesk", sans-serif;
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 700;
 }
 
 .view-switcher__description {
   color: rgba(232, 239, 255, 0.72);
-  font-size: 0.92rem;
+  font-size: 0.88rem;
 }
 
 .page-stack {
