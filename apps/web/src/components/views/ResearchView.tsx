@@ -567,131 +567,127 @@ export function ResearchView({
           />
         </section>
 
-        <section className="page-grid">
-          <div className="page-grid__main">
-            <SectionCard
-              eyebrow={options.eyebrow}
+        <SectionCard
+          eyebrow={options.eyebrow}
+          title={options.chartTitle}
+          description={options.chartDescription}
+        >
+          {error ? <p className="section-error">{error}</p> : null}
+          {equityCurve.length > 0 && nextManifest !== undefined ? (
+            <AreaChart
               title={options.chartTitle}
-              description={options.chartDescription}
-            >
-              {error ? <p className="section-error">{error}</p> : null}
-              {equityCurve.length > 0 && nextManifest !== undefined ? (
-                <AreaChart
-                  title={options.chartTitle}
-                  subtitle={`${formatSymbolList(nextManifest.symbols, symbolNames)} · ${nextManifest.timeframe} · ${nextManifest.barCount} 根 K 线`}
-                  points={equityCurve}
-                  accent={options.chartAccent}
-                  formatAsMoney
-                />
-              ) : (
-                <div className="empty-state">
-                  <p className="empty-state__title">
-                    {isLoading ? "正在生成回测结果" : options.emptyTitle}
-                  </p>
-                  <p className="empty-state__copy">
-                    {error ? "当前请求失败，可稍后重试或调整参数后再试。" : options.emptyCopy}
-                  </p>
-                </div>
-              )}
-            </SectionCard>
+              subtitle={`${formatSymbolList(nextManifest.symbols, symbolNames)} · ${nextManifest.timeframe} · ${nextManifest.barCount} 根 K 线`}
+              points={equityCurve}
+              accent={options.chartAccent}
+              formatAsMoney
+            />
+          ) : (
+            <div className="empty-state">
+              <p className="empty-state__title">
+                {isLoading ? "正在生成回测结果" : options.emptyTitle}
+              </p>
+              <p className="empty-state__copy">
+                {error ? "当前请求失败，可稍后重试或调整参数后再试。" : options.emptyCopy}
+              </p>
+            </div>
+          )}
+        </SectionCard>
 
-            <SectionCard
-              eyebrow={options.decisionEyebrow}
-              title={options.decisionTitle}
-              description={options.decisionDescription}
-            >
-              {decisions.length > 0 ? (
-                <BacktestDecisionTable decisions={decisions} />
-              ) : (
-                <div className="empty-state">
-                  <p className="empty-state__title">还没有决策记录</p>
-                  <p className="empty-state__copy">
-                    生成回测结果后，这里会展示每一步的信号和下单计划。
-                  </p>
-                </div>
-              )}
-            </SectionCard>
+        <section className="support-grid support-grid--three">
+          <SectionCard
+            eyebrow={options.strategyEyebrow}
+            title={options.strategyTitle}
+            description={options.strategyDescription}
+          >
+            <DefinitionGrid items={strategyItems} />
+          </SectionCard>
 
-            <SectionCard
-              eyebrow="时间分段"
-              title={`${options.labelPrefix}不同阶段表现对比`}
-              description="把当前样本按时间切成多段，观察策略是否只在某一小段行情里偶然有效。"
-            >
-              {segments.length > 0 ? (
-                <div className="definition-grid">
-                  {segments.map((segment) => (
-                    <div
-                      key={`${segment.label}-${segment.startTime}`}
-                      className="definition-grid__item"
-                    >
-                      <strong>
-                        {segment.label} · {segment.marketRegimeLabel}
-                      </strong>
-                      <p>
-                        {formatDateTime(segment.startTime)} 至 {formatDateTime(segment.endTime)}
-                      </p>
-                      <p>
-                        {segment.barCount} 根 K 线 / 价格变化 {formatDecimal(segment.priceChangePct, 4)}%
-                      </p>
-                      <p>
-                        收益 {formatSignedMoney(segment.performance.netPnl)} / 最大回撤{" "}
-                        {formatDecimal(segment.performance.maxDrawdownPct, 4)}% / 交易{" "}
-                        {segment.performance.tradeCount} 次
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="empty-state">
-                  <p className="empty-state__title">当前还没有时间分段对比</p>
-                  <p className="empty-state__copy">
-                    {sampleInfo?.warning ??
-                      "切到评估样本后，这里会展示不同时间窗口的收益、回撤和交易次数差异。"}
-                  </p>
-                </div>
-              )}
-            </SectionCard>
-          </div>
+          <SectionCard
+            eyebrow={options.metadataEyebrow}
+            title={options.metadataTitle}
+            description={options.metadataDescription}
+          >
+            <DefinitionGrid items={metadataItems} />
+          </SectionCard>
 
-          <aside className="page-grid__rail">
-            <SectionCard
-              eyebrow={options.strategyEyebrow}
-              title={options.strategyTitle}
-              description={options.strategyDescription}
-            >
-              <DefinitionGrid items={strategyItems} />
-            </SectionCard>
-
-            <SectionCard
-              eyebrow={options.metadataEyebrow}
-              title={options.metadataTitle}
-              description={options.metadataDescription}
-            >
-              <DefinitionGrid items={metadataItems} />
-            </SectionCard>
-
-            <SectionCard
-              eyebrow={options.notesEyebrow}
-              title={options.notesTitle}
-              description={options.notesDescription}
-            >
-              {notes.length > 0 ? (
-                <ul className="note-list">
-                  {notes.map((note) => (
-                    <li key={note}>{note}</li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="empty-state">
-                  <p className="empty-state__title">等待说明内容</p>
-                  <p className="empty-state__copy">
-                    回测结果返回后，这里会展示当前回放来源和页面说明。
-                  </p>
-                </div>
-              )}
-            </SectionCard>
-          </aside>
+          <SectionCard
+            eyebrow={options.notesEyebrow}
+            title={options.notesTitle}
+            description={options.notesDescription}
+          >
+            {notes.length > 0 ? (
+              <ul className="note-list">
+                {notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            ) : (
+              <div className="empty-state">
+                <p className="empty-state__title">等待说明内容</p>
+                <p className="empty-state__copy">
+                  回测结果返回后，这里会展示当前回放来源和页面说明。
+                </p>
+              </div>
+            )}
+          </SectionCard>
         </section>
+
+        <SectionCard
+          eyebrow={options.decisionEyebrow}
+          title={options.decisionTitle}
+          description={options.decisionDescription}
+        >
+          {decisions.length > 0 ? (
+            <BacktestDecisionTable decisions={decisions} />
+          ) : (
+            <div className="empty-state">
+              <p className="empty-state__title">还没有决策记录</p>
+              <p className="empty-state__copy">
+                生成回测结果后，这里会展示每一步的信号和下单计划。
+              </p>
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard
+          eyebrow="时间分段"
+          title={`${options.labelPrefix}不同阶段表现对比`}
+          description="把当前样本按时间切成多段，观察策略是否只在某一小段行情里偶然有效。"
+        >
+          {segments.length > 0 ? (
+            <div className="definition-grid">
+              {segments.map((segment) => (
+                <div
+                  key={`${segment.label}-${segment.startTime}`}
+                  className="definition-grid__item"
+                >
+                  <strong>
+                    {segment.label} · {segment.marketRegimeLabel}
+                  </strong>
+                  <p>
+                    {formatDateTime(segment.startTime)} 至 {formatDateTime(segment.endTime)}
+                  </p>
+                  <p>
+                    {segment.barCount} 根 K 线 / 价格变化 {formatDecimal(segment.priceChangePct, 4)}%
+                  </p>
+                  <p>
+                    收益 {formatSignedMoney(segment.performance.netPnl)} / 最大回撤{" "}
+                    {formatDecimal(segment.performance.maxDrawdownPct, 4)}% / 交易{" "}
+                    {segment.performance.tradeCount} 次
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <p className="empty-state__title">当前还没有时间分段对比</p>
+              <p className="empty-state__copy">
+                {sampleInfo?.warning ??
+                  "切到评估样本后，这里会展示不同时间窗口的收益、回撤和交易次数差异。"}
+              </p>
+            </div>
+          )}
+        </SectionCard>
       </>
     );
   }

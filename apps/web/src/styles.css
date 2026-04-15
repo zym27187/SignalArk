@@ -694,6 +694,17 @@ select {
   gap: 24px;
 }
 
+.support-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+
+.support-grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .table-shell,
 .event-timeline,
 .control-panel {
@@ -1915,6 +1926,10 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .support-grid--three {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .balance-summary__metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1952,7 +1967,9 @@ select {
   .workspace-topbar,
   .workspace-pulse,
   .interaction-hub,
-  .summary-strip {
+  .summary-strip,
+  .support-grid,
+  .support-grid--three {
     grid-template-columns: 1fr;
   }
 

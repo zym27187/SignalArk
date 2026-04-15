@@ -163,117 +163,113 @@ export function MarketView({
         alwaysShow
       />
 
-      <section className="page-grid">
-        <div className="page-grid__main">
-          <SectionCard
-            eyebrow="价格走势"
-            title="价格变化"
-            description="看选中标的在这段时间里的价格变化。"
-          >
-            <CandlestickChart
-              title={activeSymbolLabel}
-              subtitle={`${timeframe} 价格走势${usingLiveBars ? "" : "（示例补位）"}`}
-              bars={bars}
-            />
-          </SectionCard>
+      <SectionCard
+        eyebrow="价格走势"
+        title="价格变化"
+        description="优先展示当前上下文下的价格主图，先看趋势和波动，再往下核对数据来源。"
+      >
+        <CandlestickChart
+          title={activeSymbolLabel}
+          subtitle={`${timeframe} 价格走势${usingLiveBars ? "" : "（示例补位）"}`}
+          bars={bars}
+        />
+      </SectionCard>
 
-          <SectionCard
-            eyebrow="账户变化"
-            title="账户盈亏变化"
-            description="看这段时间账户资金是怎么波动的。"
-          >
-            <AreaChart
-              title="账户资金"
-              subtitle={usingLiveCurve ? "按真实账户变化重建" : "以 100,000 模拟本金为基线"}
-              points={displayedEquityCurve}
-              accent="amber"
-              formatAsMoney
-            />
-          </SectionCard>
-        </div>
+      <SectionCard
+        eyebrow="账户变化"
+        title="账户盈亏变化"
+        description="在同一上下文里查看账户资金曲线，便于把价格波动和权益变化一起读。"
+      >
+        <AreaChart
+          title="账户资金"
+          subtitle={usingLiveCurve ? "按真实账户变化重建" : "以 100,000 模拟本金为基线"}
+          points={displayedEquityCurve}
+          accent="amber"
+          formatAsMoney
+        />
+      </SectionCard>
 
-        <aside className="page-grid__rail">
-          <SectionCard
-            eyebrow="核对"
-            title="系统实际看到的数据"
-            description="确认交易系统当时看到的最新行情，而不是事后重新拉取的数据。"
-          >
-            <DefinitionGrid
-              items={[
-                {
-                  label: "查看接口",
-                  value: "/v1/market/runtime-bars",
-                  hint: runtimeAuditHint,
-                },
-                {
-                  label: "系统最近看到",
-                  value: runtimeSeenBar
-                    ? `${formatDateTime(runtimeSeenBar.event_time)} / ${formatDecimal(runtimeSeenBar.close, 2)}`
-                    : "暂无匹配流",
-                  hint: runtimeSeenBar
-                    ? `${formatSymbolLabel(runtimeSeenBar.symbol, symbolNames)} · ${runtimeSeenBar.timeframe} · ${runtimeSeenBar.source_kind ?? "unknown"}`
-                    : `当前筛选 ${formatSymbolLabel(selectedSymbol, symbolNames)} / ${selectedTimeframe} 还没有落盘记录。`,
-                },
-                {
-                  label: "最近用于决策",
-                  value: runtimeStrategyBar
-                    ? `${formatDateTime(runtimeStrategyBar.event_time)} / ${formatDecimal(runtimeStrategyBar.close, 2)}`
-                    : "还没进入策略",
-                  hint: runtimeStrategyBar
-                    ? `${formatSymbolLabel(runtimeStrategyBar.symbol, symbolNames)} · ${runtimeStrategyBar.timeframe} · 真正送入策略的最新价格`
-                    : "如果系统看到了价格，但还没真正拿去做策略判断，这里会保持为空。",
-                },
-                {
-                  label: "已记录品种",
-                  value:
-                    runtimeAudit.available_streams.length > 0
-                      ? runtimeAudit.available_streams
-                          .map(
-                            (stream) =>
-                              `${formatSymbolLabel(stream.symbol, symbolNames)}/${stream.timeframe}`,
-                          )
-                          .join(", ")
-                      : "暂无",
-                  hint: "这里展示系统最近记录过的品种和周期，可快速判断页面筛选是否和真实消费流一致。",
-                },
-              ]}
-            />
-          </SectionCard>
+      <section className="support-grid">
+        <SectionCard
+          eyebrow="核对"
+          title="系统实际看到的数据"
+          description="确认交易系统当时看到的最新行情，而不是事后重新拉取的数据。"
+        >
+          <DefinitionGrid
+            items={[
+              {
+                label: "查看接口",
+                value: "/v1/market/runtime-bars",
+                hint: runtimeAuditHint,
+              },
+              {
+                label: "系统最近看到",
+                value: runtimeSeenBar
+                  ? `${formatDateTime(runtimeSeenBar.event_time)} / ${formatDecimal(runtimeSeenBar.close, 2)}`
+                  : "暂无匹配流",
+                hint: runtimeSeenBar
+                  ? `${formatSymbolLabel(runtimeSeenBar.symbol, symbolNames)} · ${runtimeSeenBar.timeframe} · ${runtimeSeenBar.source_kind ?? "unknown"}`
+                  : `当前筛选 ${formatSymbolLabel(selectedSymbol, symbolNames)} / ${selectedTimeframe} 还没有落盘记录。`,
+              },
+              {
+                label: "最近用于决策",
+                value: runtimeStrategyBar
+                  ? `${formatDateTime(runtimeStrategyBar.event_time)} / ${formatDecimal(runtimeStrategyBar.close, 2)}`
+                  : "还没进入策略",
+                hint: runtimeStrategyBar
+                  ? `${formatSymbolLabel(runtimeStrategyBar.symbol, symbolNames)} · ${runtimeStrategyBar.timeframe} · 真正送入策略的最新价格`
+                  : "如果系统看到了价格，但还没真正拿去做策略判断，这里会保持为空。",
+              },
+              {
+                label: "已记录品种",
+                value:
+                  runtimeAudit.available_streams.length > 0
+                    ? runtimeAudit.available_streams
+                        .map(
+                          (stream) =>
+                            `${formatSymbolLabel(stream.symbol, symbolNames)}/${stream.timeframe}`,
+                        )
+                        .join(", ")
+                    : "暂无",
+                hint: "这里展示系统最近记录过的品种和周期，可快速判断页面筛选是否和真实消费流一致。",
+              },
+            ]}
+          />
+        </SectionCard>
 
-          <SectionCard
-            eyebrow="数据说明"
-            title="当前数据接入情况"
-            description="说明页面现在用的是真实数据还是示例数据。"
-          >
-            <DefinitionGrid
-              items={[
-                {
-                  label: "当前展示数据",
-                  value: sourceLabel,
-                  hint: marketDataHint,
-                },
-                {
-                  label: "价格接口",
-                  value: "/v1/market/bars",
-                  hint:
-                    marketData.snapshot.sectionErrors.bars ?? "按标的、周期和条数读取价格。",
-                },
-                {
-                  label: "账户曲线接口",
-                  value: "/v1/portfolio/equity-curve",
-                  hint:
-                    marketData.snapshot.sectionErrors.equityCurve ??
-                    "使用账户余额、成交和价格变化重建资金曲线。",
-                },
-                {
-                  label: "系统控制状态",
-                  value: titleCase(status?.control_state),
-                  hint: "当前交易状态已经可以实时从接口获取。",
-                },
-              ]}
-            />
-          </SectionCard>
-        </aside>
+        <SectionCard
+          eyebrow="数据说明"
+          title="当前数据接入情况"
+          description="说明页面现在用的是真实数据还是示例数据。"
+        >
+          <DefinitionGrid
+            items={[
+              {
+                label: "当前展示数据",
+                value: sourceLabel,
+                hint: marketDataHint,
+              },
+              {
+                label: "价格接口",
+                value: "/v1/market/bars",
+                hint:
+                  marketData.snapshot.sectionErrors.bars ?? "按标的、周期和条数读取价格。",
+              },
+              {
+                label: "账户曲线接口",
+                value: "/v1/portfolio/equity-curve",
+                hint:
+                  marketData.snapshot.sectionErrors.equityCurve ??
+                  "使用账户余额、成交和价格变化重建资金曲线。",
+              },
+              {
+                label: "系统控制状态",
+                value: titleCase(status?.control_state),
+                hint: "当前交易状态已经可以实时从接口获取。",
+              },
+            ]}
+          />
+        </SectionCard>
       </section>
     </main>
   );
