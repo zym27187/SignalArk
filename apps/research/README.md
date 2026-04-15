@@ -177,6 +177,72 @@ POST /v1/research/rule-snapshot
 - `targetPosition` 继续沿用当前系统的“目标持仓股数”语义，而不是资金占比
 - 返回体继续复用现有 `ResearchSnapshot`，避免前端为规则回测再维护第二套展示契约
 
+如果你想直接试一把，可以先用 `curl`：
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/research/rule-snapshot \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "symbol": "600036.SH",
+    "timeframe": "1d",
+    "limit": 750,
+    "initialCash": 100000,
+    "slippageBps": 5,
+    "ruleTemplate": "moving_average_band_v1",
+    "ruleConfig": {
+      "maWindow": 60,
+      "buyBelowMaPct": 0.05,
+      "sellAboveMaPct": 0.10,
+      "targetPosition": 400
+    }
+  }'
+```
+
+如果你是在前端或浏览器调试，也可以直接用 `fetch`：
+
+```ts
+const response = await fetch("http://127.0.0.1:8000/v1/research/rule-snapshot", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  },
+  body: JSON.stringify({
+    symbol: "600036.SH",
+    timeframe: "1d",
+    limit: 750,
+    initialCash: 100000,
+    slippageBps: 5,
+    ruleTemplate: "moving_average_band_v1",
+    ruleConfig: {
+      maWindow: 60,
+      buyBelowMaPct: 0.05,
+      sellAboveMaPct: 0.10,
+      targetPosition: 400,
+    },
+  }),
+});
+const snapshot = await response.json();
+```
+
+### 第一版限制
+
+- 只做多，不支持做空
+- 只支持单标的、单均线、固定股数仓位
+- 只支持 `moving_average_band_v1`
+- 继续沿用 A 股 `T+1`、手续费和滑点语义
+- 不做模板持久化，也不支持任意表达式 DSL
+
+### 样本区间建议
+
+规则回测第一版建议优先使用 `1d`，并直接通过 `limit` 驱动历史样本长度：
+
+- 近 `1` 年：建议 `limit=250`
+- 近 `3` 年：建议 `limit=750`
+- 近 `5` 年：建议 `limit=1250`
+
+如果你要验证“MA60/-5%/+10%/400 股”这一类典型均线规则，优先从 `600036.SH + 1d + 3 年` 开始最容易对齐语义和观察结果。
+
 输入文件需要是以下两种形式之一：
 
 1. 一个 `BarEvent` JSON 数组
