@@ -4,6 +4,7 @@ interface SectionCardProps {
   title: string;
   description: string;
   eyebrow?: string;
+  className?: string;
   children: ReactNode;
 }
 
@@ -11,10 +12,11 @@ export function SectionCard({
   title,
   description,
   eyebrow,
+  className,
   children,
 }: SectionCardProps) {
   return (
-    <section className="section-card">
+    <section className={`section-card${className ? ` ${className}` : ""}`}>
       <header className="section-card__header">
         <div>
           {eyebrow ? <p className="section-card__eyebrow">{eyebrow}</p> : null}
@@ -22,8 +24,7 @@ export function SectionCard({
         </div>
         <p className="section-card__description">{description}</p>
       </header>
-      {children}
+      <div className="section-card__body">{children}</div>
     </section>
   );
 }
-

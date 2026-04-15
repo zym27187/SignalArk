@@ -33,7 +33,7 @@ export function ViewSwitcher({ value, onChange }: ViewSwitcherProps) {
       className="view-switcher"
       aria-label="主视图导航"
     >
-      {viewOptions.map((option) => (
+      {viewOptions.map((option, index) => (
         <button
           key={option.key}
           type="button"
@@ -42,7 +42,10 @@ export function ViewSwitcher({ value, onChange }: ViewSwitcherProps) {
             onChange(option.key);
           }}
         >
-          <span className="view-switcher__label">{option.label}</span>
+          <span className="view-switcher__meta">
+            <span className="view-switcher__badge">{`0${index + 1}`}</span>
+            <span className="view-switcher__label">{option.label}</span>
+          </span>
           <span className="view-switcher__description">{option.description}</span>
         </button>
       ))}

@@ -42,106 +42,46 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
   const availableSymbols = status?.symbols ?? [];
 
   return (
-    <main className="dashboard-grid">
-      <div className="dashboard-grid__primary">
-        <StatusHero
-          status={status}
-          isLoading={dashboard.isLoading}
-          error={dashboard.snapshot.sectionErrors.status}
+    <main className="page-stack">
+      <StatusHero
+        status={status}
+        isLoading={dashboard.isLoading}
+        error={dashboard.snapshot.sectionErrors.status}
+      />
+
+      <section className="metric-grid">
+        <MetricCard
+          label="运行准备"
+          value={status?.ready ? "可以运行" : "等待中"}
+          hint={`系统状态：${titleCase(status?.status)}`}
+          tone={status?.ready ? "positive" : "warning"}
         />
+        <MetricCard
+          label="控制状态"
+          value={titleCase(status?.control_state)}
+          hint={status?.strategy_enabled ? "自动下单已开启" : "自动下单已暂停"}
+          tone={controlTone(status?.control_state)}
+        />
+        <MetricCard
+          label="行情更新"
+          value={status?.market_data_fresh ? "已更新" : "待更新"}
+          hint={`当前时段：${titleCase(status?.current_trading_phase)}`}
+          tone={status?.market_data_fresh ? "positive" : "warning"}
+        />
+        <MetricCard
+          label="当前控制编号"
+          value={status?.fencing_token ?? "--"}
+          hint={`当前由 ${compactId(status?.lease_owner_instance_id)} 持有`}
+          tone="default"
+        />
+      </section>
 
-        <section className="metric-grid">
-          <MetricCard
-            label="运行准备"
-            value={status?.ready ? "可以运行" : "等待中"}
-            hint={`系统状态：${titleCase(status?.status)}`}
-            tone={status?.ready ? "positive" : "warning"}
-          />
-          <MetricCard
-            label="控制状态"
-            value={titleCase(status?.control_state)}
-            hint={status?.strategy_enabled ? "自动下单已开启" : "自动下单已暂停"}
-            tone={controlTone(status?.control_state)}
-          />
-          <MetricCard
-            label="行情更新"
-            value={status?.market_data_fresh ? "已更新" : "待更新"}
-            hint={`当前时段：${titleCase(status?.current_trading_phase)}`}
-            tone={status?.market_data_fresh ? "positive" : "warning"}
-          />
-          <MetricCard
-            label="当前控制编号"
-            value={status?.fencing_token ?? "--"}
-            hint={`当前由 ${compactId(status?.lease_owner_instance_id)} 持有`}
-            tone="default"
-          />
-        </section>
-
+      <section className="interaction-hub">
         <SectionCard
-          eyebrow="账户"
-          title="资金与权益"
-          description="这里解释现金余额、冻结资金和持仓市值是怎样一起组成当前账户权益的。"
-        >
-          <BalanceSummaryPanel
-            summary={dashboard.snapshot.balanceSummary}
-            error={dashboard.snapshot.sectionErrors.balanceSummary}
-          />
-        </SectionCard>
-
-        <SectionCard
-          eyebrow="账户"
-          title="当前持仓"
-          description="这里看账户里还持有哪些仓位，以及它们现在的盈亏。"
-        >
-          <PositionsTable
-            positions={dashboard.snapshot.positions}
-            symbolNames={symbolNames}
-            error={dashboard.snapshot.sectionErrors.positions}
-          />
-        </SectionCard>
-
-        <SectionCard
-          eyebrow="进行中"
-          title="未完成订单"
-          description="这里看还在排队、已接收或部分成交的订单。"
-        >
-          <OrdersTable
-            orders={dashboard.snapshot.orders}
-            symbolNames={symbolNames}
-            error={dashboard.snapshot.sectionErrors.orders}
-          />
-        </SectionCard>
-
-        <SectionCard
-          eyebrow="回看"
-          title="历史订单"
-          description="这里按筛选回看订单从提交到结束的全过程。"
-        >
-          <OrderHistoryTable
-            orders={dashboard.snapshot.orderHistory}
-            symbolNames={symbolNames}
-            error={dashboard.snapshot.sectionErrors.orderHistory}
-          />
-        </SectionCard>
-
-        <SectionCard
-          eyebrow="回看"
-          title="历史成交"
-          description="这里看已经真正成交的记录，不用再手动查库。"
-        >
-          <FillHistoryTable
-            fills={dashboard.snapshot.fills}
-            symbolNames={symbolNames}
-            error={dashboard.snapshot.sectionErrors.fillHistory}
-          />
-        </SectionCard>
-      </div>
-
-      <aside className="dashboard-grid__rail">
-        <SectionCard
-          eyebrow="人工操作"
+          className="interaction-hub__card"
+          eyebrow="控制台入口"
           title="手动操作"
-          description="需要人工介入时，可以在这里暂停、恢复或撤单。"
+          description="先决定系统要不要继续自动动作，高风险操作会在这里集中确认。"
         >
           <ControlPanel
             status={status}
@@ -152,17 +92,10 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
         </SectionCard>
 
         <SectionCard
-          eyebrow="股票代码"
-          title="股票代码管理"
-          description="先检查它属于观察层、支持层还是运行层，再决定后续要不要继续推进。"
-        >
-          <SymbolInspectorPanel runtimeSymbols={availableSymbols} symbolNames={symbolNames} />
-        </SectionCard>
-
-        <SectionCard
-          eyebrow="查看范围"
+          className="interaction-hub__card"
+          eyebrow="控制台入口"
           title="筛选条件"
-          description="设置时间、标的和状态后，下面各块会一起切到同一批数据。"
+          description="先把查看范围收口，下面订单、成交和事件时间线会一起跟着变化。"
         >
           <ActivityFiltersPanel
             filters={dashboard.activityFilters}
@@ -175,25 +108,103 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
         </SectionCard>
 
         <SectionCard
-          eyebrow="名词解释"
-          title="常见术语"
-          description="先理解这些术语在说什么，再看账户和订单数据会更直观。"
+          className="interaction-hub__card"
+          eyebrow="控制台入口"
+          title="股票代码管理"
+          description="在同一块交互区里完成代码检查、层级确认和运行范围申请判断。"
         >
-          <TradingGlossaryPanel />
+          <SymbolInspectorPanel runtimeSymbols={availableSymbols} symbolNames={symbolNames} />
+        </SectionCard>
+      </section>
+
+      <section className="summary-strip">
+        <SectionCard
+          className="interaction-hub__card"
+          eyebrow="账户"
+          title="资金与权益"
+          description="先确认账户权益和资金构成，再往下看持仓、订单和成交明细。"
+        >
+          <BalanceSummaryPanel
+            summary={dashboard.snapshot.balanceSummary}
+            error={dashboard.snapshot.sectionErrors.balanceSummary}
+          />
         </SectionCard>
 
         <SectionCard
-          eyebrow="最近动态"
-          title="最近发生了什么"
-          description="按当前筛选展示最近的关键事件时间线。"
+          className="interaction-hub__card"
+          eyebrow="账户"
+          title="当前持仓"
+          description="这里看账户里还持有哪些仓位，以及它们现在的盈亏。"
         >
-          <EventTimeline
-            events={deferredEvents}
+          <PositionsTable
+            positions={dashboard.snapshot.positions}
             symbolNames={symbolNames}
-            error={dashboard.snapshot.sectionErrors.events}
+            error={dashboard.snapshot.sectionErrors.positions}
           />
         </SectionCard>
-      </aside>
+      </section>
+
+      <section className="dashboard-grid dashboard-grid--content">
+        <div className="dashboard-grid__primary">
+          <SectionCard
+            eyebrow="进行中"
+            title="未完成订单"
+            description="这里看还在排队、已接收或部分成交的订单。"
+          >
+            <OrdersTable
+              orders={dashboard.snapshot.orders}
+              symbolNames={symbolNames}
+              error={dashboard.snapshot.sectionErrors.orders}
+            />
+          </SectionCard>
+
+          <SectionCard
+            eyebrow="回看"
+            title="历史订单"
+            description="这里按筛选回看订单从提交到结束的全过程。"
+          >
+            <OrderHistoryTable
+              orders={dashboard.snapshot.orderHistory}
+              symbolNames={symbolNames}
+              error={dashboard.snapshot.sectionErrors.orderHistory}
+            />
+          </SectionCard>
+
+          <SectionCard
+            eyebrow="回看"
+            title="历史成交"
+            description="这里看已经真正成交的记录，不用再手动查库。"
+          >
+            <FillHistoryTable
+              fills={dashboard.snapshot.fills}
+              symbolNames={symbolNames}
+              error={dashboard.snapshot.sectionErrors.fillHistory}
+            />
+          </SectionCard>
+        </div>
+
+        <aside className="dashboard-grid__rail">
+          <SectionCard
+            eyebrow="名词解释"
+            title="常见术语"
+            description="把容易混淆的交易术语固定解释在侧栏里，减少来回查找。"
+          >
+            <TradingGlossaryPanel />
+          </SectionCard>
+
+          <SectionCard
+            eyebrow="最近动态"
+            title="最近发生了什么"
+            description="按当前筛选展示最近的关键事件时间线。"
+          >
+            <EventTimeline
+              events={deferredEvents}
+              symbolNames={symbolNames}
+              error={dashboard.snapshot.sectionErrors.events}
+            />
+          </SectionCard>
+        </aside>
+      </section>
     </main>
   );
 }
