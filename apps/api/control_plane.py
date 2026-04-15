@@ -28,6 +28,7 @@ from src.domain.strategy.ai import (
     HeuristicStubAiDecisionProvider,
     OpenAiCompatibleDecisionProvider,
 )
+from src.domain.strategy.rule_based import MovingAverageBandStrategy
 from src.infra.db import SqlAlchemyRepositories, session_scope
 from src.infra.db.models import (
     BalanceSnapshotRecord,
@@ -70,6 +71,7 @@ from apps.trader.oms import build_default_trader_oms_service
 from apps.trader.reconciliation import SessionFactoryBackedReconciliationStore
 
 READ_ONLY_MARKET_TIMEFRAMES = frozenset({"15m", "1h"})
+RULE_RESEARCH_TIMEFRAMES = frozenset({"1d"})
 DEFAULT_RESEARCH_INITIAL_CASH = Decimal("100000")
 DEFAULT_RESEARCH_SLIPPAGE_BPS = Decimal("5")
 DEFAULT_AI_RESEARCH_PROVIDER_TIMEOUT_SECONDS = 30.0
@@ -1015,6 +1017,75 @@ class ApiControlPlaneService:
             comparison=comparison,
         )
 
+    async def research_rule_snapshot_payload(
+        self,
+        *,
+        symbol: str | None = None,
+        timeframe: str = "1d",
+        limit: int = 750,
+        initial_cash: Decimal = DEFAULT_RESEARCH_INITIAL_CASH,
+        slippage_bps: Decimal = DEFAULT_RESEARCH_SLIPPAGE_BPS,
+        rule_template: str = "moving_average_band_v1",
+        ma_window: int = 60,
+        buy_below_ma_pct: Decimal = Decimal("0.05"),
+        sell_above_ma_pct: Decimal = Decimal("0.10"),
+        target_position: int = 400,
+    ) -> dict[str, object]:
+        resolved_symbol = self._resolve_symbol(symbol)
+        resolved_timeframe = self._resolve_timeframe(
+            timeframe,
+            allowed_timeframes=RULE_RESEARCH_TIMEFRAMES,
+            default_timeframe="1d",
+        )
+        bars = await self._fetch_historical_bars(
+            symbol=resolved_symbol,
+            timeframe=resolved_timeframe,
+            limit=limit,
+        )
+        backtest_bars = _build_research_backtest_bars(bars)
+        if not backtest_bars:
+            raise LookupError("No finalized bars are available to build a rule snapshot yet.")
+
+        strategy = MovingAverageBandStrategy(
+            account_id=self._settings.account_id,
+            strategy_id=rule_template,
+            ma_window=ma_window,
+            buy_below_ma_pct=buy_below_ma_pct,
+            sell_above_ma_pct=sell_above_ma_pct,
+            target_position=Decimal(str(target_position)),
+        )
+        result = await build_default_backtest_runner(
+            self._settings,
+            strategy=strategy,
+            initial_cash=initial_cash,
+            slippage_bps=slippage_bps,
+        ).run(backtest_bars)
+        sample_metadata = build_sample_metadata(
+            sample_purpose="evaluation",
+            requested_bar_count=limit,
+            actual_bar_count=len(backtest_bars),
+        )
+        notes = [
+            "该快照由 `/v1/research/rule-snapshot` 基于真实日线即时生成。",
+            "第一版固定使用 `moving_average_band_v1`，并要求 `timeframe=1d`。",
+            (
+                "`buyBelowMaPct` 表示 close <= MA * (1 - pct) 时买入，"
+                "`sellAboveMaPct` 表示 close >= MA * (1 + pct) 时卖出。"
+            ),
+            "targetPosition 继续沿用现有 backtest 的目标持仓股数语义，并复用当前 T+1 与成本模型。",
+        ]
+        if sample_metadata["warning"] is not None:
+            notes.append(str(sample_metadata["warning"]))
+        return build_web_snapshot_payload(
+            result=result,
+            bars=backtest_bars,
+            source_label="由 research API 生成的规则回测结果",
+            source_mode="live",
+            mode="evaluation",
+            notes=tuple(notes),
+            sample=sample_metadata,
+        )
+
     def research_ai_settings_payload(self) -> dict[str, object]:
         try:
             snapshot = self._control_store.get_research_ai_settings(self._settings.account_id)
@@ -1353,12 +1424,20 @@ class ApiControlPlaneService:
             raise ValueError(f"Unsupported symbol: {resolved}")
         return resolved
 
-    def _resolve_timeframe(self, timeframe: str | None) -> str:
-        resolved = (timeframe or self._settings.primary_timeframe).strip().lower()
-        if resolved not in READ_ONLY_MARKET_TIMEFRAMES:
+    def _resolve_timeframe(
+        self,
+        timeframe: str | None,
+        *,
+        allowed_timeframes: frozenset[str] = READ_ONLY_MARKET_TIMEFRAMES,
+        default_timeframe: str | None = None,
+    ) -> str:
+        resolved = (
+            timeframe or default_timeframe or self._settings.primary_timeframe
+        ).strip().lower()
+        if resolved not in allowed_timeframes:
             raise ValueError(
                 f"Unsupported timeframe: {resolved}; "
-                f"supported values are {', '.join(sorted(READ_ONLY_MARKET_TIMEFRAMES))}."
+                f"supported values are {', '.join(sorted(allowed_timeframes))}."
             )
         return resolved
 

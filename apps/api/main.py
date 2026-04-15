@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from src.config import get_settings
 from src.domain.strategy.ai import AiProviderRequestError
 from src.infra.db import create_database_engine, create_session_factory
@@ -25,6 +26,7 @@ from apps.trader.control_plane import MissingControlPlaneSchemaError, TraderCont
 ResearchRuleTemplate = Literal["moving_average_band_v1"]
 RULE_RESEARCH_TEMPLATE_MOVING_AVERAGE_BAND_V1: ResearchRuleTemplate = "moving_average_band_v1"
 RULE_RESEARCH_REQUIRED_TIMEFRAME = "1d"
+RULE_RESEARCH_REQUEST_BODY = Body(...)
 
 
 class ResearchAiSnapshotRequest(BaseModel):
@@ -53,6 +55,61 @@ class ResearchAiSettingsUpdateRequest(BaseModel):
     clear_api_key: bool = Field(default=False, alias="clearApiKey")
 
 
+class MovingAverageBandRuleConfigRequest(BaseModel):
+    """Config block for the first configurable-rule MVP."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid", str_strip_whitespace=True)
+
+    ma_window: int = Field(alias="maWindow")
+    buy_below_ma_pct: Decimal = Field(alias="buyBelowMaPct")
+    sell_above_ma_pct: Decimal = Field(alias="sellAboveMaPct")
+    target_position: int = Field(alias="targetPosition")
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> MovingAverageBandRuleConfigRequest:
+        if self.ma_window < 2:
+            raise ValueError("ruleConfig.maWindow must be at least 2.")
+        if self.buy_below_ma_pct < 0 or self.buy_below_ma_pct >= 1:
+            raise ValueError("ruleConfig.buyBelowMaPct must be within [0, 1).")
+        if self.sell_above_ma_pct < 0 or self.sell_above_ma_pct >= 1:
+            raise ValueError("ruleConfig.sellAboveMaPct must be within [0, 1).")
+        if self.target_position <= 0:
+            raise ValueError("ruleConfig.targetPosition must be greater than 0.")
+        return self
+
+
+class ResearchRuleSnapshotRequest(BaseModel):
+    """Body contract for one configurable rule-based research snapshot request."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid", str_strip_whitespace=True)
+
+    symbol: str | None = None
+    timeframe: str = RULE_RESEARCH_REQUIRED_TIMEFRAME
+    limit: int = 750
+    initial_cash: Decimal = Field(default=Decimal("100000"), alias="initialCash")
+    slippage_bps: Decimal = Field(default=Decimal("5"), alias="slippageBps")
+    rule_template: ResearchRuleTemplate = Field(alias="ruleTemplate")
+    rule_config: MovingAverageBandRuleConfigRequest = Field(alias="ruleConfig")
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> ResearchRuleSnapshotRequest:
+        if not self.timeframe.strip():
+            raise ValueError("timeframe cannot be empty.")
+        if self.timeframe.strip().lower() != RULE_RESEARCH_REQUIRED_TIMEFRAME:
+            raise ValueError("timeframe must be 1d for moving_average_band_v1.")
+        if self.rule_template != RULE_RESEARCH_TEMPLATE_MOVING_AVERAGE_BAND_V1:
+            raise ValueError("ruleTemplate must be moving_average_band_v1.")
+        if self.initial_cash <= 0:
+            raise ValueError("initialCash must be greater than 0.")
+        if self.slippage_bps < 0:
+            raise ValueError("slippageBps cannot be negative.")
+        if self.limit <= 0:
+            raise ValueError("limit must be greater than 0.")
+        if self.limit <= self.rule_config.ma_window:
+            raise ValueError("limit must be greater than ruleConfig.maWindow.")
+        return self
+
+
 class RuntimeSymbolRequest(BaseModel):
     """Body contract for recording one runtime-symbol change request."""
 
@@ -60,6 +117,18 @@ class RuntimeSymbolRequest(BaseModel):
 
     symbol: str
     confirm: bool = False
+
+
+def _format_validation_error(exc: ValidationError) -> str:
+    parts: list[str] = []
+    for error in exc.errors(include_url=False):
+        location = ".".join(str(part) for part in error.get("loc", ()))
+        message = str(error.get("msg", "Invalid request."))
+        if location and location not in message:
+            parts.append(f"{location}: {message}")
+        else:
+            parts.append(message)
+    return "; ".join(parts) if parts else "Invalid request."
 
 
 def build_control_plane_service(settings) -> ApiControlPlaneService:
@@ -276,6 +345,36 @@ def create_app(
                 mode=mode,
                 slippage_model=slippage_model,
             )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Market data is temporarily unavailable.",
+            ) from exc
+
+    @app.post("/v1/research/rule-snapshot")
+    async def research_rule_snapshot(
+        request_body: dict[str, object] = RULE_RESEARCH_REQUEST_BODY,
+    ) -> dict[str, object]:
+        try:
+            request = ResearchRuleSnapshotRequest.model_validate(request_body)
+            return await service.research_rule_snapshot_payload(
+                symbol=request.symbol,
+                timeframe=request.timeframe,
+                limit=request.limit,
+                initial_cash=request.initial_cash,
+                slippage_bps=request.slippage_bps,
+                rule_template=request.rule_template,
+                ma_window=request.rule_config.ma_window,
+                buy_below_ma_pct=request.rule_config.buy_below_ma_pct,
+                sell_above_ma_pct=request.rule_config.sell_above_ma_pct,
+                target_position=request.rule_config.target_position,
+            )
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail=_format_validation_error(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except LookupError as exc:

@@ -12,7 +12,13 @@ from apps.api.control_plane import (
 from apps.trader.control_plane import TraderControlPlaneStore
 from fastapi.testclient import TestClient
 from src.config.settings import Settings
-from src.domain.market import MarketStateSnapshot, NormalizedBar, SuspensionStatus, TradingPhase
+from src.domain.market import (
+    MarketStateSnapshot,
+    NormalizedBar,
+    SuspensionStatus,
+    TradingPhase,
+)
+from src.domain.market.state import compute_price_limits
 from src.domain.strategy.ai import (
     AiProviderRequestError,
     AiStrategyDecision,
@@ -24,19 +30,19 @@ from tests.support.migrations import upgrade_database
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 BASE_TIME = datetime(2026, 4, 1, 14, 0, tzinfo=SHANGHAI)
-MARKET_STATE = MarketStateSnapshot(
-    trade_date=BASE_TIME.date(),
-    previous_close=Decimal("39.47"),
-    upper_limit_price=Decimal("43.42"),
-    lower_limit_price=Decimal("35.52"),
-    trading_phase=TradingPhase.CONTINUOUS_AUCTION,
-    suspension_status=SuspensionStatus.ACTIVE,
-)
 
 
 class FakeHistoricalBarGateway:
-    def __init__(self, bars: list[NormalizedBar]) -> None:
+    def __init__(
+        self,
+        bars: list[NormalizedBar],
+        *,
+        expected_symbol: str = "600036.SH",
+        expected_timeframe: str = "15m",
+    ) -> None:
         self._bars = list(bars)
+        self._expected_symbol = expected_symbol
+        self._expected_timeframe = expected_timeframe
 
     async def fetch_historical_bars(
         self,
@@ -47,8 +53,8 @@ class FakeHistoricalBarGateway:
         end_time: datetime | None = None,
         max_bars: int | None = None,
     ) -> list[NormalizedBar]:
-        assert symbol == "600036.SH"
-        assert timeframe == "15m"
+        assert symbol == self._expected_symbol
+        assert timeframe == self._expected_timeframe
         del start_time, end_time
         bars = list(self._bars)
         if max_bars is not None:
@@ -73,13 +79,22 @@ def _bar(
     event_time: datetime | None = None,
     close: str,
     previous_close: str,
+    timeframe: str = "15m",
+    price_limit_pct: Decimal = Decimal("0.10"),
 ) -> NormalizedBar:
-    resolved_event_time = event_time or (BASE_TIME + timedelta(minutes=15 * index))
+    interval = timedelta(days=1) if timeframe == "1d" else timedelta(minutes=15)
+    resolved_event_time = event_time or (BASE_TIME + interval * index)
+    previous_close_decimal = Decimal(previous_close)
+    upper_limit_price, lower_limit_price = compute_price_limits(
+        previous_close_decimal,
+        price_limit_pct,
+        price_tick=Decimal("0.01"),
+    )
     return NormalizedBar(
         exchange="cn_equity",
         symbol="600036.SH",
-        timeframe="15m",
-        bar_start_time=resolved_event_time - timedelta(minutes=15),
+        timeframe=timeframe,
+        bar_start_time=resolved_event_time - interval,
         bar_end_time=resolved_event_time,
         ingest_time=resolved_event_time + timedelta(seconds=2),
         open=previous_close,
@@ -91,11 +106,13 @@ def _bar(
         closed=True,
         final=True,
         source_kind="historical",
-        market_state=MARKET_STATE.model_copy(
-            update={
-                "trade_date": resolved_event_time.date(),
-                "previous_close": Decimal(previous_close),
-            }
+        market_state=MarketStateSnapshot(
+            trade_date=resolved_event_time.date(),
+            previous_close=previous_close_decimal,
+            upper_limit_price=upper_limit_price,
+            lower_limit_price=lower_limit_price,
+            trading_phase=TradingPhase.CONTINUOUS_AUCTION,
+            suspension_status=SuspensionStatus.ACTIVE,
         ),
     )
 
@@ -440,6 +457,165 @@ def test_api_research_snapshot_exposes_execution_assumption_manifest_fields(
     assert payload["manifest"]["partialFillModel"] == "full_fill_only"
     assert payload["manifest"]["unfilledQtyHandling"] == "not_applicable_full_fill"
     assert "partial fills" in " ".join(payload["manifest"]["executionConstraints"])
+
+
+def test_api_rule_research_snapshot_returns_live_backtest_payload(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("SIGNALARK_POSTGRES_DSN", database_url)
+    from src.config import get_settings
+
+    get_settings.cache_clear()
+    from apps.api.main import create_app
+
+    settings = _settings(database_url)
+    upgrade_database(database_url)
+    engine = create_database_engine(database_url)
+    session_factory = create_session_factory(engine)
+    control_store = TraderControlPlaneStore(session_factory)
+    service = ApiControlPlaneService(
+        settings=settings,
+        session_factory=session_factory,
+        control_store=control_store,
+        market_gateway_factory=lambda: FakeHistoricalBarGateway(
+            [
+                _bar(index=0, close="100.00", previous_close="100.00", timeframe="1d"),
+                _bar(index=1, close="100.00", previous_close="100.00", timeframe="1d"),
+                _bar(index=2, close="100.00", previous_close="100.00", timeframe="1d"),
+                _bar(
+                    index=3,
+                    close="80.00",
+                    previous_close="100.00",
+                    timeframe="1d",
+                    price_limit_pct=Decimal("0.50"),
+                ),
+                _bar(
+                    index=4,
+                    close="120.00",
+                    previous_close="80.00",
+                    timeframe="1d",
+                    price_limit_pct=Decimal("0.50"),
+                ),
+            ],
+            expected_timeframe="1d",
+        ),
+    )
+    app = create_app(settings=settings, control_plane_service=service)
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/v1/research/rule-snapshot",
+                json={
+                    "symbol": "600036.SH",
+                    "timeframe": "1d",
+                    "limit": 5,
+                    "initialCash": 100000,
+                    "slippageBps": 5,
+                    "ruleTemplate": "moving_average_band_v1",
+                    "ruleConfig": {
+                        "maWindow": 3,
+                        "buyBelowMaPct": 0.05,
+                        "sellAboveMaPct": 0.10,
+                        "targetPosition": 400,
+                    },
+                },
+            )
+    finally:
+        engine.dispose()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["sourceMode"] == "live"
+    assert payload["sourceLabel"] == "由 research API 生成的规则回测结果"
+    assert payload["mode"] == "evaluation"
+    assert payload["manifest"]["strategyId"] == "moving_average_band_v1"
+    assert payload["manifest"]["timeframe"] == "1d"
+    assert payload["manifest"]["parameterSnapshot"]["ma_window"] == "3"
+    assert payload["manifest"]["parameterSnapshot"]["target_position"] == "400"
+    assert payload["performance"]["tradeCount"] == 2
+    assert payload["performance"]["fillCount"] == 2
+    assert payload["decisions"][0]["skipReason"] == "moving_average_band_warmup"
+    assert payload["decisions"][1]["skipReason"] == "moving_average_band_warmup"
+    assert payload["decisions"][3]["orderPlanSide"] == "BUY"
+    assert payload["decisions"][4]["orderPlanSide"] == "SELL"
+
+
+def test_api_rule_research_snapshot_rejects_invalid_parameters(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = _database_url(tmp_path)
+    monkeypatch.setenv("SIGNALARK_POSTGRES_DSN", database_url)
+    from src.config import get_settings
+
+    get_settings.cache_clear()
+    from apps.api.main import create_app
+
+    settings = _settings(database_url)
+    upgrade_database(database_url)
+    engine = create_database_engine(database_url)
+    session_factory = create_session_factory(engine)
+    control_store = TraderControlPlaneStore(session_factory)
+    service = ApiControlPlaneService(
+        settings=settings,
+        session_factory=session_factory,
+        control_store=control_store,
+        market_gateway_factory=lambda: FakeHistoricalBarGateway(
+            [],
+            expected_timeframe="1d",
+        ),
+    )
+    app = create_app(settings=settings, control_plane_service=service)
+
+    try:
+        with TestClient(app) as client:
+            invalid_window = client.post(
+                "/v1/research/rule-snapshot",
+                json={
+                    "symbol": "600036.SH",
+                    "timeframe": "1d",
+                    "limit": 5,
+                    "ruleTemplate": "moving_average_band_v1",
+                    "ruleConfig": {
+                        "maWindow": 1,
+                        "buyBelowMaPct": 0.05,
+                        "sellAboveMaPct": 0.10,
+                        "targetPosition": 400,
+                    },
+                },
+            )
+            invalid_limit = client.post(
+                "/v1/research/rule-snapshot",
+                json={
+                    "symbol": "600036.SH",
+                    "timeframe": "15m",
+                    "limit": 3,
+                    "ruleTemplate": "moving_average_band_v1",
+                    "ruleConfig": {
+                        "maWindow": 3,
+                        "buyBelowMaPct": 0.05,
+                        "sellAboveMaPct": 0.10,
+                        "targetPosition": 400,
+                    },
+                },
+            )
+    finally:
+        engine.dispose()
+
+    assert invalid_window.status_code == 400
+    assert (
+        invalid_window.json()["detail"]
+        == "Value error, ruleConfig.maWindow must be at least 2."
+    )
+
+    assert invalid_limit.status_code == 400
+    assert (
+        invalid_limit.json()["detail"]
+        == "Value error, timeframe must be 1d for moving_average_band_v1."
+    )
 
 
 def test_api_ai_research_snapshot_returns_live_ai_backtest_payload(
