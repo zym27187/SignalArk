@@ -57,6 +57,8 @@ def build_web_snapshot_payload(
     baseline = float(performance.starting_equity)
     sample_purpose = _resolve_sample_purpose(sample=sample, mode=mode)
     generated_at = shanghai_now().isoformat()
+    strategy_description = _resolve_manifest_strategy_description(strategy.description)
+    parameter_snapshot = _resolve_manifest_parameter_snapshot(strategy.parameters)
     equity_curve = [
         {
             "time": point.event_time.isoformat(),
@@ -96,7 +98,7 @@ def build_web_snapshot_payload(
             "strategyId": strategy.strategy_id,
             "strategyVersion": _resolve_strategy_version(strategy.strategy_id),
             "handlerName": strategy.handler_name,
-            "description": strategy.description or "由事件驱动 research 服务生成的回测结果。",
+            "description": strategy_description,
             "mode": mode,
             "samplePurpose": sample_purpose,
             "symbol": dataset.symbols[0],
@@ -114,7 +116,7 @@ def build_web_snapshot_payload(
             "partialFillModel": cost_assumptions.partial_fill_model,
             "unfilledQtyHandling": cost_assumptions.unfilled_qty_handling,
             "executionConstraints": list(cost_assumptions.execution_constraints),
-            "parameterSnapshot": dict(strategy.parameters),
+            "parameterSnapshot": parameter_snapshot,
             "dataFingerprint": dataset.data_fingerprint,
             "manifestFingerprint": result.manifest.manifest_fingerprint,
         },
@@ -129,6 +131,18 @@ def build_web_snapshot_payload(
         "notes": list(notes),
     }
     return payload
+
+
+def _resolve_manifest_strategy_description(description: str | None) -> str:
+    if description is not None and description.strip():
+        return description
+    return "由事件驱动 research 服务生成的回测结果。"
+
+
+def _resolve_manifest_parameter_snapshot(
+    parameters: dict[str, str],
+) -> dict[str, str]:
+    return dict(parameters)
 
 
 def build_research_summary_payload(

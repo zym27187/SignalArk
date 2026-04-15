@@ -9,6 +9,7 @@ from src.config import Settings
 from src.domain.events import BarEvent
 from src.domain.strategy import build_strategy
 from src.services.backtest import BacktestRunResult, BacktestService
+from src.services.backtest.service import BacktestStrategyPort
 
 
 class ResearchBacktestRunner:
@@ -18,7 +19,7 @@ class ResearchBacktestRunner:
         self,
         settings: Settings,
         *,
-        strategy: object | None = None,
+        strategy: BacktestStrategyPort | None = None,
         initial_cash: Decimal = Decimal("100000"),
         slippage_bps: Decimal = Decimal("5"),
         slippage_model: str = "bar_close_bps",
@@ -39,8 +40,8 @@ class ResearchBacktestRunner:
         )
 
     @property
-    def strategy(self) -> object:
-        """Expose the resolved strategy for test and audit purposes."""
+    def strategy(self) -> BacktestStrategyPort:
+        """Expose the resolved strategy, including any explicit injected override."""
         return self._strategy
 
     async def run(self, bars: Iterable[BarEvent]) -> BacktestRunResult:
@@ -51,12 +52,12 @@ class ResearchBacktestRunner:
 def build_default_backtest_runner(
     settings: Settings,
     *,
-    strategy: object | None = None,
+    strategy: BacktestStrategyPort | None = None,
     initial_cash: Decimal = Decimal("100000"),
     slippage_bps: Decimal = Decimal("5"),
     slippage_model: str = "bar_close_bps",
 ) -> ResearchBacktestRunner:
-    """Mirror trader wiring while keeping research-only concerns minimal."""
+    """Mirror trader wiring while allowing research-time strategy overrides."""
     return ResearchBacktestRunner(
         settings,
         strategy=strategy,

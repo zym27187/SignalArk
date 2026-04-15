@@ -6,9 +6,12 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from apps.research import build_default_backtest_runner
+from apps.research.snapshot import build_web_snapshot_payload
 from src.config import Settings
 from src.domain.events import BarEvent
 from src.domain.market import MarketStateSnapshot, SuspensionStatus, TradingPhase
+from src.domain.market.state import compute_price_limits
+from src.domain.strategy import MOVING_AVERAGE_BAND_V1, MovingAverageBandStrategy
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 DAY_ONE = datetime(2026, 4, 1, 14, 0, tzinfo=SHANGHAI)
@@ -57,6 +60,44 @@ def _bar_event(
         market_state=_market_state(
             trade_date=event_time.date(),
             previous_close=previous_close,
+        ),
+    )
+
+
+def _daily_bar_event(
+    *,
+    event_time: datetime,
+    close: Decimal,
+    previous_close: Decimal,
+) -> BarEvent:
+    upper_limit, lower_limit = compute_price_limits(
+        previous_close,
+        Decimal("0.50"),
+        price_tick=Decimal("0.01"),
+    )
+    return BarEvent(
+        exchange="cn_equity",
+        symbol="600036.SH",
+        timeframe="1d",
+        bar_start_time=event_time - timedelta(days=1),
+        bar_end_time=event_time,
+        event_time=event_time,
+        ingest_time=event_time + timedelta(seconds=2),
+        open=previous_close,
+        high=max(close, previous_close),
+        low=min(close, previous_close),
+        close=close,
+        volume=Decimal("1000"),
+        closed=True,
+        final=True,
+        source_kind="historical",
+        market_state=MarketStateSnapshot(
+            trade_date=event_time.date(),
+            previous_close=previous_close,
+            upper_limit_price=upper_limit,
+            lower_limit_price=lower_limit,
+            trading_phase=TradingPhase.CONTINUOUS_AUCTION,
+            suspension_status=SuspensionStatus.ACTIVE,
         ),
     )
 
@@ -137,3 +178,63 @@ async def test_research_backtest_runner_executes_minimal_event_driven_flow_with_
     assert result.manifest.cost_assumptions.slippage_bps == Decimal("5")
     assert result.manifest.dataset.bar_count == 5
     assert result.manifest.strategy.parameters["exit_threshold_pct"] is not None
+
+
+@pytest.mark.asyncio
+async def test_research_backtest_runner_preserves_injected_strategy_metadata_in_snapshot(
+) -> None:
+    strategy = MovingAverageBandStrategy(
+        account_id="paper_account_001",
+        ma_window=3,
+        buy_below_ma_pct=Decimal("0.05"),
+        sell_above_ma_pct=Decimal("0.10"),
+        target_position=Decimal("400"),
+    )
+    runner = build_default_backtest_runner(
+        _settings(),
+        strategy=strategy,
+        initial_cash=Decimal("100000"),
+        slippage_bps=Decimal("5"),
+    )
+    bars = (
+        _daily_bar_event(
+            event_time=DAY_ONE,
+            close=Decimal("100"),
+            previous_close=Decimal("100"),
+        ),
+        _daily_bar_event(
+            event_time=DAY_TWO,
+            close=Decimal("100"),
+            previous_close=Decimal("100"),
+        ),
+        _daily_bar_event(
+            event_time=DAY_TWO + timedelta(days=1),
+            close=Decimal("80"),
+            previous_close=Decimal("100"),
+        ),
+        _daily_bar_event(
+            event_time=DAY_TWO + timedelta(days=2),
+            close=Decimal("120"),
+            previous_close=Decimal("80"),
+        ),
+    )
+
+    result = await runner.run(bars)
+    snapshot = build_web_snapshot_payload(
+        result=result,
+        bars=bars,
+        source_label="test rule snapshot",
+        source_mode="fixture",
+        mode="evaluation",
+        notes=(),
+    )
+
+    assert runner.strategy is strategy
+    assert snapshot["manifest"]["strategyId"] == MOVING_AVERAGE_BAND_V1
+    assert (
+        snapshot["manifest"]["description"]
+        == "Long-only moving-average band strategy against the current daily close."
+    )
+    assert snapshot["manifest"]["parameterSnapshot"]["rule_template"] == MOVING_AVERAGE_BAND_V1
+    assert snapshot["manifest"]["parameterSnapshot"]["ma_window"] == "3"
+    assert snapshot["manifest"]["parameterSnapshot"]["target_position"] == "400"
