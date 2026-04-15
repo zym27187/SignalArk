@@ -204,7 +204,7 @@ describe("BacktestDecisionTable", () => {
     );
 
     expect(
-      screen.getByText(/收盘价 80 已跌到买入阈值 88\.6667/),
+      screen.getByText(/收盘价 80\.00 已跌到买入阈值 88\.6667/),
     ).toBeInTheDocument();
     expect(
       screen.getByText("下单计划：买入"),
@@ -213,6 +213,9 @@ describe("BacktestDecisionTable", () => {
       screen.getByText(
         "跳过说明：当前收盘价还没有跌到买入阈值，因此这一步继续空仓等待。",
       ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("跳过原因：均线买入阈值未满足"),
     ).toBeInTheDocument();
     expect(
       screen.getByText("原因代码：moving_average_band_buy_threshold_not_met"),

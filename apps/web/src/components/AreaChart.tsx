@@ -1,5 +1,5 @@
 import { buildAreaPath, buildLinePath, buildTicks, resolveRange } from "../lib/chart";
-import { formatDateTime, formatDecimal, formatSignedMoney } from "../lib/format";
+import { formatDateTime, formatDecimal, formatMoney, formatSignedMoney } from "../lib/format";
 import type { CurvePoint } from "../types/research";
 
 interface AreaChartProps {
@@ -34,7 +34,7 @@ export function AreaChart({
 }: AreaChartProps) {
   const width = 860;
   const height = 280;
-  const margin = { top: 20, right: 12, bottom: 30, left: 12 };
+  const margin = { top: 20, right: 18, bottom: 30, left: 18 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
   const palette = chartPalette[accent];
@@ -55,7 +55,8 @@ export function AreaChart({
   const firstPoint = points[0];
   const lastPoint = points[points.length - 1];
   const delta = lastPoint.value - firstPoint.value;
-  const formatter = formatAsMoney ? formatSignedMoney : formatDecimal;
+  const valueFormatter = formatAsMoney ? formatMoney : formatDecimal;
+  const deltaFormatter = formatAsMoney ? formatSignedMoney : formatDecimal;
 
   return (
     <div className="chart-shell">
@@ -65,9 +66,9 @@ export function AreaChart({
           <h3 className="chart-shell__title">{subtitle}</h3>
         </div>
         <div className="chart-shell__summary">
-          <strong>{formatter(lastPoint.value)}</strong>
+          <strong>{valueFormatter(lastPoint.value)}</strong>
           <span>
-            {formatAsMoney ? `净变化 ${formatSignedMoney(delta)}` : `变化 ${formatDecimal(delta)}`}
+            {formatAsMoney ? `净变化 ${deltaFormatter(delta)}` : `变化 ${deltaFormatter(delta)}`}
           </span>
         </div>
       </div>
@@ -98,7 +99,7 @@ export function AreaChart({
                   textAnchor="end"
                   className="chart__tick-label"
                 >
-                  {formatter(tick)}
+                  {valueFormatter(tick)}
                 </text>
               </g>
             );

@@ -15,6 +15,7 @@ from src.domain.strategy.signal import Signal, SignalType
 
 MOVING_AVERAGE_BAND_V1 = "moving_average_band_v1"
 DECIMAL_QUANTUM = Decimal("0.0001")
+PRICE_QUANTUM = Decimal("0.01")
 
 
 class StrategyContext(Protocol):
@@ -44,6 +45,10 @@ class _MovingAverageBandState:
 
 def _format_decimal(value: Decimal) -> str:
     return str(value.quantize(DECIMAL_QUANTUM))
+
+
+def _format_price(value: Decimal) -> str:
+    return str(value.quantize(PRICE_QUANTUM))
 
 
 def _format_pct(ratio: Decimal) -> str:
@@ -114,11 +119,12 @@ class MovingAverageBandStrategy:
                 signal_type=SignalType.ENTRY,
                 target_position=self._target_position,
                 reason_summary=(
-                    f"close {event.close} fell to buy threshold {buy_trigger} around "
-                    f"ma{self._ma_window} {moving_average}; "
+                    f"close {_format_price(event.close)} fell to buy threshold "
+                    f"{_format_decimal(buy_trigger)} around "
+                    f"ma{self._ma_window} {_format_decimal(moving_average)}; "
                     f"deviation_pct {_format_pct(deviation_ratio)} <= "
                     f"-buyBelowMaPct {_format_pct(self._buy_below_ma_pct)}; "
-                    f"target_position {self._target_position}"
+                    f"target_position {int(self._target_position)}"
                 ),
             )
             state.desired_target_position = self._target_position
@@ -159,8 +165,9 @@ class MovingAverageBandStrategy:
                 signal_type=SignalType.EXIT,
                 target_position=Decimal("0"),
                 reason_summary=(
-                    f"close {event.close} reached sell threshold {sell_trigger} around "
-                    f"ma{self._ma_window} {moving_average}; "
+                    f"close {_format_price(event.close)} reached sell threshold "
+                    f"{_format_decimal(sell_trigger)} around "
+                    f"ma{self._ma_window} {_format_decimal(moving_average)}; "
                     f"deviation_pct {_format_pct(deviation_ratio)} >= "
                     f"sellAboveMaPct {_format_pct(self._sell_above_ma_pct)}; "
                     "flatten position"
@@ -320,9 +327,10 @@ class MovingAverageBandStrategy:
         deviation_ratio: Decimal,
     ) -> RuleBasedNonSignalDecision:
         reason_summary = (
-            f"close {event.close} reached sell-ready territory near sell_trigger {sell_trigger} "
-            f"around ma{self._ma_window} {moving_average}, but A-share T+1 keeps the "
-            "same-day inventory unsellable."
+            f"close {_format_price(event.close)} reached sell-ready territory near sell_trigger "
+            f"{_format_decimal(sell_trigger)} around ma{self._ma_window} "
+            f"{_format_decimal(moving_average)}, but A-share T+1 keeps the same-day inventory "
+            "unsellable."
         )
         return RuleBasedNonSignalDecision(
             audit=StrategyDecisionAudit(
@@ -356,13 +364,15 @@ class MovingAverageBandStrategy:
     ) -> RuleBasedNonSignalDecision:
         reason_summary = (
             (
-                f"close {event.close} stayed below sell_trigger {sell_trigger} around "
-                f"ma{self._ma_window} {moving_average}; keep holding"
+                f"close {_format_price(event.close)} stayed below sell_trigger "
+                f"{_format_decimal(sell_trigger)} around ma{self._ma_window} "
+                f"{_format_decimal(moving_average)}; keep holding"
             )
             if in_position
             else (
-                f"close {event.close} stayed above buy_trigger {buy_trigger} around "
-                f"ma{self._ma_window} {moving_average}; keep waiting"
+                f"close {_format_price(event.close)} stayed above buy_trigger "
+                f"{_format_decimal(buy_trigger)} around ma{self._ma_window} "
+                f"{_format_decimal(moving_average)}; keep waiting"
             )
         )
         return RuleBasedNonSignalDecision(

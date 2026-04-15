@@ -81,6 +81,26 @@ function formatPercentRatio(
   return `${formatDecimal(numeric * 100, fractionDigits)}%`;
 }
 
+function formatNumberValue(
+  value: string | number | null | undefined,
+  fractionDigits = 4,
+): string {
+  if (value === null || value === undefined || value === "") {
+    return "--";
+  }
+  return formatDecimal(value, fractionDigits);
+}
+
+function formatPriceValue(
+  value: string | number | null | undefined,
+  fractionDigits = 2,
+): string {
+  if (value === null || value === undefined || value === "") {
+    return "--";
+  }
+  return formatDecimal(value, fractionDigits);
+}
+
 function formatPositionTier(value: string): string {
   return POSITION_TIER_LABEL_MAP[value] ?? titleCase(value);
 }
@@ -343,9 +363,11 @@ export function localizeResearchReason(reason: string | null | undefined): strin
     /^close ([\d.-]+) fell to buy threshold ([\d.-]+) around ma(\d+) ([\d.-]+); deviation_pct ([\d.-]+) <= -buyBelowMaPct ([\d.-]+); target_position ([\d.-]+)$/,
   );
   if (ruleBuyMatch) {
-    return `收盘价 ${ruleBuyMatch[1]} 已跌到买入阈值 ${ruleBuyMatch[2]}，对应 MA${
+    return `收盘价 ${formatPriceValue(ruleBuyMatch[1])} 已跌到买入阈值 ${formatNumberValue(
+      ruleBuyMatch[2],
+    )}，对应 MA${
       ruleBuyMatch[3]
-    } 为 ${ruleBuyMatch[4]}；当前偏离 ${formatPercentValue(
+    } 为 ${formatNumberValue(ruleBuyMatch[4])}；当前偏离 ${formatPercentValue(
       ruleBuyMatch[5],
     )}，已经低于均线 ${formatPercentValue(ruleBuyMatch[6])}，因此把仓位调到 ${
       ruleBuyMatch[7]
@@ -356,9 +378,11 @@ export function localizeResearchReason(reason: string | null | undefined): strin
     /^close ([\d.-]+) reached sell threshold ([\d.-]+) around ma(\d+) ([\d.-]+); deviation_pct ([\d.-]+) >= sellAboveMaPct ([\d.-]+); flatten position$/,
   );
   if (ruleSellMatch) {
-    return `收盘价 ${ruleSellMatch[1]} 已达到卖出阈值 ${ruleSellMatch[2]}，对应 MA${
+    return `收盘价 ${formatPriceValue(ruleSellMatch[1])} 已达到卖出阈值 ${formatNumberValue(
+      ruleSellMatch[2],
+    )}，对应 MA${
       ruleSellMatch[3]
-    } 为 ${ruleSellMatch[4]}；当前偏离 ${formatPercentValue(
+    } 为 ${formatNumberValue(ruleSellMatch[4])}；当前偏离 ${formatPercentValue(
       ruleSellMatch[5],
     )}，已经高于均线 ${formatPercentValue(ruleSellMatch[6])}，因此执行清仓。`;
   }
@@ -367,27 +391,33 @@ export function localizeResearchReason(reason: string | null | undefined): strin
     /^close ([\d.-]+) stayed above buy_trigger ([\d.-]+) around ma(\d+) ([\d.-]+); keep waiting$/,
   );
   if (ruleWaitMatch) {
-    return `收盘价 ${ruleWaitMatch[1]} 仍高于买入阈值 ${ruleWaitMatch[2]}，对应 MA${
+    return `收盘价 ${formatPriceValue(ruleWaitMatch[1])} 仍高于买入阈值 ${formatNumberValue(
+      ruleWaitMatch[2],
+    )}，对应 MA${
       ruleWaitMatch[3]
-    } 为 ${ruleWaitMatch[4]}，所以这一步继续空仓等待。`;
+    } 为 ${formatNumberValue(ruleWaitMatch[4])}，所以这一步继续空仓等待。`;
   }
 
   const ruleHoldMatch = normalizedReason.match(
     /^close ([\d.-]+) stayed below sell_trigger ([\d.-]+) around ma(\d+) ([\d.-]+); keep holding$/,
   );
   if (ruleHoldMatch) {
-    return `收盘价 ${ruleHoldMatch[1]} 还没到卖出阈值 ${ruleHoldMatch[2]}，对应 MA${
+    return `收盘价 ${formatPriceValue(ruleHoldMatch[1])} 还没到卖出阈值 ${formatNumberValue(
+      ruleHoldMatch[2],
+    )}，对应 MA${
       ruleHoldMatch[3]
-    } 为 ${ruleHoldMatch[4]}，所以这一步继续持有。`;
+    } 为 ${formatNumberValue(ruleHoldMatch[4])}，所以这一步继续持有。`;
   }
 
   const ruleTPlusOneMatch = normalizedReason.match(
     /^close ([\d.-]+) reached sell-ready territory near sell_trigger ([\d.-]+) around ma(\d+) ([\d.-]+), but A-share T\+1 keeps the same-day inventory unsellable\.$/,
   );
   if (ruleTPlusOneMatch) {
-    return `收盘价 ${ruleTPlusOneMatch[1]} 已接近卖出区间，阈值为 ${ruleTPlusOneMatch[2]}，对应 MA${
+    return `收盘价 ${formatPriceValue(ruleTPlusOneMatch[1])} 已接近卖出区间，阈值为 ${formatNumberValue(
+      ruleTPlusOneMatch[2],
+    )}，对应 MA${
       ruleTPlusOneMatch[3]
-    } 为 ${ruleTPlusOneMatch[4]}；但受 A 股 T+1 约束，当天买入的仓位还不能卖出。`;
+    } 为 ${formatNumberValue(ruleTPlusOneMatch[4])}；但受 A 股 T+1 约束，当天买入的仓位还不能卖出。`;
   }
 
   return normalizedReason;

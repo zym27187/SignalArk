@@ -41,6 +41,10 @@ const DISPLAY_VALUE_MAP: Record<string, string> = {
   baseline_entry_threshold_not_met: "入场阈值未满足",
   baseline_trend_unconfirmed: "趋势尚未确认",
   baseline_trend_warmup: "等待基线策略预热",
+  moving_average_band_buy_threshold_not_met: "均线买入阈值未满足",
+  moving_average_band_sell_threshold_not_met: "均线卖出阈值未满足",
+  moving_average_band_t_plus_one_locked: "均线策略受 T+1 限制",
+  moving_average_band_warmup: "等待均线策略预热",
   kill_switch: "已紧急暂停",
   limit: "限价",
   live: "实盘交易",
@@ -195,6 +199,10 @@ export function formatSignedMoney(value: string | number | null | undefined): st
 
   const sign = numeric > 0 ? "+" : "";
   return `${sign}${formatDecimal(numeric, 2)}`;
+}
+
+export function formatMoney(value: string | number | null | undefined): string {
+  return formatDecimal(value, 2);
 }
 
 export function formatSymbolLabel(
