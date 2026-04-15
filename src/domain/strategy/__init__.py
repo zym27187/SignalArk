@@ -15,15 +15,21 @@ from src.domain.strategy.baseline import (
     build_strategy,
     load_baseline_momentum_config,
 )
+from src.domain.strategy.rule_based import (
+    MOVING_AVERAGE_BAND_V1,
+    MovingAverageBandStrategy,
+)
 from src.domain.strategy.signal import Signal, SignalStatus, SignalType
 
 __all__ = [
     "AI_BAR_JUDGE_V1",
     "BASELINE_MOMENTUM_V1",
+    "MOVING_AVERAGE_BAND_V1",
     "AiBarJudgeStrategy",
     "AiBarJudgeConfig",
     "BaselineMomentumStrategy",
     "BaselineMomentumConfig",
+    "MovingAverageBandStrategy",
     "Signal",
     "SignalStatus",
     "SignalType",

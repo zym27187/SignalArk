@@ -46,6 +46,10 @@ def _format_decimal(value: Decimal) -> str:
     return str(value.quantize(DECIMAL_QUANTUM))
 
 
+def _format_pct(ratio: Decimal) -> str:
+    return _format_decimal(ratio * Decimal("100"))
+
+
 class MovingAverageBandStrategy:
     """Long-only moving-average band strategy for research rule backtests."""
 
@@ -110,10 +114,11 @@ class MovingAverageBandStrategy:
                 signal_type=SignalType.ENTRY,
                 target_position=self._target_position,
                 reason_summary=(
-                    f"close {event.close} <= buy_trigger {buy_trigger}; "
+                    f"close {event.close} fell to buy threshold {buy_trigger} around "
                     f"ma{self._ma_window} {moving_average}; "
-                    f"deviation_pct {_format_decimal(deviation_ratio * Decimal('100'))}; "
-                    f"rebalance to {self._target_position}"
+                    f"deviation_pct {_format_pct(deviation_ratio)} <= "
+                    f"-buyBelowMaPct {_format_pct(self._buy_below_ma_pct)}; "
+                    f"target_position {self._target_position}"
                 ),
             )
             state.desired_target_position = self._target_position
@@ -154,9 +159,10 @@ class MovingAverageBandStrategy:
                 signal_type=SignalType.EXIT,
                 target_position=Decimal("0"),
                 reason_summary=(
-                    f"close {event.close} >= sell_trigger {sell_trigger}; "
+                    f"close {event.close} reached sell threshold {sell_trigger} around "
                     f"ma{self._ma_window} {moving_average}; "
-                    f"deviation_pct {_format_decimal(deviation_ratio * Decimal('100'))}; "
+                    f"deviation_pct {_format_pct(deviation_ratio)} >= "
+                    f"sellAboveMaPct {_format_pct(self._sell_above_ma_pct)}; "
                     "flatten position"
                 ),
             )
@@ -314,8 +320,9 @@ class MovingAverageBandStrategy:
         deviation_ratio: Decimal,
     ) -> RuleBasedNonSignalDecision:
         reason_summary = (
-            f"close {event.close} reached sell-ready territory around ma{self._ma_window} "
-            f"{moving_average}, but A-share T+1 keeps the same-day inventory unsellable."
+            f"close {event.close} reached sell-ready territory near sell_trigger {sell_trigger} "
+            f"around ma{self._ma_window} {moving_average}, but A-share T+1 keeps the "
+            "same-day inventory unsellable."
         )
         return RuleBasedNonSignalDecision(
             audit=StrategyDecisionAudit(
@@ -404,9 +411,11 @@ class MovingAverageBandStrategy:
             "close": str(event.close),
             "ma_window": str(self._ma_window),
             "moving_average": _format_decimal(moving_average),
+            "buy_below_ma_pct": _format_pct(self._buy_below_ma_pct),
+            "sell_above_ma_pct": _format_pct(self._sell_above_ma_pct),
             "buy_trigger": _format_decimal(buy_trigger),
             "sell_trigger": _format_decimal(sell_trigger),
-            "deviation_pct": _format_decimal(deviation_ratio * Decimal("100")),
+            "deviation_pct": _format_pct(deviation_ratio),
             "position_state": position_state,
             "target_position": str(self._target_position),
         }
