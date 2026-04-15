@@ -689,6 +689,11 @@ select {
   align-items: start;
 }
 
+.operations-flow {
+  display: grid;
+  gap: 24px;
+}
+
 .table-shell,
 .event-timeline,
 .control-panel {
@@ -908,6 +913,10 @@ select {
 .trading-glossary {
   display: grid;
   gap: 14px;
+}
+
+.trading-glossary .definition-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .symbol-inspector__intro,
@@ -1255,6 +1264,12 @@ select {
   list-style: none;
 }
 
+.operations-flow__events .event-list {
+  max-height: 52rem;
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .event-list__item {
   padding: 14px;
   border-radius: var(--radius-md);
@@ -1278,6 +1293,36 @@ select {
   margin-top: 6px;
   font-size: 0.92rem;
   word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.operations-fold {
+  border-radius: var(--radius-md);
+  border: 1px dashed rgba(18, 40, 61, 0.12);
+  background: rgba(248, 251, 254, 0.9);
+}
+
+.operations-fold[open] {
+  border-style: solid;
+}
+
+.operations-fold__summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.operations-fold__summary::-webkit-details-marker {
+  display: none;
+}
+
+.operations-fold .trading-glossary {
+  padding: 0 16px 16px;
 }
 
 .app-frame {

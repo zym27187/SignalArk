@@ -140,66 +140,67 @@ export function OperationsView({ dashboard, symbolNames }: OperationsViewProps) 
         />
       </SectionCard>
 
-      <section className="dashboard-grid dashboard-grid--content">
-        <div className="dashboard-grid__primary">
-          <SectionCard
-            eyebrow="进行中"
-            title="未完成订单"
-            description="这里看还在排队、已接收或部分成交的订单。"
-          >
-            <OrdersTable
-              orders={dashboard.snapshot.orders}
-              symbolNames={symbolNames}
-              error={dashboard.snapshot.sectionErrors.orders}
-            />
-          </SectionCard>
+      <section className="operations-flow">
+        <SectionCard
+          eyebrow="进行中"
+          title="未完成订单"
+          description="这里看还在排队、已接收或部分成交的订单。"
+        >
+          <OrdersTable
+            orders={dashboard.snapshot.orders}
+            symbolNames={symbolNames}
+            error={dashboard.snapshot.sectionErrors.orders}
+          />
+        </SectionCard>
 
-          <SectionCard
-            eyebrow="回看"
-            title="历史订单"
-            description="这里按筛选回看订单从提交到结束的全过程。"
-          >
-            <OrderHistoryTable
-              orders={dashboard.snapshot.orderHistory}
-              symbolNames={symbolNames}
-              error={dashboard.snapshot.sectionErrors.orderHistory}
-            />
-          </SectionCard>
+        <SectionCard
+          eyebrow="回看"
+          title="历史订单"
+          description="这里按筛选回看订单从提交到结束的全过程。"
+        >
+          <OrderHistoryTable
+            orders={dashboard.snapshot.orderHistory}
+            symbolNames={symbolNames}
+            error={dashboard.snapshot.sectionErrors.orderHistory}
+          />
+        </SectionCard>
 
-          <SectionCard
-            eyebrow="回看"
-            title="历史成交"
-            description="这里看已经真正成交的记录，不用再手动查库。"
-          >
-            <FillHistoryTable
-              fills={dashboard.snapshot.fills}
-              symbolNames={symbolNames}
-              error={dashboard.snapshot.sectionErrors.fillHistory}
-            />
-          </SectionCard>
-        </div>
+        <SectionCard
+          eyebrow="回看"
+          title="历史成交"
+          description="这里看已经真正成交的记录，不用再手动查库。"
+        >
+          <FillHistoryTable
+            fills={dashboard.snapshot.fills}
+            symbolNames={symbolNames}
+            error={dashboard.snapshot.sectionErrors.fillHistory}
+          />
+        </SectionCard>
 
-        <aside className="dashboard-grid__rail">
-          <SectionCard
-            eyebrow="名词解释"
-            title="常见术语"
-            description="把容易混淆的交易术语固定解释在侧栏里，减少来回查找。"
-          >
+        <SectionCard
+          className="operations-flow__events"
+          eyebrow="最近动态"
+          title="最近发生了什么"
+          description="按当前筛选展示最近的关键事件时间线。"
+        >
+          <EventTimeline
+            events={deferredEvents}
+            symbolNames={symbolNames}
+            error={dashboard.snapshot.sectionErrors.events}
+          />
+        </SectionCard>
+
+        <SectionCard
+          className="operations-flow__glossary"
+          eyebrow="名词解释"
+          title="常见术语"
+          description="把常见交易术语收进可折叠区域，需要时再展开查看。"
+        >
+          <details className="operations-fold">
+            <summary className="operations-fold__summary">查看术语解释</summary>
             <TradingGlossaryPanel />
-          </SectionCard>
-
-          <SectionCard
-            eyebrow="最近动态"
-            title="最近发生了什么"
-            description="按当前筛选展示最近的关键事件时间线。"
-          >
-            <EventTimeline
-              events={deferredEvents}
-              symbolNames={symbolNames}
-              error={dashboard.snapshot.sectionErrors.events}
-            />
-          </SectionCard>
-        </aside>
+          </details>
+        </SectionCard>
       </section>
     </main>
   );
