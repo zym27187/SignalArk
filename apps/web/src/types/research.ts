@@ -132,6 +132,35 @@ export interface ResearchAiSettingsUpdateRequest {
   clearApiKey?: boolean;
 }
 
+export const RULE_RESEARCH_TEMPLATE_MOVING_AVERAGE_BAND_V1 =
+  "moving_average_band_v1";
+export const RULE_RESEARCH_REQUIRED_TIMEFRAME = "1d";
+
+export type ResearchRuleTemplate =
+  typeof RULE_RESEARCH_TEMPLATE_MOVING_AVERAGE_BAND_V1;
+
+export interface MovingAverageBandRuleConfig {
+  // Counts 1d bars only. MA60 means 60 daily bars, not 60 bars of the current UI timeframe.
+  maWindow: number;
+  // 0.05 means close <= ma * (1 - 0.05).
+  buyBelowMaPct: number;
+  // 0.10 means close >= ma * (1 + 0.10).
+  sellAboveMaPct: number;
+  // Continues the existing backtest semantics: absolute share count, not portfolio ratio.
+  targetPosition: number;
+}
+
+export interface ResearchRuleSnapshotRequest {
+  symbol?: string;
+  // Rule backtests pin the first MVP to daily bars so MA semantics stay unambiguous.
+  timeframe: typeof RULE_RESEARCH_REQUIRED_TIMEFRAME;
+  limit?: number;
+  initialCash?: number;
+  slippageBps?: number;
+  ruleTemplate: ResearchRuleTemplate;
+  ruleConfig: MovingAverageBandRuleConfig;
+}
+
 export type ResearchSnapshotSourceMode = "fixture" | "imported" | "live";
 export type ResearchSamplePurpose = "preview" | "evaluation";
 

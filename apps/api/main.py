@@ -20,6 +20,12 @@ from apps.api.control_plane import ApiControlPlaneService
 from apps.research.analysis import ResearchMode
 from apps.trader.control_plane import MissingControlPlaneSchemaError, TraderControlPlaneStore
 
+# Freeze the first configurable-rule MVP contract in one place so the API
+# boundary stays explicit before the route is wired in.
+ResearchRuleTemplate = Literal["moving_average_band_v1"]
+RULE_RESEARCH_TEMPLATE_MOVING_AVERAGE_BAND_V1: ResearchRuleTemplate = "moving_average_band_v1"
+RULE_RESEARCH_REQUIRED_TIMEFRAME = "1d"
+
 
 class ResearchAiSnapshotRequest(BaseModel):
     """Body contract for one AI-driven research snapshot request."""
@@ -258,6 +264,10 @@ def create_app(
             default="bar_close_bps"
         ),
     ) -> dict[str, object]:
+        # Keep GET /v1/research/snapshot focused on the repo's existing
+        # baseline/AI research flows. Configurable rule backtests use a
+        # dedicated POST body contract so a "60 day MA" always means 60 1d bars,
+        # not 60 bars of whichever research timeframe the UI currently shows.
         try:
             return await service.research_snapshot_payload(
                 symbol=symbol,

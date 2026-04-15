@@ -22,6 +22,10 @@ import type {
   ResearchMode,
   ResearchSnapshot,
 } from "../types/research";
+export {
+  RULE_RESEARCH_REQUIRED_TIMEFRAME as DEFAULT_RULE_RESEARCH_TIMEFRAME,
+  RULE_RESEARCH_TEMPLATE_MOVING_AVERAGE_BAND_V1 as DEFAULT_RULE_RESEARCH_TEMPLATE,
+} from "../types/research";
 import { localizeMessage } from "./format";
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
@@ -302,6 +306,9 @@ export async function fetchResearchSnapshot(params?: {
   mode?: ResearchMode;
   slippageModel?: "bar_close_bps" | "directional_close_tiered_bps";
 }): Promise<ResearchSnapshot> {
+  // This GET endpoint stays reserved for the existing baseline/AI research flow.
+  // Configurable rule backtests use POST /v1/research/rule-snapshot so the
+  // request body can explicitly pin daily-MA semantics to 1d bars.
   const query = new URLSearchParams();
   if (params?.symbol) {
     query.set("symbol", params.symbol);

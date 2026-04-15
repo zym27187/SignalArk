@@ -136,6 +136,47 @@ GET /v1/research/snapshot?symbol=600036.SH&timeframe=15m&mode=parameter_scan
 GET /v1/research/snapshot?symbol=600036.SH&timeframe=15m&mode=walk_forward
 ```
 
+## 第一版规则回测契约
+
+为了支持“前端可配置均线规则回测”，第一版会新增一个独立入口：
+
+```text
+POST /v1/research/rule-snapshot
+```
+
+它和现有 `GET /v1/research/snapshot` 的语义边界需要保持清楚：
+
+- `GET /v1/research/snapshot` 继续服务当前 baseline / AI / 实验模式 research
+- `POST /v1/research/rule-snapshot` 专门承接前端可配置规则回测
+- 第一版只支持固定模板 `moving_average_band_v1`
+
+推荐请求体：
+
+```json
+{
+  "symbol": "600036.SH",
+  "timeframe": "1d",
+  "limit": 750,
+  "initialCash": 100000,
+  "slippageBps": 5,
+  "ruleTemplate": "moving_average_band_v1",
+  "ruleConfig": {
+    "maWindow": 60,
+    "buyBelowMaPct": 0.05,
+    "sellAboveMaPct": 0.10,
+    "targetPosition": 400
+  }
+}
+```
+
+第一版参数语义固定如下：
+
+- `timeframe` 必须使用 `1d`，这样 `maWindow=60` 才明确表示 60 根日线
+- `buyBelowMaPct=0.05` 表示 `close <= ma * (1 - 0.05)` 才允许买入
+- `sellAboveMaPct=0.10` 表示 `close >= ma * (1 + 0.10)` 才允许卖出
+- `targetPosition` 继续沿用当前系统的“目标持仓股数”语义，而不是资金占比
+- 返回体继续复用现有 `ResearchSnapshot`，避免前端为规则回测再维护第二套展示契约
+
 输入文件需要是以下两种形式之一：
 
 1. 一个 `BarEvent` JSON 数组
