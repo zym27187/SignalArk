@@ -8,6 +8,10 @@ import { useHashView } from "./hooks/use-hash-view";
 import { useDashboardData } from "./hooks/use-dashboard-data";
 import { useMarketData } from "./hooks/use-market-data";
 import { useResearchData } from "./hooks/use-research-data";
+import {
+  DEFAULT_RULE_RESEARCH_HISTORY_YEARS,
+  type RuleResearchHistoryYears,
+} from "./lib/api";
 import { formatDateTime } from "./lib/format";
 import type { SymbolNameMap } from "./types/api";
 import type { ResearchMode } from "./types/research";
@@ -18,7 +22,7 @@ const DEFAULT_SYMBOL_NAMES: SymbolNameMap = {
 };
 const DEFAULT_SYMBOL_OPTIONS = Object.keys(DEFAULT_SYMBOL_NAMES);
 const MARKET_TIMEFRAME_OPTIONS = ["15m", "1h"];
-const RESEARCH_TIMEFRAME_OPTIONS = ["15m", "1h"];
+const RESEARCH_TIMEFRAME_OPTIONS = ["15m", "1h", "1d"];
 
 export default function App() {
   const dashboard = useDashboardData();
@@ -42,6 +46,8 @@ export default function App() {
   );
   const [selectedResearchMode, setSelectedResearchMode] =
     useState<ResearchMode>("evaluation");
+  const [selectedRuleHistoryYears, setSelectedRuleHistoryYears] =
+    useState<RuleResearchHistoryYears>(DEFAULT_RULE_RESEARCH_HISTORY_YEARS);
 
   useEffect(() => {
     if (!availableSymbols.includes(selectedSymbol)) {
@@ -110,9 +116,11 @@ export default function App() {
             selectedSymbol={selectedSymbol}
             selectedTimeframe={selectedResearchTimeframe}
             selectedMode={selectedResearchMode}
+            selectedRuleHistoryYears={selectedRuleHistoryYears}
             onSymbolChange={setSelectedSymbol}
             onTimeframeChange={setSelectedResearchTimeframe}
             onModeChange={setSelectedResearchMode}
+            onRuleHistoryYearsChange={setSelectedRuleHistoryYears}
           />
         );
       case "operations":

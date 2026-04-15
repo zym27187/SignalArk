@@ -13,6 +13,9 @@ import {
   DEFAULT_RESEARCH_EVALUATION_LIMIT,
   DEFAULT_RESEARCH_PREVIEW_LIMIT,
   DEFAULT_AI_RESEARCH_PREVIEW_LIMIT,
+  RULE_RESEARCH_HISTORY_YEAR_OPTIONS,
+  resolveRuleResearchLookbackLimit,
+  type RuleResearchHistoryYears,
 } from "../../lib/api";
 import {
   formatDateTime,
@@ -44,9 +47,11 @@ interface ResearchViewProps {
   selectedSymbol: string;
   selectedTimeframe: string;
   selectedMode: ResearchMode;
+  selectedRuleHistoryYears: RuleResearchHistoryYears;
   onSymbolChange: (symbol: string) => void;
   onTimeframeChange: (timeframe: string) => void;
   onModeChange: (mode: ResearchMode) => void;
+  onRuleHistoryYearsChange: (years: RuleResearchHistoryYears) => void;
 }
 
 interface SnapshotSectionOptions {
@@ -250,9 +255,11 @@ export function ResearchView({
   selectedSymbol,
   selectedTimeframe,
   selectedMode,
+  selectedRuleHistoryYears,
   onSymbolChange,
   onTimeframeChange,
   onModeChange,
+  onRuleHistoryYearsChange,
 }: ResearchViewProps) {
   const aiResearchData = useAiResearchData();
   const aiSettings = useAiResearchSettings({ enabled: true });
@@ -284,6 +291,7 @@ export function ResearchView({
   const summary = snapshot?.summary;
   const experiments = snapshot?.experiments;
   const comparison = aiResearchData.snapshot?.comparison ?? snapshot?.comparison ?? null;
+  const ruleLookbackLimit = resolveRuleResearchLookbackLimit(selectedRuleHistoryYears);
   const sourceLabel = snapshot
     ? snapshot.sourceMode === "fixture"
       ? snapshot.sourceLabel
@@ -655,6 +663,28 @@ export function ResearchView({
               </button>
             </div>
             <p className="field__hint">{buildResearchModeCopy(selectedMode)}</p>
+          </div>
+
+          <div className="dataset-switcher__group">
+            <p className="dataset-switcher__label">规则回测样本</p>
+            <div className="dataset-switcher__options">
+              {RULE_RESEARCH_HISTORY_YEAR_OPTIONS.map((years) => (
+                <button
+                  key={years}
+                  type="button"
+                  className={`dataset-switcher__button${
+                    selectedRuleHistoryYears === years ? " dataset-switcher__button--active" : ""
+                  }`}
+                  onClick={() => onRuleHistoryYearsChange(years)}
+                >
+                  {years} 年
+                </button>
+              ))}
+            </div>
+            <p className="field__hint">
+              规则回测会复用上方股票代码，推荐切到 `1d` 日线；当前 {selectedRuleHistoryYears} 年约{" "}
+              {ruleLookbackLimit} 根 bar，后续会直接映射到规则回测请求的 `limit`。
+            </p>
           </div>
         </div>
         <div className="page-hero__chips">

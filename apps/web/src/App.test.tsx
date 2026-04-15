@@ -506,6 +506,36 @@ describe("App", () => {
     });
   });
 
+  it("offers 1d research timeframe and rule lookback presets", async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /研究/ }));
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#research");
+    });
+
+    expect(screen.getByRole("tab", { name: "1d" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 年" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "3 年" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "5 年" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "1d" }));
+
+    await waitFor(() => {
+      expect(mockedUseResearchData).toHaveBeenLastCalledWith({
+        enabled: true,
+        symbol: "600036.SH",
+        timeframe: "1d",
+        mode: "evaluation",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "5 年" }));
+
+    expect(screen.getByText(/5 年约 1250 根 bar/)).toBeInTheDocument();
+  });
+
   it("runs AI research with the fast preview limit from the research view", async () => {
     const saveMock = vi.fn().mockResolvedValue({
       accountId: "paper_account_001",

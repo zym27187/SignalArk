@@ -35,6 +35,19 @@ export const DEFAULT_AI_RESEARCH_PREVIEW_LIMIT = 24;
 export const DEFAULT_AI_RESEARCH_LOOKBACK_BARS = 12;
 export const AI_RESEARCH_REQUEST_TIMEOUT_MS = 30_000;
 export const AI_RESEARCH_REQUEST_TIMEOUT_PER_DECISION_MS = 15_000;
+export const RULE_RESEARCH_HISTORY_YEAR_OPTIONS = [1, 3, 5] as const;
+export type RuleResearchHistoryYears =
+  (typeof RULE_RESEARCH_HISTORY_YEAR_OPTIONS)[number];
+export const DEFAULT_RULE_RESEARCH_HISTORY_YEARS: RuleResearchHistoryYears = 3;
+
+const RULE_RESEARCH_HISTORY_LIMIT_BY_YEARS: Record<
+  RuleResearchHistoryYears,
+  number
+> = {
+  1: 250,
+  3: 750,
+  5: 1250,
+};
 
 type RuntimeConfig = {
   apiBaseUrl?: string;
@@ -57,6 +70,12 @@ export function resolveApiBaseUrl(runtimeConfig?: RuntimeConfig): string {
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();
+
+export function resolveRuleResearchLookbackLimit(
+  years: RuleResearchHistoryYears,
+): number {
+  return RULE_RESEARCH_HISTORY_LIMIT_BY_YEARS[years];
+}
 
 export const controlActionPaths = {
   pauseStrategy: "/v1/controls/strategy/pause",

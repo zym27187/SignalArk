@@ -70,7 +70,7 @@ from apps.trader.control_plane import (
 from apps.trader.oms import build_default_trader_oms_service
 from apps.trader.reconciliation import SessionFactoryBackedReconciliationStore
 
-READ_ONLY_MARKET_TIMEFRAMES = frozenset({"15m", "1h"})
+READ_ONLY_MARKET_TIMEFRAMES = frozenset({"15m", "1h", "1d"})
 RULE_RESEARCH_TIMEFRAMES = frozenset({"1d"})
 DEFAULT_RESEARCH_INITIAL_CASH = Decimal("100000")
 DEFAULT_RESEARCH_SLIPPAGE_BPS = Decimal("5")
