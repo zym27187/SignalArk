@@ -915,7 +915,7 @@ export function ResearchView({
               <input
                 type="number"
                 min="1"
-                step="1000"
+                step="1"
                 value={ruleInitialCash}
                 onChange={(event) => setRuleInitialCash(event.target.value)}
                 className="field__control"

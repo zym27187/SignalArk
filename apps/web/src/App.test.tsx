@@ -728,6 +728,52 @@ describe("App", () => {
     });
   });
 
+  it("runs rule research with the default form values directly", async () => {
+    const runMock = vi.fn().mockResolvedValue(null);
+    mockedUseRuleResearchData.mockReturnValue({
+      snapshot: null,
+      error: null,
+      fetchedAt: null,
+      isLoading: false,
+      isRefreshing: false,
+      lastRequest: null,
+      run: runMock,
+      refresh: vi.fn(),
+      reset: vi.fn(),
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /研究/ }));
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#research");
+    });
+
+    const initialCashInput = screen.getByDisplayValue("100000") as HTMLInputElement;
+    expect(initialCashInput).toHaveValue(100000);
+    expect(initialCashInput).toHaveAttribute("step", "1");
+
+    fireEvent.click(screen.getByRole("button", { name: "运行规则回测" }));
+
+    await waitFor(() => {
+      expect(runMock).toHaveBeenCalledWith({
+        symbol: "600036.SH",
+        timeframe: "1d",
+        limit: 750,
+        initialCash: 100000,
+        slippageBps: 5,
+        ruleTemplate: "moving_average_band_v1",
+        ruleConfig: {
+          maWindow: 60,
+          buyBelowMaPct: 0.05,
+          sellAboveMaPct: 0.1,
+          targetPosition: 400,
+        },
+      });
+    });
+  });
+
   it("shows a standardized baseline-vs-ai comparison when both snapshots exist", async () => {
     mockedUseAiResearchData.mockReturnValue({
       snapshot: {
